@@ -1,0 +1,1 @@
+//! The `bits` module encodes binary data into raw bits used in a QR code.
