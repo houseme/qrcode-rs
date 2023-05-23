@@ -27,7 +27,7 @@
 //! ```
 
 #![cfg_attr(feature = "bench", feature(test, external_doc))] // Unstable libraries
-#![deny(clippy::uninlined_format_args,clippy::manual_range_contains,clippy::semicolon_if_nothing_returned)]
+#![deny(clippy::uninlined_format_args, clippy::manual_range_contains, clippy::semicolon_if_nothing_returned)]
 #![allow(
 clippy::must_use_candidate, // This is just annoying.
 )]
