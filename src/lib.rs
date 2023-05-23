@@ -26,12 +26,12 @@
 //! println!("{}", string);
 //! ```
 
-#![cfg_attr(feature = "bench", feature(test, external_doc))] // Unstable libraries
+#![cfg_attr(feature = "bench")] // Unstable libraries
 #![deny(clippy::uninlined_format_args, clippy::manual_range_contains, clippy::semicolon_if_nothing_returned)]
 #![allow(
 clippy::must_use_candidate, // This is just annoying.
 )]
-#![cfg_attr(feature = "bench", doc(include = "../README.md"))]
+#![cfg_attr(feature = "bench", doc = include_str!("../README.md"))]
 // ^ make sure we can test our README.md.
 
 use std::convert::TryInto;
