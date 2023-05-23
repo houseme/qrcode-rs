@@ -2,7 +2,7 @@
 name = "qrcode-rs"
 description = "QR code encoder in Rust，Generate QR Code matrices and images in RAW, PNG and SVG formats."
 license = "MIT OR Apache-2.0"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["houseme <housemecn@gmail.com>"]
 repository = "https://github.com/houseme/qrcode-rs"
@@ -11,9 +11,12 @@ keywords = ["qrcode", "generate", "encoder", "image", "barcode"]
 categories = ["encoding", "multimedia::images", "multimedia::encoding"]
 readme = "README.md"
 # Crate build related
-exclude = ["examples/*", "tests/*", ".gitignore"]
+exclude = ["tests/*", ".gitignore"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[profile.release]
+opt-level = 3
+debug = false
 
 [dependencies]
 image = { version = "0.24", default-features = false, optional = true }
@@ -39,3 +42,6 @@ name = "encode_string"
 [[example]]
 name = "encode_svg"
 required-features = ["svg"]
+
+[[example]]
+name = "encode_unicode"
