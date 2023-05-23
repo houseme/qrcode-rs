@@ -66,7 +66,7 @@ impl Color {
     /// # Examples
     ///
     /// ```rust
-    /// # use qrcode::types::Color;
+    /// # use qrcode_rs::types::Color;
     /// assert_eq!(Color::Light.select(1, 0), 0);
     /// assert_eq!(Color::Dark.select("black", "white"), "black");
     /// ```
@@ -248,7 +248,7 @@ impl Mode {
 
     /// Computes the number of bits needed to some data of a given raw length.
     ///
-    ///     use qrcode::types::Mode;
+    ///     use qrcode_rs::types::Mode;
     ///
     ///     assert_eq!(Mode::Numeric.data_bits_count(7), 24);
     ///
