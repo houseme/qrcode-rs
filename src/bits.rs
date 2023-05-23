@@ -32,7 +32,7 @@ impl Bits {
     /// `n` bit in size. Otherwise the excess bits may stomp on the existing
     /// ones.
     fn push_number(&mut self, n: usize, number: u16) {
-        debug_assert!(n == 16 || n < 16 && number < (1 << n), "{} is too big as a {}-bit number", number, n);
+        debug_assert!(n == 16 || n < 16 && number < (1 << n), "{number} is too big as a {n}-bit number");
 
         let b = self.bit_offset + n;
         let last_index = self.data.len().wrapping_sub(1);
@@ -135,13 +135,13 @@ fn test_push_number() {
         bytes,
         vec![
             0b010_110_10, // 90
-            0b1_001_1010,  // 154
-            0b1100_1011,   // 203
-            0b0110_1101,    // 109
-            0b01_1001_00,   // 100
-            0b01_111_001,  // 121
-            0b0_1110_001,   // 113
-            0b1_0000000,   // 128
+            0b1_001_1010, // 154
+            0b1100_1011,  // 203
+            0b0110_1101,  // 109
+            0b01_1001_00, // 100
+            0b01_111_001, // 121
+            0b0_1110_001, // 113
+            0b1_0000000,  // 128
         ]
     );
 }
@@ -192,7 +192,7 @@ impl Bits {
     /// returns `Err(QrError::UnsupportedCharacterSet)`.
     pub fn push_mode_indicator(&mut self, mode: ExtendedMode) -> QrResult<()> {
         #[allow(clippy::match_same_arms)]
-            let number = match (self.version, mode) {
+        let number = match (self.version, mode) {
             (Version::Micro(1), ExtendedMode::Data(Mode::Numeric)) => return Ok(()),
             (Version::Micro(_), ExtendedMode::Data(Mode::Numeric)) => 0,
             (Version::Micro(_), ExtendedMode::Data(Mode::Alphanumeric)) => 1,
@@ -385,7 +385,7 @@ mod numeric_tests {
         assert_eq!(bits.push_numeric_data(b"0123456789012345"), Ok(()));
         assert_eq!(
             bits.into_bytes(),
-            vec![0b00_10000_0, 0b00000110, 0b0_0101011, 0b001_10101, 0b00110_111, 0b0000101_0, 0b01110101, 0b00101_000, ]
+            vec![0b00_10000_0, 0b00000110, 0b0_0101011, 0b001_10101, 0b00110_111, 0b0000101_0, 0b01110101, 0b00101_000,]
         );
     }
 
@@ -811,8 +811,8 @@ impl Bits {
     /// Returns `Err(QrError::InvalidData)` if the segment refers to incorrectly
     /// encoded byte sequence.
     pub fn push_segments<I>(&mut self, data: &[u8], segments_iter: I) -> QrResult<()>
-        where
-            I: Iterator<Item = Segment>,
+    where
+        I: Iterator<Item = Segment>,
     {
         for segment in segments_iter {
             let slice = &data[segment.begin..segment.end];
@@ -891,7 +891,7 @@ pub fn encode_auto(data: &[u8], ec_level: EcLevel) -> QrResult<Bits> {
     let segments = Parser::new(data).collect::<Vec<Segment>>();
     for version in &[Version::Normal(9), Version::Normal(26), Version::Normal(40)] {
         let opt_segments = Optimizer::new(segments.iter().copied(), *version).collect::<Vec<_>>();
-        let total_len = total_encoded_len(&*opt_segments, *version);
+        let total_len = total_encoded_len(&opt_segments, *version);
         let data_capacity = version.fetch(ec_level, &DATA_LENGTHS).expect("invalid DATA_LENGTHS");
         if total_len <= data_capacity {
             let min_version = find_min_version(total_len, ec_level);

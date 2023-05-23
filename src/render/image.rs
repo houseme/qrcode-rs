@@ -71,8 +71,8 @@ mod render_tests {
             3,
             1,
         )
-            .module_dimensions(1, 1)
-            .build();
+        .module_dimensions(1, 1)
+        .build();
 
         #[rustfmt::skip]
             let expected = [

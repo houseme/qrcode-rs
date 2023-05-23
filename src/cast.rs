@@ -31,7 +31,7 @@ trait ExpectOrOverflow {
 impl<T, E> ExpectOrOverflow for Result<T, E> {
     type Output = T;
     fn expect_or_overflow<D: Display>(self, value: D, ty: &str) -> Self::Output {
-        self.unwrap_or_else(|_err| panic!("{} overflows {}", value, ty))
+        self.unwrap_or_else(|_err| panic!("{value} overflows {ty}"))
     }
 }
 

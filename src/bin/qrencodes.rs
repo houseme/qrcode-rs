@@ -7,6 +7,6 @@ pub fn main() {
 
         print!("{}", code.render().dark_color("\x1b[7m  \x1b[0m").light_color("\x1b[49m  \x1b[0m").build());
     } else {
-        println!("Usage: {} INPUT_TEXT", env::args().nth(0).unwrap());
+        println!("Usage: {} INPUT_TEXT", env::args().next().unwrap());
     }
 }

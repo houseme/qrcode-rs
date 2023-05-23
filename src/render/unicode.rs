@@ -68,11 +68,11 @@ impl RenderCanvas for Canvas1x2 {
                         rows[0].iter().map(|top| (top * 2)).collect::<Vec<u8>>()
                     }
                 }
-                    .into_iter()
-                    // Mapping those 2-bit numbers to corresponding pixels.
-                    .map(Dense1x2::parse_2_bits)
-                    .collect::<Vec<&str>>()
-                    .concat()
+                .into_iter()
+                // Mapping those 2-bit numbers to corresponding pixels.
+                .map(Dense1x2::parse_2_bits)
+                .collect::<Vec<&str>>()
+                .concat()
             })
             .collect::<Vec<String>>()
             .join("\n")

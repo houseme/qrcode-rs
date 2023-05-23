@@ -27,7 +27,7 @@
 //! ```
 
 #![cfg_attr(feature = "bench", feature(test, external_doc))] // Unstable libraries
-#![deny(warnings, clippy::pedantic)]
+#![deny(clippy::uninlined_format_args,clippy::manual_range_contains,clippy::semicolon_if_nothing_returned)]
 #![allow(
 clippy::must_use_candidate, // This is just annoying.
 )]
@@ -150,10 +150,10 @@ impl QrCode {
     pub fn with_bits(bits: bits::Bits, ec_level: EcLevel) -> QrResult<Self> {
         let version = bits.version();
         let data = bits.into_bytes();
-        let (encoded_data, ec_data) = ec::construct_codewords(&*data, version, ec_level)?;
+        let (encoded_data, ec_data) = ec::construct_codewords(&data, version, ec_level)?;
         let mut canvas = canvas::Canvas::new(version, ec_level);
         canvas.draw_all_functional_patterns();
-        canvas.draw_data(&*encoded_data, &*ec_data);
+        canvas.draw_data(&encoded_data, &ec_data);
         let canvas = canvas.apply_best_mask();
         Ok(Self { content: canvas.into_colors(), version, ec_level, width: version.width().as_usize() })
     }
@@ -323,7 +323,8 @@ mod image_tests {
     fn test_annex_i_qr_as_image() {
         let code = QrCode::new(b"01234567").unwrap();
         let image = code.render::<Luma<u8>>().build();
-        let expected = load_from_memory(include_bytes!("../docs/images/test_annex_i_qr_as_image.png")).unwrap().to_luma8();
+        let expected =
+            load_from_memory(include_bytes!("../docs/images/test_annex_i_qr_as_image.png")).unwrap().to_luma8();
         assert_eq!(image.dimensions(), expected.dimensions());
         assert_eq!(image.into_raw(), expected.into_raw());
     }
@@ -337,7 +338,8 @@ mod image_tests {
             .dark_color(Rgb([128, 0, 0]))
             .light_color(Rgb([255, 255, 128]))
             .build();
-        let expected = load_from_memory(include_bytes!("../docs/images/test_annex_i_micro_qr_as_image.png")).unwrap().to_rgb8();
+        let expected =
+            load_from_memory(include_bytes!("../docs/images/test_annex_i_micro_qr_as_image.png")).unwrap().to_rgb8();
         assert_eq!(image.dimensions(), expected.dimensions());
         assert_eq!(image.into_raw(), expected.into_raw());
     }

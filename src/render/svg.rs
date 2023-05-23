@@ -45,12 +45,12 @@ impl<'a> RenderCanvas for Canvas<'a> {
         Canvas {
             svg: format!(
                 concat!(
-                r#"<?xml version="1.0" standalone="yes"?>"#,
-                r#"<svg xmlns="http://www.w3.org/2000/svg""#,
-                r#" version="1.1" width="{w}" height="{h}""#,
-                r#" viewBox="0 0 {w} {h}" shape-rendering="crispEdges">"#,
-                r#"<rect x="0" y="0" width="{w}" height="{h}" fill="{bg}"/>"#,
-                r#"<path fill="{fg}" d=""#,
+                    r#"<?xml version="1.0" standalone="yes"?>"#,
+                    r#"<svg xmlns="http://www.w3.org/2000/svg""#,
+                    r#" version="1.1" width="{w}" height="{h}""#,
+                    r#" viewBox="0 0 {w} {h}" shape-rendering="crispEdges">"#,
+                    r#"<rect x="0" y="0" width="{w}" height="{h}" fill="{bg}"/>"#,
+                    r#"<path fill="{fg}" d=""#,
                 ),
                 w = width,
                 h = height,
@@ -66,7 +66,7 @@ impl<'a> RenderCanvas for Canvas<'a> {
     }
 
     fn draw_dark_rect(&mut self, left: u32, top: u32, width: u32, height: u32) {
-        write!(self.svg, "M{l} {t}h{w}v{h}H{l}V{t}", l = left, t = top, w = width, h = height).unwrap();
+        write!(self.svg, "M{left} {top}h{width}v{height}H{left}V{top}").unwrap();
     }
 
     fn into_image(mut self) -> String {

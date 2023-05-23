@@ -993,7 +993,7 @@ pub fn is_functional(version: Version, width: i16, x: i16, y: i16) -> bool {
                 true
             } else if a == 1 {
                 false
-            } else if 2 <= a && a <= 6 {
+            } else if (2..=6).contains(&a) {
                 (width - 7 - x).abs() <= 2 && (width - 7 - y).abs() <= 2
             } else {
                 let positions = ALIGNMENT_PATTERN_POSITIONS[(a - 7).as_usize()];
@@ -1356,8 +1356,8 @@ mod data_iter_tests {
 
 impl Canvas {
     fn draw_codewords<I>(&mut self, codewords: &[u8], is_half_codeword_at_end: bool, coords: &mut I)
-        where
-            I: Iterator<Item = (i16, i16)>,
+    where
+        I: Iterator<Item = (i16, i16)>,
     {
         let length = codewords.len();
         let last_word = if is_half_codeword_at_end { length - 1 } else { length };
@@ -1977,13 +1977,13 @@ impl Canvas {
             Version::Normal(_) => ALL_PATTERNS_QR.iter(),
             Version::Micro(_) => ALL_PATTERNS_MICRO_QR.iter(),
         }
-            .map(|ptn| {
-                let mut c = self.clone();
-                c.apply_mask(*ptn);
-                c
-            })
-            .min_by_key(Self::compute_total_penalty_scores)
-            .expect("at least one pattern")
+        .map(|ptn| {
+            let mut c = self.clone();
+            c.apply_mask(*ptn);
+            c
+        })
+        .min_by_key(Self::compute_total_penalty_scores)
+        .expect("at least one pattern")
     }
 
     /// Convert the modules into a vector of booleans.
