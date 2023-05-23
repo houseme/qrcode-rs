@@ -26,7 +26,7 @@
 //! println!("{}", string);
 //! ```
 
-#![cfg_attr(feature = "bench",)] // Unstable libraries
+#![cfg_attr(feature = "bench", feature(test))] // Unstable libraries
 #![deny(clippy::uninlined_format_args, clippy::manual_range_contains, clippy::semicolon_if_nothing_returned)]
 #![allow(
 clippy::must_use_candidate, // This is just annoying.

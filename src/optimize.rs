@@ -212,7 +212,7 @@ mod parse_tests {
         let segs = parse(b"\x81\x30");
         assert_eq!(
             segs,
-            vec![Segment { mode: Mode::Byte, begin: 0, end: 1 }, Segment { mode: Mode::Numeric, begin: 1, end: 2 },]
+            vec![Segment { mode: Mode::Byte, begin: 0, end: 1 }, Segment { mode: Mode::Numeric, begin: 1, end: 2 }]
         );
     }
 
@@ -223,7 +223,7 @@ mod parse_tests {
         let segs = parse(b"\xeb\xc0");
         assert_eq!(
             segs,
-            vec![Segment { mode: Mode::Byte, begin: 0, end: 1 }, Segment { mode: Mode::Byte, begin: 1, end: 2 },]
+            vec![Segment { mode: Mode::Byte, begin: 0, end: 1 }, Segment { mode: Mode::Byte, begin: 1, end: 2 }]
         );
     }
 
@@ -232,7 +232,7 @@ mod parse_tests {
         let segs = parse(b"\x81\x7f");
         assert_eq!(
             segs,
-            vec![Segment { mode: Mode::Byte, begin: 0, end: 1 }, Segment { mode: Mode::Byte, begin: 1, end: 2 },]
+            vec![Segment { mode: Mode::Byte, begin: 0, end: 1 }, Segment { mode: Mode::Byte, begin: 1, end: 2 }]
         );
     }
 
@@ -241,7 +241,7 @@ mod parse_tests {
         let segs = parse(b"\x81\x40\x81");
         assert_eq!(
             segs,
-            vec![Segment { mode: Mode::Kanji, begin: 0, end: 2 }, Segment { mode: Mode::Byte, begin: 2, end: 3 },]
+            vec![Segment { mode: Mode::Kanji, begin: 0, end: 2 }, Segment { mode: Mode::Byte, begin: 2, end: 3 }]
         );
     }
 }
@@ -347,8 +347,9 @@ mod optimize_tests {
         if given != opt_segs {
             assert!(prev_len > new_len, "{} > {}", prev_len, new_len);
         }
-        assert!(
-            opt_segs == expected,
+        assert_eq!(
+            opt_segs,
+            expected,
             "Optimization gave something better: {} < {} ({:?})",
             new_len,
             total_encoded_len(&*expected, version),
