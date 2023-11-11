@@ -4,7 +4,7 @@ Qrcode-rs
 [![Build](https://github.com/houseme/qrcode-rs/workflows/Build/badge.svg)](https://github.com/houseme/qrcode-rs/actions?query=workflow%3ABuild)
 [![crates.io](https://img.shields.io/crates/v/qrcode-rs.svg)](https://crates.io/crates/qrcode-rs)
 [![docs.rs](https://docs.rs/qrcode-rs/badge.svg)](https://docs.rs/qrcode-rs/)
-[![License](https://img.shields.io/crates/l/qrcode-rs)](./LICENSE-APACHE.txt)
+[![License](https://img.shields.io/crates/l/qrcode-rs)](./LICENSE-APACHE)
 [![Crates.io](https://img.shields.io/crates/d/qrcode-rs)](https://crates.io/crates/qrcode-rs)
 
 QR code and Micro QR code encoder in Rust. [Documentation](https://docs.rs/qrcode-rs).
@@ -151,8 +151,8 @@ Generates this output:
 ## License
 Licensed under either of
 
-* Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE.txt) or http://www.apache.org/licenses/LICENSE-2.0)
-* MIT license ([LICENSE-MIT](LICENSE-MIT.txt) or http://opensource.org/licenses/MIT)
+* Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+* MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
 
 at your option.
 
