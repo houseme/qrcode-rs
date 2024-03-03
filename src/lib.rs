@@ -34,7 +34,6 @@ clippy::must_use_candidate, // This is just annoying.
 #![cfg_attr(feature = "bench", doc = include_str!("../README.md"))]
 // ^ make sure we can test our README.md.
 
-use std::convert::TryInto;
 use std::ops::Index;
 
 pub mod bits;

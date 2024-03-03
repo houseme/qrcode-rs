@@ -29,7 +29,7 @@ impl Bits {
     /// Pushes an N-bit big-endian integer to the end of the bits.
     ///
     /// Note: It is up to the developer to ensure that `number` really only is
-    /// `n` bit in size. Otherwise the excess bits may stomp on the existing
+    /// `n` bit in size. Otherwise, the excess bits may stomp on the existing
     /// ones.
     fn push_number(&mut self, n: usize, number: u16) {
         debug_assert!(n == 16 || n < 16 && number < (1 << n), "{number} is too big as a {n}-bit number");
@@ -79,7 +79,7 @@ impl Bits {
         self.data.reserve(extra_bytes);
     }
 
-    /// Convert the bits into a bytes vector.
+    /// Convert the bits into a byte vector.
     pub fn into_bytes(self) -> Vec<u8> {
         self.data
     }
@@ -253,7 +253,7 @@ impl Bits {
     /// If the QR code version does not support ECI, this method will return
     /// `Err(QrError::UnsupportedCharacterSet)`.
     ///
-    /// If the designator is outside of the expected range, this method will
+    /// If the designator is outside the expected range, this method will
     /// return `Err(QrError::InvalidECIDesignator)`.
     pub fn push_eci_designator(&mut self, eci_designator: u32) -> QrResult<()> {
         self.reserve(12); // assume the common case that eci_designator <= 127.
@@ -426,7 +426,7 @@ fn alphanumeric_digit(character: u8) -> u16 {
 impl Bits {
     /// Encodes an alphanumeric string to the bits.
     ///
-    /// The data should only contain the charaters A to Z (excluding lowercase),
+    /// The data should only contain the characters A to Z (excluding lowercase),
     /// 0 to 9, space, `$`, `%`, `*`, `+`, `-`, `.`, `/` or `:`.
     ///
     /// # Errors
@@ -809,7 +809,7 @@ impl Bits {
     /// Returns `Err(QrError::DataTooLong)` on overflow.
     ///
     /// Returns `Err(QrError::InvalidData)` if the segment refers to incorrectly
-    /// encoded byte sequence.
+    /// encoded byte sequences.
     pub fn push_segments<I>(&mut self, data: &[u8], segments_iter: I) -> QrResult<()>
     where
         I: Iterator<Item = Segment>,
