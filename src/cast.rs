@@ -1,7 +1,5 @@
 use std::fmt::Display;
 
-#[cfg(debug_assertions)]
-
 pub trait Truncate {
     fn truncate_as_u8(self) -> u8;
 }
