@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 pub trait Truncate {
     fn truncate_as_u8(self) -> u8;
 }

@@ -150,8 +150,8 @@ impl Version {
     /// If the entry compares equal to the default value of `T`, this method
     /// returns `Err(QrError::InvalidVersion)`.
     pub fn fetch<T>(self, ec_level: EcLevel, table: &[[T; 4]]) -> QrResult<T>
-        where
-            T: PartialEq + Default + Copy,
+    where
+        T: PartialEq + Default + Copy,
     {
         match self {
             Version::Normal(v @ 1..=40) => {
