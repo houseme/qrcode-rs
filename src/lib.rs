@@ -29,12 +29,10 @@
 #![cfg_attr(feature = "bench", feature(test))] // Unstable libraries
 #![deny(clippy::uninlined_format_args, clippy::manual_range_contains, clippy::semicolon_if_nothing_returned)]
 #![allow(
-clippy::must_use_candidate, // This is just annoying.
+    clippy::must_use_candidate, // This is just annoying.
 )]
 #![cfg_attr(feature = "bench", doc = include_str!("../README.md"))]
 // ^ make sure we can test our README.md.
-
-use std::ops::Index;
 
 pub mod bits;
 pub mod canvas;
@@ -43,11 +41,11 @@ pub mod ec;
 pub mod optimize;
 pub mod render;
 pub mod types;
-
 pub use crate::types::{Color, EcLevel, QrResult, Version};
 
 use crate::cast::As;
 use crate::render::{Pixel, Renderer};
+use std::ops::Index;
 
 /// The encoded QR code symbol.
 #[derive(Clone)]

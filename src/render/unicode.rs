@@ -2,6 +2,7 @@
 
 use crate::render::{Canvas as RenderCanvas, Color, Pixel};
 
+/// UTF-8 rendering, with 2 pixels per symbol.
 const CODEPAGE: [&str; 4] = [" ", "\u{2584}", "\u{2580}", "\u{2588}"];
 
 #[derive(Copy, Clone, PartialEq)]
