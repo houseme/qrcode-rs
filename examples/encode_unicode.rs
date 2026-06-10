@@ -1,5 +1,5 @@
-use qrcode_rs::render::unicode;
 use qrcode_rs::QrCode;
+use qrcode_rs::render::unicode;
 
 fn main() {
     let code = QrCode::new(b"Hello").unwrap();

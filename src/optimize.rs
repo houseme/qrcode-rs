@@ -99,7 +99,7 @@ impl<'a> Parser<'a> {
     ///                                Segment { mode: Numeric, begin: 3, end: 6 },
     ///                                Segment { mode: Byte, begin: 6, end: 10 }]);
     ///
-    pub fn new(data: &[u8]) -> Parser {
+    pub fn new(data: &[u8]) -> Parser<'_> {
         Parser {
             ecs_iter: EcsIter { base: data.iter(), index: 0, ended: false },
             state: State::Init,
@@ -120,10 +120,7 @@ impl<'a> Iterator for Parser<'a> {
         }
 
         loop {
-            let (i, ecs) = match self.ecs_iter.next() {
-                None => return None,
-                Some(a) => a,
-            };
+            let (i, ecs) = self.ecs_iter.next()?;
             let (next_state, action) = STATE_TRANSITION[self.state as usize + ecs as usize];
             self.state = next_state;
 
@@ -337,22 +334,22 @@ pub fn total_encoded_len(segments: &[Segment], version: Version) -> usize {
 
 #[cfg(test)]
 mod optimize_tests {
-    use crate::optimize::{total_encoded_len, Optimizer, Segment};
+    use crate::optimize::{Optimizer, Segment, total_encoded_len};
     use crate::types::{Mode, Version};
 
     fn test_optimization_result(given: &[Segment], expected: &[Segment], version: Version) {
-        let prev_len = total_encoded_len(&*given, version);
+        let prev_len = total_encoded_len(given, version);
         let opt_segs = Optimizer::new(given.iter().copied(), version).collect::<Vec<_>>();
-        let new_len = total_encoded_len(&*opt_segs, version);
+        let new_len = total_encoded_len(&opt_segs, version);
         if given != opt_segs {
-            assert!(prev_len > new_len, "{} > {}", prev_len, new_len);
+            assert!(prev_len > new_len, "{prev_len} > {new_len}");
         }
         assert_eq!(
             opt_segs,
             expected,
             "Optimization gave something better: {} < {} ({:?})",
             new_len,
-            total_encoded_len(&*expected, version),
+            total_encoded_len(expected, version),
             opt_segs
         );
     }

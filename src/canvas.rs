@@ -1015,7 +1015,7 @@ pub fn is_functional(version: Version, width: i16, x: i16, y: i16) -> bool {
 
 #[cfg(test)]
 mod all_functional_patterns_tests {
-    use crate::canvas::{is_functional, Canvas};
+    use crate::canvas::{Canvas, is_functional};
     use crate::types::{EcLevel, Version};
 
     #[test]
@@ -1690,7 +1690,7 @@ impl Canvas {
         for i in 0..self.width {
             let map_fn = |j| if is_horizontal { self.get(j, i) } else { self.get(i, j) };
 
-            let colors = (0..self.width).map(map_fn).chain(Some(Module::Empty).into_iter());
+            let colors = (0..self.width).map(map_fn).chain(Some(Module::Empty));
             let mut last_color = Module::Empty;
             let mut consecutive_len = 1_u16;
 
@@ -1779,7 +1779,7 @@ impl Canvas {
         let dark_modules = self.modules.iter().filter(|m| m.is_dark()).count();
         let total_modules = self.modules.len();
         let ratio = dark_modules * 200 / total_modules;
-        if ratio >= 100 { ratio - 100 } else { 100 - ratio }.as_u16()
+        ratio.abs_diff(100).as_u16()
     }
 
     /// Compute the penalty score for having too many light modules on the sides.
