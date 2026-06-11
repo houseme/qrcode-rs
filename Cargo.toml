@@ -26,11 +26,12 @@ image = { version = "0.25.10", default-features = false, optional = true }
 image = "0.25.10"
 
 [features]
-default = ["image", "svg", "pic", "eps"]
+default = ["image", "svg", "pic", "eps", "html"]
 image = ["dep:image"]
 svg = []
 pic = []
 eps = []
+html = []
 
 [[bin]]
 name = "qrencodes"
@@ -56,6 +57,10 @@ required-features = ["eps"]
 [[example]]
 name = "encode_pic"
 required-features = ["pic"]
+
+[[example]]
+name = "encode_html"
+required-features = ["html"]
 
 [package.metadata.docs.rs]
 all-features = true

@@ -34,7 +34,27 @@ impl<'a> Pixel for Color<'a> {
 #[doc(hidden)]
 pub struct Canvas<'a> {
     svg: String,
+    // Pending rect for merging horizontally adjacent modules.
+    pending_left: u32,
+    pending_top: u32,
+    pending_width: u32,
+    pending_height: u32,
+    has_pending: bool,
     marker: PhantomData<Color<'a>>,
+}
+
+impl<'a> Canvas<'a> {
+    fn flush_pending(&mut self) {
+        if self.has_pending {
+            write!(
+                self.svg,
+                "M{} {}h{}v{}h-{}z",
+                self.pending_left, self.pending_top, self.pending_width, self.pending_height, self.pending_width
+            )
+            .unwrap();
+            self.has_pending = false;
+        }
+    }
 }
 
 impl<'a> RenderCanvas for Canvas<'a> {
@@ -57,6 +77,11 @@ impl<'a> RenderCanvas for Canvas<'a> {
                 fg = dark_pixel.0,
                 bg = light_pixel.0
             ),
+            pending_left: 0,
+            pending_top: 0,
+            pending_width: 0,
+            pending_height: 0,
+            has_pending: false,
             marker: PhantomData,
         }
     }
@@ -66,11 +91,80 @@ impl<'a> RenderCanvas for Canvas<'a> {
     }
 
     fn draw_dark_rect(&mut self, left: u32, top: u32, width: u32, height: u32) {
-        write!(self.svg, "M{left} {top}h{width}v{height}h-{width}z").unwrap();
+        if self.has_pending
+            && top == self.pending_top
+            && height == self.pending_height
+            && left == self.pending_left + self.pending_width
+        {
+            // Merge with the previous rect.
+            self.pending_width += width;
+        } else {
+            self.flush_pending();
+            self.pending_left = left;
+            self.pending_top = top;
+            self.pending_width = width;
+            self.pending_height = height;
+            self.has_pending = true;
+        }
     }
 
     fn into_image(mut self) -> String {
+        self.flush_pending();
         self.svg.push_str(r#""/></svg>"#);
         self.svg
+    }
+}
+
+/// Injects custom attributes into the root `<svg>` element of an SVG string.
+///
+/// # Example
+///
+/// ```
+/// use qrcode_rs::QrCode;
+/// use qrcode_rs::render::svg::{self, Color};
+///
+/// let code = QrCode::new(b"Hello").unwrap();
+/// let svg = code.render::<Color>().build();
+/// let svg = svg::inject_attributes(&svg, &[("class", "qr-code"), ("id", "main")]);
+/// assert!(svg.contains(r#"class="qr-code""#));
+/// ```
+pub fn inject_attributes(svg: &str, attrs: &[(&str, &str)]) -> String {
+    let insert_pos = svg.find('>').expect("invalid SVG: no closing '>' found");
+    let mut result = String::with_capacity(svg.len() + attrs.iter().map(|(k, v)| k.len() + v.len() + 5).sum::<usize>());
+    result.push_str(&svg[..insert_pos]);
+    for (key, value) in attrs {
+        result.push(' ');
+        result.push_str(key);
+        result.push_str(r#"=""#);
+        result.push_str(value);
+        result.push('"');
+    }
+    result.push_str(&svg[insert_pos..]);
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::QrCode;
+
+    #[test]
+    fn test_inject_attributes() {
+        let code = QrCode::new(b"Hello").unwrap();
+        let svg = code.render::<Color>().build();
+        let svg = inject_attributes(&svg, &[("class", "qr-code"), ("id", "main")]);
+        assert!(svg.contains(r#"class="qr-code""#));
+        assert!(svg.contains(r#"id="main""#));
+        assert!(svg.starts_with(r#"<?xml version="1.0""#));
+        assert!(svg.ends_with("</svg>"));
+    }
+
+    #[test]
+    fn test_inject_empty_attrs() {
+        let code = QrCode::new(b"Hello").unwrap();
+        let svg = code.render::<Color>().build();
+        let original = svg.clone();
+        let svg = inject_attributes(&svg, &[]);
+        assert_eq!(svg, original);
     }
 }

@@ -1,0 +1,167 @@
+//! HTML rendering support.
+//!
+//! Generates HTML `<table>` or CSS Grid output for embedding QR codes in web pages.
+//!
+//! # Example
+//!
+//! ```
+//! use qrcode_rs::QrCode;
+//! use qrcode_rs::render::html::Color;
+//!
+//! let code = QrCode::new(b"Hello").unwrap();
+//! let html = code.render::<Color>().build();
+//! println!("{}", html);
+//! ```
+
+#![cfg(feature = "html")]
+
+use std::marker::PhantomData;
+
+use crate::cast::As;
+use crate::render::{Canvas as RenderCanvas, Pixel};
+use crate::types::Color as ModuleColor;
+
+/// Rendering mode for HTML output.
+#[derive(Copy, Clone, Default, PartialEq, Eq)]
+pub enum Mode {
+    /// Generate HTML `<table>` (default).
+    #[default]
+    Table,
+    /// Generate `<div>` with CSS Grid layout.
+    Grid,
+}
+
+/// An HTML color.
+#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Color<'a>(pub &'a str);
+
+impl<'a> Pixel for Color<'a> {
+    type Image = String;
+    type Canvas = Canvas<'a>;
+
+    fn default_unit_size() -> (u32, u32) {
+        (1, 1)
+    }
+
+    fn default_color(color: ModuleColor) -> Self {
+        Color(color.select("#000", "#fff"))
+    }
+}
+
+#[doc(hidden)]
+pub struct Canvas<'a> {
+    dark_pixels: Vec<bool>,
+    width: u32,
+    height: u32,
+    dark_color: &'a str,
+    light_color: &'a str,
+    mode: Mode,
+    marker: PhantomData<Color<'a>>,
+}
+
+impl<'a> Canvas<'a> {
+    /// Sets the HTML rendering mode (Table or Grid).
+    pub fn set_mode(&mut self, mode: Mode) {
+        self.mode = mode;
+    }
+}
+
+impl<'a> RenderCanvas for Canvas<'a> {
+    type Pixel = Color<'a>;
+    type Image = String;
+
+    fn new(width: u32, height: u32, dark_pixel: Color<'a>, light_pixel: Color<'a>) -> Self {
+        Canvas {
+            dark_pixels: vec![false; (width * height).as_usize()],
+            width,
+            height,
+            dark_color: dark_pixel.0,
+            light_color: light_pixel.0,
+            mode: Mode::default(),
+            marker: PhantomData,
+        }
+    }
+
+    fn draw_dark_pixel(&mut self, x: u32, y: u32) {
+        let idx = (y * self.width + x).as_usize();
+        if idx < self.dark_pixels.len() {
+            self.dark_pixels[idx] = true;
+        }
+    }
+
+    fn into_image(self) -> String {
+        match self.mode {
+            Mode::Table => self.into_table(),
+            Mode::Grid => self.into_grid(),
+        }
+    }
+}
+
+impl<'a> Canvas<'a> {
+    fn into_table(self) -> String {
+        let cap = 512 + (self.width * self.height * 20) as usize;
+        let mut html = String::with_capacity(cap);
+        html.push_str(r#"<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><table style="border-collapse:collapse;line-height:0">"#);
+
+        for y in 0..self.height {
+            html.push_str("<tr>");
+            for x in 0..self.width {
+                let idx = (y * self.width + x).as_usize();
+                let color = if self.dark_pixels[idx] { self.dark_color } else { self.light_color };
+                html.push_str(r#"<td style="width:1px;height:1px;background:"#);
+                html.push_str(color);
+                html.push_str(r#""></td>"#);
+            }
+            html.push_str("</tr>");
+        }
+
+        html.push_str("</table></body></html>");
+        html
+    }
+
+    fn into_grid(self) -> String {
+        let cap = 512 + (self.width * self.height * 10) as usize;
+        let mut html = String::with_capacity(cap);
+        html.push_str(r#"<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><div style="display:grid;grid-template-columns:repeat("#);
+        html.push_str(&self.width.to_string());
+        html.push_str(r#",1px);line-height:0">"#);
+
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let idx = (y * self.width + x).as_usize();
+                let color = if self.dark_pixels[idx] { self.dark_color } else { self.light_color };
+                html.push_str(r#"<div style="width:1px;height:1px;background:"#);
+                html.push_str(color);
+                html.push_str(r#""></div>"#);
+            }
+        }
+
+        html.push_str("</div></body></html>");
+        html
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::QrCode;
+    use crate::render::html::Color;
+
+    #[test]
+    fn test_html_table_render() {
+        let code = QrCode::new(b"Hello").unwrap();
+        let html = code.render::<Color>().build();
+        assert!(html.contains("<!DOCTYPE html>"));
+        assert!(html.contains("<table"));
+        assert!(html.contains("</table>"));
+        assert!(html.contains("#000"));
+        assert!(html.contains("#fff"));
+    }
+
+    #[test]
+    fn test_html_custom_colors() {
+        let code = QrCode::new(b"Hi").unwrap();
+        let html = code.render::<Color>().dark_color(Color("#333")).light_color(Color("#eee")).build();
+        assert!(html.contains("#333"));
+        assert!(html.contains("#eee"));
+    }
+}

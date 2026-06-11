@@ -11,6 +11,7 @@
 //! | `image` | `image` | PNG/JPEG via the `image` crate |
 //! | `svg`   | `svg`   | SVG XML string |
 //! | `eps`   | `eps`   | Encapsulated PostScript |
+//! | `html`  | `html`  | HTML table or CSS Grid |
 //! | `pic`   | `pic`   | PIC (troff) macros |
 //! | `string`| —       | Plain text with custom characters |
 //! | `unicode`| —      | Unicode block-element rendering |
@@ -26,6 +27,7 @@ use crate::types::Color;
 use std::cmp::max;
 
 pub mod eps;
+pub mod html;
 pub mod image;
 pub mod pic;
 pub mod string;
