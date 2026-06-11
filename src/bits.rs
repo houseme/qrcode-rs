@@ -721,7 +721,7 @@ impl Bits {
 
             self.bit_offset = 0;
             let data_bytes_length = data_length / 8;
-            let padding_bytes_count = data_bytes_length - self.data.len();
+            let padding_bytes_count = data_bytes_length.saturating_sub(self.data.len());
             let padding = PADDING_BYTES.iter().copied().cycle().take(padding_bytes_count);
             self.data.extend(padding);
         }
@@ -892,6 +892,39 @@ pub fn encode_auto(data: &[u8], ec_level: EcLevel) -> QrResult<Bits> {
         if total_len <= data_capacity {
             let min_version = find_min_version(total_len, ec_level);
             let mut bits = Bits::new(min_version);
+            bits.reserve(total_len);
+            bits.push_segments(data, opt_segments.into_iter())?;
+            bits.push_terminator(ec_level)?;
+            return Ok(bits);
+        }
+    }
+    Err(QrError::DataTooLong)
+}
+
+/// Automatically determines the minimum Micro QR version to store the data,
+/// and encode the result.
+///
+/// This method only considers Micro QR code versions (1–4).
+///
+/// # Errors
+///
+/// Returns `Err(QrError::DataTooLong)` if the data is too long to fit even the
+/// highest Micro QR version.
+///
+/// Returns `Err(QrError::InvalidVersion)` if the `ec_level` is not supported
+/// by any Micro QR version (e.g. `EcLevel::H`).
+pub fn encode_auto_micro(data: &[u8], ec_level: EcLevel) -> QrResult<Bits> {
+    let segments = Parser::new(data).collect::<Vec<Segment>>();
+    for micro_version in 1..=4 {
+        let version = Version::Micro(micro_version);
+        let data_capacity = match version.fetch(ec_level, &DATA_LENGTHS) {
+            Ok(cap) if cap > 0 => cap,
+            _ => continue,
+        };
+        let opt_segments = Optimizer::new(segments.iter().copied(), version).collect::<Vec<_>>();
+        let total_len = total_encoded_len(&opt_segments, version);
+        if total_len <= data_capacity {
+            let mut bits = Bits::new(version);
             bits.reserve(total_len);
             bits.push_segments(data, opt_segments.into_iter())?;
             bits.push_terminator(ec_level)?;

@@ -92,6 +92,43 @@ impl QrCode {
         Self::with_bits(bits, ec_level)
     }
 
+    /// Constructs a new Micro QR code which automatically encodes the given
+    /// data.
+    ///
+    /// This method uses the "medium" error correction level and automatically
+    /// chooses the smallest Micro QR code.
+    ///
+    ///     use qrcode_rs::QrCode;
+    ///
+    ///     let code = QrCode::new_micro(b"123").unwrap();
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the data cannot be encoded as a Micro QR code, e.g.
+    /// when the data is too long.
+    pub fn new_micro<D: AsRef<[u8]>>(data: D) -> QrResult<Self> {
+        Self::micro_with_error_correction_level(data, EcLevel::M)
+    }
+
+    /// Constructs a new Micro QR code which automatically encodes the given
+    /// data at a specific error correction level.
+    ///
+    /// This method automatically chooses the smallest Micro QR code.
+    ///
+    ///     use qrcode_rs::{QrCode, EcLevel};
+    ///
+    ///     let code = QrCode::micro_with_error_correction_level(b"123", EcLevel::L).unwrap();
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the data cannot be encoded as a Micro QR code, e.g.
+    /// when the data is too long, or when the error correction level is not
+    /// supported by any Micro QR version.
+    pub fn micro_with_error_correction_level<D: AsRef<[u8]>>(data: D, ec_level: EcLevel) -> QrResult<Self> {
+        let bits = bits::encode_auto_micro(data.as_ref(), ec_level)?;
+        Self::with_bits(bits, ec_level)
+    }
+
     /// Constructs a new QR code for the given version and error correction
     /// level.
     ///
