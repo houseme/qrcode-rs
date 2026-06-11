@@ -1,13 +1,31 @@
-//! The `canvas` module puts raw bits into the QR code canvas.
+//! QR code canvas construction and masking.
 //!
-//!     use qrcode_rs::types::{Version, EcLevel};
-//!     use qrcode_rs::canvas::{Canvas, MaskPattern};
+//! The canvas is responsible for placing encoded data and functional patterns
+//! (finder patterns, alignment patterns, timing patterns, format/version info)
+//! onto the QR code grid, then selecting the optimal mask pattern to ensure
+//! reliable scanning.
 //!
-//!     let mut c = Canvas::new(Version::Normal(1), EcLevel::L);
-//!     c.draw_all_functional_patterns();
-//!     c.draw_data(b"data_here", b"ec_code_here");
-//!     c.apply_mask(MaskPattern::Checkerboard);
-//!     let bools = c.to_bools();
+//! The typical flow is:
+//!
+//! 1. Create a [`Canvas`] for a given version and error correction level
+//! 2. Draw all functional patterns with [`draw_all_functional_patterns`]
+//! 3. Place encoded data with [`draw_data`]
+//! 4. Apply the best mask with [`apply_best_mask`] (evaluates all 8 patterns)
+//!
+//! ```
+//! use qrcode_rs::types::{Version, EcLevel};
+//! use qrcode_rs::canvas::Canvas;
+//!
+//! let mut c = Canvas::new(Version::Normal(1), EcLevel::L);
+//! c.draw_all_functional_patterns();
+//! c.draw_data(b"data_here", b"ec_code_here");
+//! let c = c.apply_best_mask();
+//! let colors = c.into_colors();
+//! ```
+//!
+//! [`draw_all_functional_patterns`]: Canvas::draw_all_functional_patterns
+//! [`draw_data`]: Canvas::draw_data
+//! [`apply_best_mask`]: Canvas::apply_best_mask
 
 use std::cmp::max;
 
@@ -1745,21 +1763,15 @@ impl Canvas {
             [Color::Dark, Color::Light, Color::Dark, Color::Dark, Color::Dark, Color::Light, Color::Dark];
 
         let mut total_score = 0;
+        let get = |a, b| -> Color { if is_horizontal { self.get(a, b).into() } else { self.get(b, a).into() } };
 
         for i in 0..self.width {
             for j in 0..self.width - 6 {
-                // TODO a ref to a closure should be enough?
-                let get: Box<dyn Fn(i16) -> Color> = if is_horizontal {
-                    Box::new(|k| self.get(k, i).into())
-                } else {
-                    Box::new(|k| self.get(i, k).into())
-                };
-
-                if (j..(j + 7)).map(&*get).ne(PATTERN.iter().copied()) {
+                if (j..(j + 7)).map(|k| get(k, i)).ne(PATTERN.iter().copied()) {
                     continue;
                 }
 
-                let check = |k| 0 <= k && k < self.width && get(k) != Color::Light;
+                let check = |k: i16| 0 <= k && k < self.width && get(k, i) != Color::Light;
                 if !((j - 4)..j).any(&check) || !((j + 7)..(j + 11)).any(&check) {
                     total_score += 40;
                 }
@@ -1977,7 +1989,7 @@ impl Canvas {
     }
 
     /// Convert the modules into a vector of booleans.
-    #[deprecated(since = "0.4.0", note = "use `into_colors()` instead")]
+    #[deprecated(since = "0.2.0", note = "use `into_colors()` instead")]
     pub fn to_bools(&self) -> Vec<bool> {
         self.modules.iter().map(|m| m.is_dark()).collect()
     }

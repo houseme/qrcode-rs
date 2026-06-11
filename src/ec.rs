@@ -1,4 +1,18 @@
-//! The `ec` module applies the Reed-Solomon error correction codes.
+//! Reed-Solomon error correction for QR codes.
+//!
+//! QR codes use Reed-Solomon codes over GF(256) to add redundancy, allowing
+//! the code to be read even when partially damaged or obscured. The error
+//! correction level (L/M/Q/H) determines how much data can be recovered:
+//!
+//! | Level | Recovery capacity |
+//! |-------|-------------------|
+//! | L     | ~7%               |
+//! | M     | ~15%              |
+//! | Q     | ~25%              |
+//! | H     | ~30%              |
+//!
+//! The main entry point is [`construct_codewords`], which takes encoded data
+//! and produces the final data + error correction codewords ready for canvas placement.
 
 use std::ops::Deref;
 

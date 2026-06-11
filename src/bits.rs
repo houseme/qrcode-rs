@@ -1,5 +1,18 @@
 #![allow(clippy::unreadable_literal, clippy::unusual_byte_groupings)]
-//! The `bits` module encodes binary data into raw bits used in a QR code.
+//! Bit-level data encoding for QR codes.
+//!
+//! This module handles the conversion of raw input data into the bit stream
+//! that gets placed onto the QR code canvas. It supports all four data modes:
+//!
+//! - **Numeric** — digits 0-9 (most efficient)
+//! - **Alphanumeric** — uppercase letters, digits, and a few symbols
+//! - **Byte** — arbitrary 8-bit data (including UTF-8)
+//! - **Kanji** — Shift JIS encoded double-byte characters
+//!
+//! The [`Bits`] struct is the main entry point. Use [`encode_auto`] or
+//! [`encode_auto_micro`] for automatic version and mode selection, or
+//! construct a [`Bits`] manually for advanced use cases like ECI designators
+//! or FNC1 patterns.
 
 use std::cmp::min;
 

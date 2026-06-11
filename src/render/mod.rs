@@ -1,4 +1,25 @@
-//! Render a QR code into image.
+//! Rendering pipeline for converting QR codes into visual output.
+//!
+//! This module provides the [`Pixel`] and [`Canvas`] traits that abstract over
+//! different output formats, and the [`Renderer`] builder that drives the
+//! conversion from QR code data to a final image.
+//!
+//! # Supported formats
+//!
+//! | Module  | Feature | Output type |
+//! |---------|---------|-------------|
+//! | `image` | `image` | PNG/JPEG via the `image` crate |
+//! | `svg`   | `svg`   | SVG XML string |
+//! | `eps`   | `eps`   | Encapsulated PostScript |
+//! | `pic`   | `pic`   | PIC (troff) macros |
+//! | `string`| —       | Plain text with custom characters |
+//! | `unicode`| —      | Unicode block-element rendering |
+//!
+//! # Custom rendering
+//!
+//! Implement [`Pixel`] for your own type to render into a custom format.
+//! The [`Pixel`] trait defines how to create dark/light pixels and how to
+//! finalize a canvas into a concrete image.
 
 use crate::cast::As;
 use crate::types::Color;
@@ -109,7 +130,7 @@ impl<'a, P: Pixel> Renderer<'a, P> {
     }
 
     /// Sets the size of each module in pixels. Default is 8px.
-    #[deprecated(since = "0.4.0", note = "use `.module_dimensions(width, width)` instead")]
+    #[deprecated(since = "0.2.0", note = "use `.module_dimensions(width, width)` instead")]
     pub fn module_size(&mut self, width: u32) -> &mut Self {
         self.module_dimensions(width, width)
     }
@@ -120,7 +141,7 @@ impl<'a, P: Pixel> Renderer<'a, P> {
         self
     }
 
-    #[deprecated(since = "0.4.0", note = "use `.min_dimensions(width, width)` instead")]
+    #[deprecated(since = "0.2.0", note = "use `.min_dimensions(width, width)` instead")]
     pub fn min_width(&mut self, width: u32) -> &mut Self {
         self.min_dimensions(width, width)
     }
@@ -161,7 +182,7 @@ impl<'a, P: Pixel> Renderer<'a, P> {
     }
 
     /// Renders the QR code into an image.
-    #[deprecated(since = "0.4.0", note = "renamed to `.build()` to de-emphasize the image connection")]
+    #[deprecated(since = "0.2.0", note = "renamed to `.build()` to de-emphasize the image connection")]
     pub fn to_image(&self) -> P::Image {
         self.build()
     }

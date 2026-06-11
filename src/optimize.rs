@@ -1,5 +1,14 @@
 #![allow(clippy::unicode_not_nfc)]
-//! Find the optimal data mode sequence to encode a piece of data.
+//! Data mode segmentation optimizer.
+//!
+//! QR codes support four data modes (Numeric, Alphanumeric, Byte, Kanji),
+//! each with different efficiency for different character types. This module
+//! finds the optimal sequence of mode switches to minimize the total number
+//! of bits required to encode the input data.
+//!
+//! The optimizer uses dynamic programming to explore all possible mode
+//! transitions and selects the segmentation that produces the shortest
+//! bit stream for the target QR code version.
 use crate::types::{Mode, Version};
 use std::slice::Iter;
 
