@@ -31,6 +31,7 @@ pub mod colors;
 pub mod eps;
 pub mod html;
 pub mod image;
+pub mod pdf;
 pub mod pic;
 pub mod string;
 pub mod svg;

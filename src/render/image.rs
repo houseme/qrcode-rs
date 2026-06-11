@@ -156,6 +156,91 @@ pub fn encode_to_format(image: &DynamicImage, format: ImageFormat) -> image::Ima
     Ok(buf.into_inner())
 }
 
+/// Direction of a gradient sweep.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum GradientDirection {
+    /// Top to bottom.
+    Vertical,
+    /// Left to right.
+    Horizontal,
+    /// Top-left to bottom-right.
+    Diagonal,
+}
+
+/// A linear gradient defined by two endpoint colors.
+#[derive(Copy, Clone, Debug)]
+pub struct Gradient {
+    pub direction: GradientDirection,
+    pub start_color: Rgba<u8>,
+    pub end_color: Rgba<u8>,
+}
+
+/// Applies a gradient tint to the light (background) pixels of a QR code image.
+///
+/// Dark (foreground) pixels are preserved. Light pixels are replaced with the
+/// interpolated gradient color based on their position.
+///
+/// # Example
+///
+/// ```no_run
+/// use qrcode_rs::QrCode;
+/// use qrcode_rs::render::image::{apply_gradient_background, Gradient, GradientDirection};
+/// use image::{Rgb, DynamicImage, Rgba};
+///
+/// let code = QrCode::new(b"Hello").unwrap();
+/// let qr = DynamicImage::ImageRgb8(code.render::<Rgb<u8>>().min_dimensions(200, 200).build());
+/// let gradient = Gradient {
+///     direction: GradientDirection::Vertical,
+///     start_color: Rgba([255, 200, 200, 255]),
+///     end_color: Rgba([200, 200, 255, 255]),
+/// };
+/// let result = apply_gradient_background(&qr, &gradient);
+/// result.save("qr_gradient.png").unwrap();
+/// ```
+pub fn apply_gradient_background(image: &DynamicImage, gradient: &Gradient) -> DynamicImage {
+    let rgba = image.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    let mut result = rgba.clone();
+
+    let sc = gradient.start_color.0;
+    let ec = gradient.end_color.0;
+
+    for y in 0..h {
+        for x in 0..w {
+            let pixel = *rgba.get_pixel(x, y);
+            let [r, g, b, a] = pixel.0;
+
+            // Detect light pixels: high luminance and not fully transparent.
+            let lum = (r as u32 + g as u32 + b as u32) / 3;
+            if lum > 200 && a > 0 {
+                let t = match gradient.direction {
+                    GradientDirection::Vertical => {
+                        if h <= 1 { 0.0 } else { y as f32 / (h - 1) as f32 }
+                    }
+                    GradientDirection::Horizontal => {
+                        if w <= 1 { 0.0 } else { x as f32 / (w - 1) as f32 }
+                    }
+                    GradientDirection::Diagonal => {
+                        if w <= 1 || h <= 1 {
+                            0.0
+                        } else {
+                            (x as f32 / (w - 1) as f32 + y as f32 / (h - 1) as f32) / 2.0
+                        }
+                    }
+                };
+                let inv = 1.0 - t;
+                let nr = (sc[0] as f32 * inv + ec[0] as f32 * t) as u8;
+                let ng = (sc[1] as f32 * inv + ec[1] as f32 * t) as u8;
+                let nb = (sc[2] as f32 * inv + ec[2] as f32 * t) as u8;
+                let na = (sc[3] as f32 * inv + ec[3] as f32 * t) as u8;
+                result.put_pixel(x, y, Rgba([nr, ng, nb, na]));
+            }
+        }
+    }
+
+    DynamicImage::ImageRgba8(result)
+}
+
 #[cfg(test)]
 mod render_tests {
     use crate::render::Renderer;
@@ -363,5 +448,64 @@ mod render_tests {
             .for_social("instagram")
             .build();
         assert!(img.dimensions().0 >= 1080);
+    }
+
+    #[test]
+    fn test_gradient_vertical() {
+        use super::{Gradient, GradientDirection, apply_gradient_background};
+        use image::DynamicImage;
+
+        let qr = Renderer::<Rgba<u8>>::new(&[Color::Dark, Color::Light, Color::Light, Color::Dark], 2, 0)
+            .module_dimensions(10, 10)
+            .build();
+        let qr_dyn = DynamicImage::ImageRgba8(qr);
+        let gradient = Gradient {
+            direction: GradientDirection::Vertical,
+            start_color: Rgba([255, 0, 0, 255]),
+            end_color: Rgba([0, 0, 255, 255]),
+        };
+        let result = apply_gradient_background(&qr_dyn, &gradient);
+        assert_eq!(result.dimensions(), (20, 20));
+        // Dark pixels should be preserved (black).
+        let dark = result.as_rgba8().unwrap().get_pixel(0, 0);
+        assert_eq!(dark.0[0], 0);
+        assert_eq!(dark.0[1], 0);
+        assert_eq!(dark.0[2], 0);
+    }
+
+    #[test]
+    fn test_gradient_horizontal() {
+        use super::{Gradient, GradientDirection, apply_gradient_background};
+        use image::DynamicImage;
+
+        let qr = Renderer::<Rgba<u8>>::new(&[Color::Dark, Color::Light, Color::Light, Color::Dark], 2, 0)
+            .module_dimensions(10, 10)
+            .build();
+        let qr_dyn = DynamicImage::ImageRgba8(qr);
+        let gradient = Gradient {
+            direction: GradientDirection::Horizontal,
+            start_color: Rgba([255, 0, 0, 255]),
+            end_color: Rgba([0, 0, 255, 255]),
+        };
+        let result = apply_gradient_background(&qr_dyn, &gradient);
+        assert_eq!(result.dimensions(), (20, 20));
+    }
+
+    #[test]
+    fn test_gradient_diagonal() {
+        use super::{Gradient, GradientDirection, apply_gradient_background};
+        use image::DynamicImage;
+
+        let qr = Renderer::<Rgba<u8>>::new(&[Color::Dark, Color::Light, Color::Light, Color::Dark], 2, 0)
+            .module_dimensions(10, 10)
+            .build();
+        let qr_dyn = DynamicImage::ImageRgba8(qr);
+        let gradient = Gradient {
+            direction: GradientDirection::Diagonal,
+            start_color: Rgba([255, 255, 0, 255]),
+            end_color: Rgba([0, 255, 255, 255]),
+        };
+        let result = apply_gradient_background(&qr_dyn, &gradient);
+        assert_eq!(result.dimensions(), (20, 20));
     }
 }

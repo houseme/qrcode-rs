@@ -236,6 +236,95 @@ fn encode_braille(rows: &[&[u8]], col: usize) -> &'static str {
 impl_bit_canvas!(CanvasBraille, Braille, 4, 2, encode_braille as fn(&[&[u8]], usize) -> &'static str);
 
 //}}}
+//{{{ Dense3x2 — sextant characters (U+1FB00–U+1FB3F), 3×2 per character
+
+/// UTF-8 rendering using Unicode sextant characters (U+1FB00–U+1FB3F).
+///
+/// Each character encodes a 3×2 grid of 6 cells, yielding 6 pixels per
+/// character — between Dense2x2 (4 px) and Braille (8 px) in density.
+///
+/// Bit layout (per Unicode sextant specification):
+///
+/// ```text
+/// bit0 bit3     row0[col] row0[col+1]
+/// bit1 bit4  =  row1[col] row1[col+1]
+/// bit2 bit5     row2[col] row2[col+1]
+/// ```
+///
+/// # Example
+///
+/// ```
+/// use qrcode_rs::QrCode;
+/// use qrcode_rs::render::unicode::Dense3x2;
+///
+/// let code = QrCode::new(b"Hello").unwrap();
+/// let text = code.render::<Dense3x2>().module_dimensions(1, 1).build();
+/// println!("{}", text);
+/// ```
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum Dense3x2 {
+    Dark,
+    Light,
+}
+
+impl Pixel for Dense3x2 {
+    type Image = String;
+    type Canvas = Canvas3x2;
+    fn default_unit_size() -> (u32, u32) {
+        (1, 1)
+    }
+    fn default_color(color: Color) -> Dense3x2 {
+        color.select(Dense3x2::Dark, Dense3x2::Light)
+    }
+}
+
+impl Dense3x2 {
+    const fn value(self) -> u8 {
+        match self {
+            Dense3x2::Dark => 1,
+            Dense3x2::Light => 0,
+        }
+    }
+}
+
+/// Precomputed UTF-8 encodings for all 64 sextant code points (U+1FB00–U+1FB3F).
+/// Each entry is 4 bytes (these are supplementary plane characters).
+const SEXTANT_UTF8: [[u8; 4]; 64] = {
+    let mut table = [[0u8; 4]; 64];
+    let mut i = 0usize;
+    while i < 64 {
+        let cp = 0x1FB00u32 + i as u32;
+        table[i][0] = 0xF0u8 | ((cp >> 18) & 0x07) as u8;
+        table[i][1] = 0x80u8 | ((cp >> 12) & 0x3F) as u8;
+        table[i][2] = 0x80u8 | ((cp >> 6) & 0x3F) as u8;
+        table[i][3] = 0x80u8 | (cp & 0x3F) as u8;
+        i += 1;
+    }
+    table
+};
+
+/// Encodes a 3×2 block of pixels into a sextant character.
+/// Pattern 0 (all light) maps to ASCII space for visual consistency.
+fn encode_3x2(rows: &[&[u8]], col: usize) -> &'static str {
+    let d0 = rows[0].get(col).copied().unwrap_or(0) & 1;
+    let d1 = rows[1].get(col).copied().unwrap_or(0) & 1;
+    let d2 = rows[2].get(col).copied().unwrap_or(0) & 1;
+    let d3 = rows[0].get(col + 1).copied().unwrap_or(0) & 1;
+    let d4 = rows[1].get(col + 1).copied().unwrap_or(0) & 1;
+    let d5 = rows[2].get(col + 1).copied().unwrap_or(0) & 1;
+
+    let bits = d0 | (d1 << 1) | (d2 << 2) | (d3 << 3) | (d4 << 4) | (d5 << 5);
+    if bits == 0 {
+        " "
+    } else {
+        // SAFETY: SEXTANT_UTF8[bits] is valid UTF-8 for U+1FB00+bits (bits > 0).
+        unsafe { std::str::from_utf8_unchecked(&SEXTANT_UTF8[bits as usize]) }
+    }
+}
+
+impl_bit_canvas!(Canvas3x2, Dense3x2, 3, 2, encode_3x2 as fn(&[&[u8]], usize) -> &'static str);
+
+//}}}
 
 #[test]
 fn test_render_to_utf8_string() {
@@ -376,4 +465,44 @@ fn test_braille_density() {
     let braille = code.render::<Braille>().module_dimensions(1, 1).build();
     let dense1x2 = code.render::<Dense1x2>().module_dimensions(1, 1).build();
     assert!(braille.len() < dense1x2.len());
+}
+
+#[test]
+fn test_dense3x2_all_dark() {
+    use crate::render::Renderer;
+    // 6×6 all dark = 2 row groups × 3 cols = 6 full sextant chars (pattern 63 = U+1FB3F)
+    let colors = vec![Color::Dark; 36];
+    let image: String = Renderer::<Dense3x2>::new(&colors, 6, 0).module_dimensions(1, 1).build();
+    assert_eq!(&image, "\u{1FB3F}\u{1FB3F}\u{1FB3F}\n\u{1FB3F}\u{1FB3F}\u{1FB3F}");
+}
+
+#[test]
+fn test_dense3x2_all_light() {
+    use crate::render::Renderer;
+    let colors = vec![Color::Light; 36];
+    let image: String = Renderer::<Dense3x2>::new(&colors, 6, 0).module_dimensions(1, 1).build();
+    assert_eq!(&image, "   \n   ");
+}
+
+#[test]
+fn test_dense3x2_top_left_cell() {
+    use crate::render::Renderer;
+    // 6×6 grid with only (0,0) dark → bit0 set → pattern 1 = U+1FB01
+    let mut colors = vec![Color::Light; 36];
+    colors[0] = Color::Dark;
+    let image: String = Renderer::<Dense3x2>::new(&colors, 6, 0).module_dimensions(1, 1).build();
+    // First char: U+1FB01, rest are spaces
+    assert!(image.starts_with('\u{1FB01}'));
+}
+
+#[test]
+fn test_dense3x2_density() {
+    use crate::render::unicode::{Dense1x2, Dense3x2};
+    use crate::{EcLevel, QrCode, Version};
+
+    let code = QrCode::with_version(b"09876542", Version::Micro(2), EcLevel::L).unwrap();
+    let sextant = code.render::<Dense3x2>().module_dimensions(1, 1).build();
+    let dense1x2 = code.render::<Dense1x2>().module_dimensions(1, 1).build();
+    // Sextant should be smaller due to higher density (3 rows per char vs 2).
+    assert!(sextant.len() < dense1x2.len());
 }

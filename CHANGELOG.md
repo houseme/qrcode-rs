@@ -9,11 +9,15 @@
 - SVG `round_corners()` post-processing function for rounded module rendering
 - SVG `animate()` post-processing function with `ScanLine`, `FadeIn`, `Pulse` presets
 - `Dense2x2` Unicode renderer using quadrant block elements (U+2596–U+259F) for 2×2 pixel packing
+- `Dense3x2` Unicode renderer using sextant characters (U+1FB00–U+1FB3F) for 3×2 pixel packing
 - `Braille` Unicode renderer using Braille characters (U+2800–U+28FF) for 2×4 pixel packing
 - ANSI TrueColor terminal renderer (`ansi` module) with 24-bit color and color-change optimization
+- PDF vector renderer (`pdf` feature) with direct PDF generation, no external dependencies
 - `render::colors` module with hex/RGB/RGBA/CSS color conversion utilities
+- `Srgba` unified color type with hex/CSS/ANSI/EPS-PDF conversions and `lerp()` interpolation
 - `overlay_logo()` function for embedding logos into QR code images (alpha-blended, auto-resized)
 - `encode_to_format()` function for encoding QR images to JPEG, WebP, BMP, TIFF, GIF formats
+- `apply_gradient_background()` function with vertical/horizontal/diagonal gradient support
 - Smart sizing presets: `for_web()`, `for_print(dpi)`, `for_social(platform)` on Renderer builder
 
 ### Changed

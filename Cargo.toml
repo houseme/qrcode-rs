@@ -26,12 +26,13 @@ image = { version = "0.25.10", default-features = false, optional = true }
 image = "0.25.10"
 
 [features]
-default = ["image", "svg", "pic", "eps", "html"]
+default = ["image", "svg", "pic", "eps", "html", "pdf"]
 image = ["dep:image"]
 svg = []
 pic = []
 eps = []
 html = []
+pdf = []
 
 [[bin]]
 name = "qrencodes"
