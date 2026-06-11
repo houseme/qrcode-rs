@@ -129,21 +129,10 @@ impl<'a, P: Pixel> Renderer<'a, P> {
         self
     }
 
-    /// Sets the size of each module in pixels. Default is 8px.
-    #[deprecated(since = "0.2.0", note = "use `.module_dimensions(width, width)` instead")]
-    pub fn module_size(&mut self, width: u32) -> &mut Self {
-        self.module_dimensions(width, width)
-    }
-
     /// Sets the size of each module in pixels. Default is 8×8.
     pub fn module_dimensions(&mut self, width: u32, height: u32) -> &mut Self {
         self.module_size = (max(width, 1), max(height, 1));
         self
-    }
-
-    #[deprecated(since = "0.2.0", note = "use `.min_dimensions(width, width)` instead")]
-    pub fn min_width(&mut self, width: u32) -> &mut Self {
-        self.min_dimensions(width, width)
     }
 
     /// Sets the minimum total image size in pixels, including the quiet zone if
@@ -179,12 +168,6 @@ impl<'a, P: Pixel> Renderer<'a, P> {
         let unit_width = width / width_in_modules;
         let unit_height = height / width_in_modules;
         self.module_dimensions(unit_width, unit_height)
-    }
-
-    /// Renders the QR code into an image.
-    #[deprecated(since = "0.2.0", note = "renamed to `.build()` to de-emphasize the image connection")]
-    pub fn to_image(&self) -> P::Image {
-        self.build()
     }
 
     /// Renders the QR code into an image.

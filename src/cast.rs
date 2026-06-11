@@ -1,3 +1,4 @@
+/// Truncate a value to u8 by masking the lower 8 bits.
 pub trait Truncate {
     fn truncate_as_u8(self) -> u8;
 }
@@ -9,6 +10,13 @@ impl Truncate for u16 {
     }
 }
 
+/// Checked narrowing conversions with debug-mode overflow assertions.
+///
+/// In debug builds, these use `TryFrom` + `unwrap()` to catch overflow bugs.
+/// In release builds, they compile to plain `as` casts (zero cost).
+///
+/// Standard traits can't replace this: `From` only supports lossless widening,
+/// `TryFrom` returns `Result` which would require changing all call sites.
 #[allow(clippy::wrong_self_convention)]
 pub trait As {
     fn as_u16(self) -> u16;

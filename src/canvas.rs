@@ -1988,12 +1988,6 @@ impl Canvas {
         .expect("at least one pattern")
     }
 
-    /// Convert the modules into a vector of booleans.
-    #[deprecated(since = "0.2.0", note = "use `into_colors()` instead")]
-    pub fn to_bools(&self) -> Vec<bool> {
-        self.modules.iter().map(|m| m.is_dark()).collect()
-    }
-
     /// Convert the modules into a vector of colors.
     pub fn into_colors(self) -> Vec<Color> {
         self.modules.into_iter().map(Color::from).collect()
