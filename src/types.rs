@@ -130,7 +130,7 @@ pub enum Version {
 impl Version {
     /// Get the number of "modules" on each size of the QR code, i.e. the width
     /// and height of the code.
-    pub fn width(self) -> i16 {
+    pub const fn width(self) -> i16 {
         match self {
             Version::Normal(v) => v * 4 + 17,
             Version::Micro(v) => v * 2 + 9,

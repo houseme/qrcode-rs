@@ -26,10 +26,12 @@ image = { version = "0.25.10", default-features = false, optional = true }
 image = "0.25.10"
 
 [features]
-default = ["image", "svg"]
+default = ["image", "svg", "pic", "eps"]
 bench = []
 image = ["dep:image"]
 svg = []
+pic = []
+eps = []
 
 [[bin]]
 name = "qrencodes"
@@ -47,3 +49,15 @@ required-features = ["svg"]
 
 [[example]]
 name = "encode_unicode"
+
+[[example]]
+name = "encode_eps"
+required-features = ["eps"]
+
+[[example]]
+name = "encode_pic"
+required-features = ["pic"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

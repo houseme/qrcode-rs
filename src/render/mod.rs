@@ -4,7 +4,9 @@ use crate::cast::As;
 use crate::types::Color;
 use std::cmp::max;
 
+pub mod eps;
 pub mod image;
+pub mod pic;
 pub mod string;
 pub mod svg;
 pub mod unicode;

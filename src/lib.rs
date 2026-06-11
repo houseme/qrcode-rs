@@ -27,6 +27,7 @@
 //! ```
 
 #![cfg_attr(feature = "bench", feature(test))] // Unstable libraries
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![deny(clippy::uninlined_format_args, clippy::manual_range_contains, clippy::semicolon_if_nothing_returned)]
 #![allow(
     clippy::must_use_candidate, // This is just annoying.
@@ -193,19 +194,19 @@ impl QrCode {
     }
 
     /// Gets the version of this QR code.
-    pub fn version(&self) -> Version {
+    pub const fn version(&self) -> Version {
         self.version
     }
 
     /// Gets the error correction level of this QR code.
-    pub fn error_correction_level(&self) -> EcLevel {
+    pub const fn error_correction_level(&self) -> EcLevel {
         self.ec_level
     }
 
     /// Gets the number of modules per side, i.e. the width of this QR code.
     ///
     /// The width here does not contain the quiet zone paddings.
-    pub fn width(&self) -> usize {
+    pub const fn width(&self) -> usize {
         self.width
     }
 
@@ -402,6 +403,55 @@ mod svg_tests {
             .light_color(SvgColor("#ffff80"))
             .build();
         let expected = include_str!("../docs/images/test_annex_i_micro_qr_as_svg.svg");
+        assert_eq!(&image, expected);
+    }
+}
+
+#[cfg(all(test, feature = "eps"))]
+mod eps_tests {
+    use crate::render::eps::Color as EpsColor;
+    use crate::{EcLevel, QrCode, Version};
+
+    #[test]
+    fn test_annex_i_qr_as_eps() {
+        let code = QrCode::new(b"01234567").unwrap();
+        let image = code.render::<EpsColor>().build();
+        let expected = include_str!("../docs/images/test_annex_i_qr_as_eps.eps");
+        assert_eq!(&image, expected);
+    }
+
+    #[test]
+    fn test_annex_i_micro_qr_as_eps() {
+        let code = QrCode::with_version(b"01234567", Version::Micro(2), EcLevel::L).unwrap();
+        let image = code
+            .render()
+            .min_dimensions(200, 200)
+            .dark_color(EpsColor([0.5, 0.0, 0.0]))
+            .light_color(EpsColor([1.0, 1.0, 0.5]))
+            .build();
+        let expected = include_str!("../docs/images/test_annex_i_micro_qr_as_eps.eps");
+        assert_eq!(&image, expected);
+    }
+}
+
+#[cfg(all(test, feature = "pic"))]
+mod pic_tests {
+    use crate::render::pic::Color as PicColor;
+    use crate::{EcLevel, QrCode, Version};
+
+    #[test]
+    fn test_annex_i_qr_as_pic() {
+        let code = QrCode::new(b"01234567").unwrap();
+        let image = code.render::<PicColor>().build();
+        let expected = include_str!("../docs/images/test_annex_i_qr_as_pic.pic");
+        assert_eq!(&image, expected);
+    }
+
+    #[test]
+    fn test_annex_i_micro_qr_as_pic() {
+        let code = QrCode::with_version(b"01234567", Version::Micro(2), EcLevel::L).unwrap();
+        let image = code.render::<PicColor>().min_dimensions(1, 1).build();
+        let expected = include_str!("../docs/images/test_annex_i_micro_qr_as_pic.pic");
         assert_eq!(&image, expected);
     }
 }

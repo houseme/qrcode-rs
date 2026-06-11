@@ -5,7 +5,7 @@ use crate::render::{Canvas as RenderCanvas, Color, Pixel};
 /// UTF-8 rendering, with 2 pixels per symbol.
 const CODEPAGE: [&str; 4] = [" ", "\u{2584}", "\u{2580}", "\u{2588}"];
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Dense1x2 {
     Dark,
     Light,
@@ -23,7 +23,7 @@ impl Pixel for Dense1x2 {
 }
 
 impl Dense1x2 {
-    fn value(self) -> u8 {
+    const fn value(self) -> u8 {
         match self {
             Dense1x2::Dark => 1,
             Dense1x2::Light => 0,

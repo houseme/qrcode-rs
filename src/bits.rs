@@ -22,7 +22,7 @@ pub struct Bits {
 
 impl Bits {
     /// Constructs a new, empty bits structure.
-    pub fn new(version: Version) -> Self {
+    pub const fn new(version: Version) -> Self {
         Self { data: Vec::new(), bit_offset: 0, version }
     }
 
