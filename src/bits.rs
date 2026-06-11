@@ -3,9 +3,6 @@
 
 use std::cmp::min;
 
-#[cfg(feature = "bench")]
-extern crate test;
-
 use crate::cast::{As, Truncate};
 use crate::optimize::{Optimizer, Parser, Segment, total_encoded_len};
 use crate::types::{EcLevel, Mode, QrError, QrResult, Version};
@@ -140,19 +137,6 @@ fn test_push_number() {
             0b1_0000000,  // 128
         ]
     );
-}
-
-#[cfg(feature = "bench")]
-#[bench]
-fn bench_push_splitted_bytes(bencher: &mut test::Bencher) {
-    bencher.iter(|| {
-        let mut bits = Bits::new(Version::Normal(40));
-        bits.push_number(4, 0b0101);
-        for _ in 0..1024 {
-            bits.push_number(8, 0b10101010);
-        }
-        bits.into_bytes()
-    });
 }
 
 //}}}
@@ -986,22 +970,6 @@ mod encode_auto_tests {
         let bits = encode_auto(b"This is a mixed data test. 1234567890", EcLevel::H).unwrap();
         assert_eq!(bits.version(), Version::Normal(4));
     }
-}
-
-#[cfg(feature = "bench")]
-#[bench]
-fn bench_find_min_version(bencher: &mut test::Bencher) {
-    use test::black_box;
-
-    bencher.iter(|| {
-        black_box(find_min_version(60, EcLevel::L));
-        black_box(find_min_version(200, EcLevel::L));
-        black_box(find_min_version(200, EcLevel::H));
-        black_box(find_min_version(20000, EcLevel::L));
-        black_box(find_min_version(640, EcLevel::L));
-        black_box(find_min_version(641, EcLevel::L));
-        black_box(find_min_version(999999, EcLevel::H));
-    });
 }
 
 //}}}

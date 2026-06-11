@@ -27,7 +27,6 @@ image = "0.25.10"
 
 [features]
 default = ["image", "svg", "pic", "eps"]
-bench = []
 image = ["dep:image"]
 svg = []
 pic = []

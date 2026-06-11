@@ -26,14 +26,11 @@
 //! println!("{}", string);
 //! ```
 
-#![cfg_attr(feature = "bench", feature(test))] // Unstable libraries
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![deny(clippy::uninlined_format_args, clippy::manual_range_contains, clippy::semicolon_if_nothing_returned)]
 #![allow(
     clippy::must_use_candidate, // This is just annoying.
 )]
-#![cfg_attr(feature = "bench", doc = include_str!("../README.md"))]
-// ^ make sure we can test our README.md.
 
 pub mod bits;
 pub mod canvas;

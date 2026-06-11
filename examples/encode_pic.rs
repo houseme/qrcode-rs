@@ -1,5 +1,5 @@
-use qrcode_rs::render::pic;
 use qrcode_rs::QrCode;
+use qrcode_rs::render::pic;
 
 fn main() {
     let code = QrCode::new(b"01234567").unwrap();
