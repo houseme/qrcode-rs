@@ -26,6 +26,8 @@ use crate::cast::As;
 use crate::types::Color;
 use std::cmp::max;
 
+pub mod ansi;
+pub mod colors;
 pub mod eps;
 pub mod html;
 pub mod image;
@@ -170,6 +172,48 @@ impl<'a, P: Pixel> Renderer<'a, P> {
         let unit_width = width / width_in_modules;
         let unit_height = height / width_in_modules;
         self.module_dimensions(unit_width, unit_height)
+    }
+
+    /// Sets dimensions suitable for web display (200×200 pixels minimum).
+    ///
+    /// This is a convenience preset for embedding QR codes in web pages.
+    /// The actual size may be slightly larger to maintain uniform module sizing.
+    pub fn for_web(&mut self) -> &mut Self {
+        self.min_dimensions(200, 200)
+    }
+
+    /// Sets dimensions suitable for printing at the specified DPI.
+    ///
+    /// Targets a 1-inch × 1-inch physical size. For example, at 300 DPI
+    /// the image will be at least 300×300 pixels.
+    ///
+    /// # Arguments
+    ///
+    /// * `dpi` - Dots per inch (common values: 150 for draft, 300 for standard, 600 for high quality)
+    pub fn for_print(&mut self, dpi: u32) -> &mut Self {
+        self.min_dimensions(dpi.max(72), dpi.max(72))
+    }
+
+    /// Sets dimensions suitable for social media platform sharing.
+    ///
+    /// Targets platform-recommended sizes:
+    ///
+    /// | Platform       | Size (px) |
+    /// |----------------|-----------|
+    /// | `"twitter"`    | 400×400   |
+    /// | `"facebook"`   | 600×600   |
+    /// | `"instagram"`  | 1080×1080 |
+    /// | `"wechat"`     | 600×600   |
+    /// | Any other      | 400×400   |
+    pub fn for_social(&mut self, platform: &str) -> &mut Self {
+        let size = match platform {
+            "twitter" | "x" => 400,
+            "facebook" | "fb" => 600,
+            "instagram" | "ig" => 1080,
+            "wechat" | "weixin" => 600,
+            _ => 400,
+        };
+        self.min_dimensions(size, size)
     }
 
     /// Renders the QR code into an image.

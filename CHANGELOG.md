@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.3.0] - Unreleased
+
+### Added
+
+- HTML table and CSS Grid renderer (`html` feature) with `Mode::Table` and `Mode::Grid` modes
+- SVG `inject_attributes()` for adding custom attributes to the root `<svg>` element
+- SVG `round_corners()` post-processing function for rounded module rendering
+- SVG `animate()` post-processing function with `ScanLine`, `FadeIn`, `Pulse` presets
+- `Dense2x2` Unicode renderer using quadrant block elements (U+2596–U+259F) for 2×2 pixel packing
+- `Braille` Unicode renderer using Braille characters (U+2800–U+28FF) for 2×4 pixel packing
+- ANSI TrueColor terminal renderer (`ansi` module) with 24-bit color and color-change optimization
+- `render::colors` module with hex/RGB/RGBA/CSS color conversion utilities
+- `overlay_logo()` function for embedding logos into QR code images (alpha-blended, auto-resized)
+- `encode_to_format()` function for encoding QR images to JPEG, WebP, BMP, TIFF, GIF formats
+- Smart sizing presets: `for_web()`, `for_print(dpi)`, `for_social(platform)` on Renderer builder
+
+### Changed
+
+- SVG path optimization: merged horizontally adjacent rectangles into single path segments
+
 ## [0.2.1] - 2026-06-11
 
 ### Changed
