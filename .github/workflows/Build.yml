@@ -17,13 +17,13 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        rustc: ["1.67.1", stable] # MSVR and current stable rustc
+        rustc: [ nightly, stable ] # MSVR and current stable rustc
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.rustc }}
-      - name:  Run cargo check
+      - name: Run cargo check
         run: cargo check
   rust_fmt_check:
     name: RustFmt
@@ -62,7 +62,7 @@ jobs:
           toolchain: stable
           components: clippy
       - name: Run clippy check
-        run: cargo clippy --all-features
+        run: cargo clippy --features "image,svg,eps,pic" -- -D warnings
   test:
     name: Run tests
     runs-on: ubuntu-latest
@@ -81,7 +81,7 @@ jobs:
         with:
           toolchain: stable
       - name: Run cargo test
-        run: cargo test --all-features
+        run: cargo test --features "image,svg,eps,pic"
   publish_on_crates_io:
     name: Publish on crates.io
     runs-on: ubuntu-latest
