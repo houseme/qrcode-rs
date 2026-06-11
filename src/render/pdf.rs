@@ -54,8 +54,13 @@ impl Canvas {
             writeln!(
                 self.stream,
                 "{} {} {} rg {} {} {} {} re f",
-                self.fg_r, self.fg_g, self.fg_b,
-                self.pending_left, self.pending_bottom, self.pending_width, self.pending_height
+                self.fg_r,
+                self.fg_g,
+                self.fg_b,
+                self.pending_left,
+                self.pending_bottom,
+                self.pending_width,
+                self.pending_height
             )
             .unwrap();
             self.has_pending = false;
@@ -160,11 +165,7 @@ impl RenderCanvas for Canvas {
 
         // Trailer
         let mut trailer = String::new();
-        write!(
-            &mut trailer,
-            "trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF\n",
-        )
-        .unwrap();
+        write!(&mut trailer, "trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF\n",).unwrap();
 
         // Assemble PDF
         let total = pos + xref.len() + trailer.len();

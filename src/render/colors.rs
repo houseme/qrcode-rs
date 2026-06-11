@@ -182,11 +182,7 @@ impl Srgba {
 
     /// Converts to a CSS hex string (e.g., `"#ff0080"` or `"#ff0080c0"` if alpha < 255).
     pub fn to_hex(self) -> String {
-        if self.a == 255 {
-            rgb_to_hex(self.r, self.g, self.b)
-        } else {
-            rgba_to_hex(self.r, self.g, self.b, self.a)
-        }
+        if self.a == 255 { rgb_to_hex(self.r, self.g, self.b) } else { rgba_to_hex(self.r, self.g, self.b, self.a) }
     }
 
     /// Converts to a CSS `rgba()` function string.

@@ -215,10 +215,18 @@ pub fn apply_gradient_background(image: &DynamicImage, gradient: &Gradient) -> D
             if lum > 200 && a > 0 {
                 let t = match gradient.direction {
                     GradientDirection::Vertical => {
-                        if h <= 1 { 0.0 } else { y as f32 / (h - 1) as f32 }
+                        if h <= 1 {
+                            0.0
+                        } else {
+                            y as f32 / (h - 1) as f32
+                        }
                     }
                     GradientDirection::Horizontal => {
-                        if w <= 1 { 0.0 } else { x as f32 / (w - 1) as f32 }
+                        if w <= 1 {
+                            0.0
+                        } else {
+                            x as f32 / (w - 1) as f32
+                        }
                     }
                     GradientDirection::Diagonal => {
                         if w <= 1 || h <= 1 {
