@@ -390,6 +390,39 @@ impl QrCode {
         Self::new(vcard)
     }
 
+    /// Encodes a GS1 data carrier (FNC1 in first position), e.g. a GTIN /
+    /// application-identifier payload such as
+    /// `"010491234512345915970331301234561842"`. Uses medium error correction
+    /// and the smallest fitting version.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the data is too long to encode.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::QrCode;
+    ///
+    /// let code = QrCode::for_gs1("010491234512345915970331301234561842").unwrap();
+    /// # let _ = code;
+    /// ```
+    pub fn for_gs1<D: AsRef<[u8]>>(data: D) -> QrResult<Self> {
+        let data = data.as_ref();
+        for v in 1..=40 {
+            let version = Version::Normal(v);
+            let mut bits = bits::Bits::new(version);
+            if bits.push_fnc1_first_position().is_err()
+                || bits.push_optimal_data(data).is_err()
+                || bits.push_terminator(EcLevel::M).is_err()
+            {
+                continue;
+            }
+            return Self::with_bits(bits, EcLevel::M);
+        }
+        Err(QrError::DataTooLong)
+    }
+
     /// Encodes `data` forced into a single `mode` at a pinned version. Used by
     /// [`QrCodeBuilder::build`] when both a version and an encoding-mode hint
     /// are set.
@@ -781,6 +814,15 @@ mod api_tests {
     fn for_vcard_encodes() {
         let code = QrCode::for_vcard("John Doe", "+1234567890", "john@example.com").unwrap();
         assert!(code.width() > 0);
+    }
+
+    #[test]
+    fn for_gs1_encodes() {
+        let code = QrCode::for_gs1("010491234512345915970331301234561842").unwrap();
+        assert!(code.width() > 0);
+        // GS1 uses FNC1 first position; smallest fitting version, medium EC.
+        assert!(!code.version().is_micro());
+        assert_eq!(code.error_correction_level(), crate::EcLevel::M);
     }
 }
 
