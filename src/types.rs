@@ -80,12 +80,16 @@ impl ::std::error::Error for EnumParseError {}
 //{{{ Color
 
 /// The color of a module.
+///
+/// Guaranteed to be a single byte (`#[repr(u8)]`) — useful for FFI and dense
+/// storage. `Light = 0`, `Dark = 1`.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+#[repr(u8)]
 pub enum Color {
     /// The module is light colored.
-    Light,
+    Light = 0,
     /// The module is dark colored.
-    Dark,
+    Dark = 1,
 }
 
 impl Color {
@@ -409,7 +413,7 @@ impl FromStr for Mode {
 mod parse_tests {
     use std::str::FromStr;
 
-    use crate::types::{EcLevel, EnumParseError, Mode, Version};
+    use crate::types::{Color, EcLevel, EnumParseError, Mode, Version};
 
     #[test]
     fn test_ec_level_from_str() {
@@ -436,6 +440,13 @@ mod parse_tests {
         assert_eq!(Mode::from_str("ALPHANUMERIC"), Ok(Mode::Alphanumeric));
         assert_eq!(Mode::from_str(" kanji "), Ok(Mode::Kanji));
         assert!(Mode::from_str("text").is_err());
+    }
+
+    #[test]
+    fn test_color_repr() {
+        assert_eq!(Color::Light as u8, 0);
+        assert_eq!(Color::Dark as u8, 1);
+        assert_eq!(std::mem::size_of::<Color>(), 1);
     }
 }
 
