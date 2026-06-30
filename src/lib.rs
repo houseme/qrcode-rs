@@ -423,6 +423,50 @@ impl QrCode {
         Err(QrError::DataTooLong)
     }
 
+    /// Generates accessible alt text describing a QR code that encodes `data`.
+    ///
+    /// URLs are described as "linking to …"; other payloads as "containing: …".
+    /// Use the result as the `alt` of an `<img>` or the `aria-label` of an inline
+    /// SVG so assistive technology can describe the code without decoding it.
+    ///
+    /// This is an associated function (it does not require a constructed
+    /// [`QrCode`]), so the input data does not need to be retained on the code.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::QrCode;
+    ///
+    /// assert_eq!(QrCode::alt_text("https://example.com"), "QR code linking to https://example.com");
+    /// assert_eq!(QrCode::alt_text("hello"), "QR code containing: hello");
+    /// ```
+    #[must_use]
+    pub fn alt_text<D: AsRef<[u8]>>(data: D) -> String {
+        let text = String::from_utf8_lossy(data.as_ref());
+        if text.starts_with("http://") || text.starts_with("https://") {
+            format!("QR code linking to {text}")
+        } else {
+            format!("QR code containing: {text}")
+        }
+    }
+
+    /// Generates alt text with a custom formatter that receives the raw bytes.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::QrCode;
+    ///
+    /// let alt = QrCode::alt_text_custom("hello", |data| {
+    ///     format!("A QR code with {} bytes", data.len())
+    /// });
+    /// assert_eq!(alt, "A QR code with 5 bytes");
+    /// ```
+    #[must_use]
+    pub fn alt_text_custom<D: AsRef<[u8]>, F: FnOnce(&[u8]) -> String>(data: D, f: F) -> String {
+        f(data.as_ref())
+    }
+
     /// Encodes `data` forced into a single `mode` at a pinned version. Used by
     /// [`QrCodeBuilder::build`] when both a version and an encoding-mode hint
     /// are set.
