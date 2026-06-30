@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.5.0] - 2026-07-01
+
+### Added
+
+- `QrCode::for_gs1(data)` — GS1 / FNC1-first-position convenience constructor (smallest fitting version, medium error correction)
+- `QrCode::info() -> Info` metadata struct (version, ec_level, width, module_count, max_allowed_errors, data_capacity_bytes); backed by a new public `bits::data_capacity_bits(version, ec_level)`
+- `QrCode::alt_text(data)` and `alt_text_custom(data, f)` — accessible alt-text generation (URL-aware: "linking to …" vs "containing: …")
+- Builder `.force_mode(M)` (alias of `.encoding_mode(M)`) now works without a pinned version — auto-selects the smallest fitting version for the forced mode
+- `render::svg::aria_label(svg, label)` and `render::html::aria_label(html, label)` — inject `role="img"` + `aria-label` for screen readers
+- `render::html::inject_attributes(html, attrs)` — arbitrary attributes on the QR container (`<table>`/`<div>`)
+- Examples: `encode_gs1`, `alt_text`, `accessible_svg`
+
+### Fixed
+
+- `render::svg::inject_attributes` now targets the `<svg>` root element instead of the `<?xml ?>` declaration (attributes were previously misplaced between the XML prolog and `<svg>`)
+
+### Notes
+
+- Deferred to later versions (need external decoder/scanner verification or a larger refactor): Structured Append (§1), custom Finder/Alignment patterns (§2), encoding stats (§4.2), and `Info` fields requiring input/mask retention (encoding_modes, mask_pattern, remaining_capacity)
+
 ## [0.4.0] - 2026-07-01
 
 ### Added
