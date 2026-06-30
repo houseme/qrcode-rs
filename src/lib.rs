@@ -215,6 +215,34 @@ impl QrCode {
         ec::max_allowed_errors(self.version, self.ec_level).expect("invalid version or ec_level")
     }
 
+    /// Returns metadata about this QR code (version, error-correction level,
+    /// dimensions, module count, error tolerance, and data capacity).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::QrCode;
+    ///
+    /// let code = QrCode::new(b"hello").unwrap();
+    /// let info = code.info();
+    /// assert_eq!(info.width(), code.width());
+    /// assert_eq!(info.module_count(), code.width() * code.width());
+    /// assert!(info.data_capacity_bytes() > 0);
+    /// ```
+    #[must_use]
+    pub fn info(&self) -> Info {
+        Info {
+            version: self.version,
+            ec_level: self.ec_level,
+            width: self.width,
+            module_count: self.width * self.width,
+            max_allowed_errors: self.max_allowed_errors(),
+            data_capacity_bytes: bits::data_capacity_bits(self.version, self.ec_level)
+                .map(|b| b / 8)
+                .unwrap_or(0),
+        }
+    }
+
     /// Checks whether a module at coordinate (x, y) is a functional module or
     /// not.
     pub fn is_functional(&self, x: usize, y: usize) -> bool {
@@ -580,6 +608,63 @@ impl<D: AsRef<[u8]>> QrCodeBuilder<D> {
 
 //}}}
 //------------------------------------------------------------------------------
+//{{{ Info
+
+/// Metadata about a constructed [`QrCode`], returned by [`QrCode::info`].
+///
+/// Fields that require retaining the input data or the chosen mask (e.g.
+/// `encoding_modes`, `mask_pattern`, `remaining_capacity`) are intentionally
+/// omitted to keep `QrCode` zero-overhead; they may be added in a later version.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Info {
+    version: Version,
+    ec_level: EcLevel,
+    width: usize,
+    module_count: usize,
+    max_allowed_errors: usize,
+    data_capacity_bytes: usize,
+}
+
+impl Info {
+    /// The QR [`Version`].
+    #[must_use]
+    pub const fn version(&self) -> Version {
+        self.version
+    }
+
+    /// The error correction level.
+    #[must_use]
+    pub const fn ec_level(&self) -> EcLevel {
+        self.ec_level
+    }
+
+    /// Modules per side (excluding the quiet zone).
+    #[must_use]
+    pub const fn width(&self) -> usize {
+        self.width
+    }
+
+    /// Total number of modules (`width * width`).
+    #[must_use]
+    pub const fn module_count(&self) -> usize {
+        self.module_count
+    }
+
+    /// Maximum number of erroneous modules that can still be recovered.
+    #[must_use]
+    pub const fn max_allowed_errors(&self) -> usize {
+        self.max_allowed_errors
+    }
+
+    /// Data capacity of this symbol in bytes.
+    #[must_use]
+    pub const fn data_capacity_bytes(&self) -> usize {
+        self.data_capacity_bytes
+    }
+}
+
+//}}}
+//------------------------------------------------------------------------------
 //{{{ Module iterators
 
 /// Iterator over the rows of a [`QrCode`], created by [`QrCode::rows`].
@@ -867,6 +952,20 @@ mod api_tests {
         // GS1 uses FNC1 first position; smallest fitting version, medium EC.
         assert!(!code.version().is_micro());
         assert_eq!(code.error_correction_level(), crate::EcLevel::M);
+    }
+
+    #[test]
+    fn info_reports_metadata() {
+        let code = QrCode::with_version(b"01234567", Version::Normal(1), crate::EcLevel::M).unwrap();
+        let info = code.info();
+        assert_eq!(info.version(), Version::Normal(1));
+        assert_eq!(info.ec_level(), crate::EcLevel::M);
+        assert_eq!(info.width(), code.width());
+        assert_eq!(info.module_count(), code.width() * code.width());
+        assert!(info.data_capacity_bytes() > 0);
+        // higher EC level => fewer data bytes for the same version
+        let code_h = QrCode::with_version(b"01234567", Version::Normal(1), crate::EcLevel::H).unwrap();
+        assert!(info.data_capacity_bytes() > code_h.info().data_capacity_bytes());
     }
 }
 

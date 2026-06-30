@@ -871,6 +871,18 @@ mod encode_tests {
 //------------------------------------------------------------------------------
 //{{{ Auto version minimization
 
+/// Returns the data capacity (in bits) for the given version and error
+/// correction level — the maximum number of data bits a symbol of that version
+/// can hold.
+///
+/// # Errors
+///
+/// Returns [`QrError::InvalidVersion`] for an incompatible version / ec-level
+/// combination (e.g. a Micro QR version with [`EcLevel::H`]).
+pub fn data_capacity_bits(version: Version, ec_level: EcLevel) -> QrResult<usize> {
+    version.fetch(ec_level, &DATA_LENGTHS)
+}
+
 /// Automatically determines the minimum version to store the data, and encode
 /// the result.
 ///
