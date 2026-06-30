@@ -255,6 +255,26 @@ impl QrCode {
         self.render().quiet_zone(false).dark_color(on_char).light_color(off_char).build()
     }
 
+    /// Returns the module colors as a borrowed slice — no allocation. Use this
+    /// in preference to [`to_colors`](Self::to_colors) when you only need to
+    /// read the modules.
+    ///
+    /// The slice is row-major, with `width() * width()` entries and no quiet
+    /// zone.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::QrCode;
+    ///
+    /// let code = QrCode::new(b"hi").unwrap();
+    /// let colors = code.colors();
+    /// assert_eq!(colors.len(), code.width() * code.width());
+    /// ```
+    pub fn colors(&self) -> &[Color] {
+        &self.content
+    }
+
     /// Converts the QR code to a vector of colors.
     pub fn to_colors(&self) -> Vec<Color> {
         self.content.clone()
@@ -1011,6 +1031,15 @@ mod api_tests {
         // higher EC level => fewer data bytes for the same version
         let code_h = QrCode::with_version(b"01234567", Version::Normal(1), crate::EcLevel::H).unwrap();
         assert!(info.data_capacity_bytes() > code_h.info().data_capacity_bytes());
+    }
+
+    #[test]
+    fn colors_borrows_without_clone() {
+        let code = QrCode::new(b"hello").unwrap();
+        let borrowed = code.colors();
+        assert_eq!(borrowed.len(), code.width() * code.width());
+        // matches the cloning accessor
+        assert_eq!(borrowed, code.to_colors().as_slice());
     }
 
     #[test]
