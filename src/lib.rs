@@ -47,6 +47,10 @@ use std::iter::FusedIterator;
 use std::ops::Index;
 
 /// The encoded QR code symbol.
+///
+/// `QrCode` is `Send + Sync`, so it can be shared or moved across threads
+/// (e.g. for parallel rendering of many codes). This is verified at compile
+/// time below.
 #[derive(Clone)]
 pub struct QrCode {
     content: Vec<Color>,
@@ -54,6 +58,12 @@ pub struct QrCode {
     ec_level: EcLevel,
     width: usize,
 }
+
+// Compile-time guarantee that QrCode stays Send + Sync as fields evolve.
+const _: () = {
+    const fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<QrCode>();
+};
 
 impl QrCode {
     /// Constructs a new QR code which automatically encodes the given data.
