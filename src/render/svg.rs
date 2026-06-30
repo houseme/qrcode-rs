@@ -126,10 +126,18 @@ impl<'a> RenderCanvas for Canvas<'a> {
 /// let code = QrCode::new(b"Hello").unwrap();
 /// let svg = code.render::<Color>().build();
 /// let svg = svg::inject_attributes(&svg, &[("class", "qr-code"), ("id", "main")]);
-/// assert!(svg.contains(r#"class="qr-code""#));
+/// // The attribute lands *inside* the <svg ...> opening tag.
+/// let start = svg.find("<svg").unwrap();
+/// let tag_end = start + svg[start..].find('>').unwrap();
+/// assert!(svg[start..tag_end].contains(r#"class="qr-code""#));
 /// ```
 pub fn inject_attributes(svg: &str, attrs: &[(&str, &str)]) -> String {
-    let insert_pos = svg.find('>').expect("invalid SVG: no closing '>' found");
+    // Target the root <svg …> opening tag (skipping any leading <?xml ?> declaration).
+    let tag_start = svg.find("<svg").expect("invalid SVG: no <svg> element");
+    let insert_pos = svg[tag_start..]
+        .find('>')
+        .map(|p| tag_start + p)
+        .expect("invalid SVG: no closing '>' in <svg>");
     let mut result = String::with_capacity(svg.len() + attrs.iter().map(|(k, v)| k.len() + v.len() + 5).sum::<usize>());
     result.push_str(&svg[..insert_pos]);
     for (key, value) in attrs {
