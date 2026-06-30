@@ -237,9 +237,7 @@ impl QrCode {
             width: self.width,
             module_count: self.width * self.width,
             max_allowed_errors: self.max_allowed_errors(),
-            data_capacity_bytes: bits::data_capacity_bits(self.version, self.ec_level)
-                .map(|b| b / 8)
-                .unwrap_or(0),
+            data_capacity_bytes: bits::data_capacity_bits(self.version, self.ec_level).map(|b| b / 8).unwrap_or(0),
         }
     }
 

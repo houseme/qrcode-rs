@@ -154,7 +154,9 @@ impl<'a> Canvas<'a> {
 /// let code = QrCode::new(b"Hello").unwrap();
 /// let html = code.render::<Color>().build();
 /// let html = html::inject_attributes(&html, &[("class", "qr")]);
-/// assert!(html.contains(r#"<table class="qr""#));
+/// let start = html.find("<table").unwrap();
+/// let tag_end = start + html[start..].find('>').unwrap();
+/// assert!(html[start..tag_end].contains(r#"class="qr""#));
 /// ```
 pub fn inject_attributes(html: &str, attrs: &[(&str, &str)]) -> String {
     let Some(start) = html.find("<table").or_else(|| html.find("<div")) else {
