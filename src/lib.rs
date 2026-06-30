@@ -509,6 +509,36 @@ impl QrCode {
         bits.push_terminator(ec_level)?;
         Self::with_bits(bits, ec_level)
     }
+
+    /// Encodes `data` forced into a single `mode`, auto-selecting the smallest
+    /// fitting version. Used by [`QrCodeBuilder::build`] when an encoding-mode
+    /// hint is set without a pinned version. Returns the underlying error
+    /// (e.g. [`QrError::InvalidCharacter`]) if the data is incompatible with the
+    /// forced mode.
+    fn with_mode_auto<D: AsRef<[u8]>>(data: D, ec_level: EcLevel, mode: Mode) -> QrResult<Self> {
+        let data = data.as_ref();
+        let mut last_err = QrError::DataTooLong;
+        for v in 1..=40 {
+            let version = Version::Normal(v);
+            let mut bits = bits::Bits::new(version);
+            let pushed = match mode {
+                Mode::Numeric => bits.push_numeric_data(data),
+                Mode::Alphanumeric => bits.push_alphanumeric_data(data),
+                Mode::Byte => bits.push_byte_data(data),
+                Mode::Kanji => bits.push_kanji_data(data),
+            };
+            if let Err(e) = pushed {
+                last_err = e;
+                continue;
+            }
+            if let Err(e) = bits.push_terminator(ec_level) {
+                last_err = e;
+                continue;
+            }
+            return Self::with_bits(bits, ec_level);
+        }
+        Err(last_err)
+    }
 }
 
 /// Backslash-escapes the characters that are special in a WiFi QR payload.
@@ -576,13 +606,27 @@ impl<D: AsRef<[u8]>> QrCodeBuilder<D> {
         self
     }
 
-    /// Hints the encoding [`Mode`] (e.g. [`Mode::Byte`]). Best-effort: it is
-    /// honored only when a [`version`](Self::version) is also set; otherwise
-    /// automatic mode optimization is used.
+    /// Hints the encoding [`Mode`] (e.g. [`Mode::Byte`]), bypassing automatic
+    /// mode optimization. When a [`version`](Self::version) is also set it is
+    /// used directly; otherwise the smallest fitting version for that mode is
+    /// auto-selected.
+    ///
+    /// The data must be encodable in the chosen mode: [`Mode::Kanji`] validates
+    /// its Shift-JIS pairs and [`Mode::Byte`] accepts anything, but
+    /// [`Mode::Numeric`] / [`Mode::Alphanumeric`] assume their input already
+    /// matches (as automatic optimization would never select them otherwise).
     #[must_use]
     pub fn encoding_mode(mut self, mode: Mode) -> Self {
         self.mode_hint = Some(mode);
         self
+    }
+
+    /// Forces a specific encoding [`Mode`], bypassing automatic optimization.
+    /// This is an alias for [`encoding_mode`](Self::encoding_mode), provided for
+    /// familiarity with the QR-code vocabulary.
+    #[must_use]
+    pub fn force_mode(self, mode: Mode) -> Self {
+        self.encoding_mode(mode)
     }
 
     /// Builds the [`QrCode`].
@@ -598,6 +642,9 @@ impl<D: AsRef<[u8]>> QrCodeBuilder<D> {
                 return QrCode::with_mode(self.data, version, self.ec_level, mode);
             }
             return QrCode::with_version(self.data, version, self.ec_level);
+        }
+        if let Some(mode) = self.mode_hint {
+            return QrCode::with_mode_auto(self.data, self.ec_level, mode);
         }
         if self.micro {
             return QrCode::micro_with_error_correction_level(self.data, self.ec_level);
@@ -966,6 +1013,20 @@ mod api_tests {
         // higher EC level => fewer data bytes for the same version
         let code_h = QrCode::with_version(b"01234567", Version::Normal(1), crate::EcLevel::H).unwrap();
         assert!(info.data_capacity_bytes() > code_h.info().data_capacity_bytes());
+    }
+
+    #[test]
+    fn force_mode_without_version_auto_selects() {
+        // Forcing Byte on digits must differ from auto (Numeric) without pinning a version.
+        let auto = QrCode::new(b"0123456789").unwrap();
+        let forced_byte = QrCode::builder(b"0123456789").force_mode(Mode::Byte).build().unwrap();
+        assert_ne!(colors(&auto), colors(&forced_byte));
+        // Forcing Numeric on digits matches auto (which also picks Numeric).
+        let forced_num = QrCode::builder(b"0123456789").force_mode(Mode::Numeric).build().unwrap();
+        assert_eq!(colors(&auto), colors(&forced_num));
+        // Odd-length Kanji input surfaces InvalidCharacter via the length check.
+        let err = QrCode::builder(b"\x93").force_mode(Mode::Kanji).build();
+        assert!(matches!(err, Err(crate::QrError::InvalidCharacter { .. })));
     }
 }
 
