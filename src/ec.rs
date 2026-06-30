@@ -34,8 +34,10 @@ pub fn create_error_correction_code(data: &[u8], ec_code_size: usize) -> Vec<u8>
     let data_len = data.len();
     let log_den = GENERATOR_POLYNOMIALS[ec_code_size];
 
-    let mut res = data.to_vec();
-    res.resize(ec_code_size + data_len, 0);
+    let target_len = ec_code_size + data_len;
+    let mut res = Vec::with_capacity(target_len);
+    res.extend_from_slice(data);
+    res.resize(target_len, 0);
 
     // rust-lang-nursery/rust-clippy#2213
     for i in 0..data_len {
