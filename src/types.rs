@@ -2,41 +2,53 @@ use crate::cast::As;
 use std::cmp::{Ordering, PartialOrd};
 use std::fmt::{Display, Error, Formatter};
 use std::ops::Not;
+use std::str::FromStr;
 
 //------------------------------------------------------------------------------
 //{{{ QrResult
 
 /// `QrError` encodes the error encountered when generating a QR code.
+///
+/// This enum is `#[non_exhaustive]`: future versions may add variants, so
+/// external callers should match with a `_` arm.
+#[non_exhaustive]
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum QrError {
     /// The data is too long to encode into a QR code for the given version.
     DataTooLong,
 
     /// The provided version / error correction level combination is invalid.
-    InvalidVersion,
+    /// Carries the offending [`Version`] and [`EcLevel`].
+    InvalidVersion { version: Version, ec_level: EcLevel },
 
     /// Some characters in the data cannot be supported by the provided QR code
     /// version.
     UnsupportedCharacterSet,
 
-    /// The provided ECI designator is invalid. A valid designator should be
-    /// between 0 and 999999.
-    InvalidEciDesignator,
+    /// The provided ECI designator is invalid. Carries the offending `value`;
+    /// a valid designator must be between 0 and 999999.
+    InvalidEciDesignator { value: u32 },
 
-    /// A character not belonging to the character set is found.
-    InvalidCharacter,
+    /// A character not belonging to the character set is found. Carries the
+    /// byte `position` (offset into the input) and the offending `byte` value.
+    InvalidCharacter { position: usize, byte: u8 },
 }
 
 impl Display for QrError {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), Error> {
-        let msg = match *self {
-            QrError::DataTooLong => "data too long",
-            QrError::InvalidVersion => "invalid version",
-            QrError::UnsupportedCharacterSet => "unsupported character set",
-            QrError::InvalidEciDesignator => "invalid ECI designator",
-            QrError::InvalidCharacter => "invalid character",
-        };
-        fmt.write_str(msg)
+        match self {
+            QrError::DataTooLong => fmt.write_str("data too long to encode"),
+            QrError::InvalidVersion { version, ec_level } => {
+                write!(fmt, "invalid version {version:?} for error correction level {ec_level:?}")
+            }
+            QrError::UnsupportedCharacterSet => fmt.write_str("unsupported character set for this version"),
+            QrError::InvalidEciDesignator { value } => {
+                write!(fmt, "invalid ECI designator {value} (must be 0..=999999)")
+            }
+            QrError::InvalidCharacter { position, byte } => {
+                write!(fmt, "invalid character byte 0x{byte:02x} at position {position}")
+            }
+        }
     }
 }
 
@@ -44,6 +56,24 @@ impl ::std::error::Error for QrError {}
 
 /// `QrResult` is a convenient alias for a QR code generation result.
 pub type QrResult<T> = Result<T, QrError>;
+
+//}}}
+//------------------------------------------------------------------------------
+//{{{ Enum parsing error
+
+/// Error returned when parsing an enum (`EcLevel`, `Version`, `Mode`) from a
+/// string via `FromStr`. Carries a short static description of what was
+/// expected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EnumParseError(pub &'static str);
+
+impl Display for EnumParseError {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        f.write_str(self.0)
+    }
+}
+
+impl ::std::error::Error for EnumParseError {}
 
 //}}}
 //------------------------------------------------------------------------------
@@ -108,6 +138,31 @@ pub enum EcLevel {
     H = 3,
 }
 
+impl FromStr for EcLevel {
+    type Err = EnumParseError;
+
+    /// Parses a case-insensitive single letter: `L`, `M`, `Q` or `H`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use std::str::FromStr;
+    /// use qrcode_rs::types::EcLevel;
+    /// assert_eq!(EcLevel::from_str("H"), Ok(EcLevel::H));
+    /// assert_eq!(EcLevel::from_str("m"), Ok(EcLevel::M));
+    /// assert!(EcLevel::from_str("X").is_err());
+    /// ```
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim() {
+            "l" | "L" => Ok(EcLevel::L),
+            "m" | "M" => Ok(EcLevel::M),
+            "q" | "Q" => Ok(EcLevel::Q),
+            "h" | "H" => Ok(EcLevel::H),
+            _ => Err(EnumParseError("expected one of L, M, Q, H")),
+        }
+    }
+}
+
 //}}}
 //------------------------------------------------------------------------------
 //{{{ Version
@@ -165,7 +220,7 @@ impl Version {
             }
             _ => {}
         }
-        Err(QrError::InvalidVersion)
+        Err(QrError::InvalidVersion { version: self, ec_level })
     }
 
     /// The number of bits needed to encode the mode indicator.
@@ -176,6 +231,42 @@ impl Version {
     /// Checks whether is version refers to a Micro QR code.
     pub fn is_micro(self) -> bool {
         matches!(self, Version::Micro(_))
+    }
+}
+
+impl FromStr for Version {
+    type Err = EnumParseError;
+
+    /// Parses a normal QR version `1..=40` (e.g. `"5"` → `Normal(5)`) or a
+    /// Micro QR version `M1..M4` (e.g. `"m2"` → `Micro(2)`), case-insensitively.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use std::str::FromStr;
+    /// use qrcode_rs::types::Version;
+    /// assert_eq!(Version::from_str("5"), Ok(Version::Normal(5)));
+    /// assert_eq!(Version::from_str("M4"), Ok(Version::Micro(4)));
+    /// assert!(Version::from_str("99").is_err());
+    /// ```
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.trim();
+        let (micro, digits) = match s.chars().next() {
+            Some('M' | 'm') => (true, &s[1..]),
+            _ => (false, s),
+        };
+        let n: i16 = digits.parse().map_err(|_| EnumParseError("expected a version number"))?;
+        if micro {
+            if (1..=4).contains(&n) {
+                Ok(Version::Micro(n))
+            } else {
+                Err(EnumParseError("Micro QR version must be between M1 and M4"))
+            }
+        } else if (1..=40).contains(&n) {
+            Ok(Version::Normal(n))
+        } else {
+            Err(EnumParseError("QR version must be between 1 and 40"))
+        }
     }
 }
 
@@ -286,6 +377,65 @@ impl PartialOrd for Mode {
             (Mode::Alphanumeric, Mode::Numeric) | (Mode::Byte, _) => Some(Ordering::Greater),
             _ => None,
         }
+    }
+}
+
+impl FromStr for Mode {
+    type Err = EnumParseError;
+
+    /// Parses a mode by name, case-insensitively: `numeric`, `alphanumeric`,
+    /// `byte` or `kanji`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use std::str::FromStr;
+    /// use qrcode_rs::types::Mode;
+    /// assert_eq!(Mode::from_str("Byte"), Ok(Mode::Byte));
+    /// assert!(Mode::from_str("utf8").is_err());
+    /// ```
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "numeric" => Ok(Mode::Numeric),
+            "alphanumeric" => Ok(Mode::Alphanumeric),
+            "byte" => Ok(Mode::Byte),
+            "kanji" => Ok(Mode::Kanji),
+            _ => Err(EnumParseError("expected numeric, alphanumeric, byte or kanji")),
+        }
+    }
+}
+
+#[cfg(test)]
+mod parse_tests {
+    use std::str::FromStr;
+
+    use crate::types::{EcLevel, EnumParseError, Mode, Version};
+
+    #[test]
+    fn test_ec_level_from_str() {
+        assert_eq!(EcLevel::from_str("L"), Ok(EcLevel::L));
+        assert_eq!(EcLevel::from_str("q"), Ok(EcLevel::Q));
+        assert_eq!(EcLevel::from_str("  H "), Ok(EcLevel::H));
+        assert_eq!(EcLevel::from_str("X"), Err(EnumParseError("expected one of L, M, Q, H")));
+    }
+
+    #[test]
+    fn test_version_from_str() {
+        assert_eq!(Version::from_str("1"), Ok(Version::Normal(1)));
+        assert_eq!(Version::from_str("40"), Ok(Version::Normal(40)));
+        assert_eq!(Version::from_str("m3"), Ok(Version::Micro(3)));
+        assert!(Version::from_str("0").is_err());
+        assert!(Version::from_str("41").is_err());
+        assert!(Version::from_str("M5").is_err());
+        assert!(Version::from_str("abc").is_err());
+    }
+
+    #[test]
+    fn test_mode_from_str() {
+        assert_eq!(Mode::from_str("Numeric"), Ok(Mode::Numeric));
+        assert_eq!(Mode::from_str("ALPHANUMERIC"), Ok(Mode::Alphanumeric));
+        assert_eq!(Mode::from_str(" kanji "), Ok(Mode::Kanji));
+        assert!(Mode::from_str("text").is_err());
     }
 }
 

@@ -264,7 +264,7 @@ impl Bits {
                 self.push_number(5, (eci_designator >> 16).as_u16());
                 self.push_number(16, (eci_designator & 0xffff).as_u16());
             }
-            _ => return Err(QrError::InvalidEciDesignator),
+            _ => return Err(QrError::InvalidEciDesignator { value: eci_designator }),
         }
         Ok(())
     }
@@ -299,7 +299,10 @@ mod eci_tests {
     #[test]
     fn test_invalid_designator() {
         let mut bits = Bits::new(Version::Normal(1));
-        assert_eq!(bits.push_eci_designator(1000000), Err(QrError::InvalidEciDesignator));
+        assert_eq!(
+            bits.push_eci_designator(1000000),
+            Err(QrError::InvalidEciDesignator { value: 1000000 })
+        );
     }
 
     #[test]
@@ -534,9 +537,9 @@ impl Bits {
     /// double-byte data (e.g. if the length of data is not an even number).
     pub fn push_kanji_data(&mut self, data: &[u8]) -> QrResult<()> {
         self.push_header(Mode::Kanji, data.len() / 2)?;
-        for kanji in data.chunks(2) {
+        for (i, kanji) in data.chunks(2).enumerate() {
             if kanji.len() != 2 {
-                return Err(QrError::InvalidCharacter);
+                return Err(QrError::InvalidCharacter { position: i * 2, byte: kanji[0] });
             }
             let cp = u16::from(kanji[0]) * 256 + u16::from(kanji[1]);
             let bytes = if cp < 0xe040 { cp - 0x8140 } else { cp - 0xc140 };

@@ -39,10 +39,11 @@ pub mod ec;
 pub mod optimize;
 pub mod render;
 pub mod types;
-pub use crate::types::{Color, EcLevel, QrResult, Version};
+pub use crate::types::{Color, EcLevel, Mode, QrError, QrResult, Version};
 
 use crate::cast::As;
 use crate::render::{Pixel, Renderer};
+use std::iter::FusedIterator;
 use std::ops::Index;
 
 /// The encoded QR code symbol.
@@ -265,6 +266,158 @@ impl QrCode {
     }
 }
 
+impl QrCode {
+    /// Creates a [`QrCodeBuilder`] for configuring and constructing a QR code.
+    ///
+    /// This is an ergonomic alternative to the `with_*` constructors. The
+    /// builder uses the same encoding paths, so its output is identical to the
+    /// equivalent constructor.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::{QrCode, EcLevel};
+    ///
+    /// let code = QrCode::builder(b"https://example.com")
+    ///     .ec_level(EcLevel::H)
+    ///     .build()
+    ///     .unwrap();
+    /// # let _ = code;
+    /// ```
+    pub fn builder<D: AsRef<[u8]>>(data: D) -> QrCodeBuilder<D> {
+        QrCodeBuilder::new(data)
+    }
+
+    /// Returns an iterator yielding one [`Row`] of modules at a time.
+    ///
+    /// Each row iterates over the module [`Color`]s from left to right. The
+    /// quiet zone is *not* included.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::QrCode;
+    ///
+    /// let code = QrCode::new(b"hi").unwrap();
+    /// for row in code.rows() {
+    ///     for color in row {
+    ///         # let _ = color;
+    ///     }
+    /// }
+    /// ```
+    pub fn rows(&self) -> Rows<'_> {
+        Rows { code: self, y: 0 }
+    }
+
+    /// Returns an iterator over the `(x, y)` coordinates of every dark module,
+    /// convenient for custom rendering. The quiet zone is *not* included.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::QrCode;
+    ///
+    /// let code = QrCode::new(b"hi").unwrap();
+    /// let dark_count = code.dark_modules().count();
+    /// # let _ = dark_count;
+    /// ```
+    pub fn dark_modules(&self) -> DarkModules<'_> {
+        DarkModules { code: self, idx: 0 }
+    }
+
+    /// Encodes a URL, using high error correction (robust to print damage).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error only if the URL is too long to encode.
+    pub fn for_url<D: AsRef<[u8]>>(url: D) -> QrResult<Self> {
+        Self::with_error_correction_level(url, EcLevel::H)
+    }
+
+    /// Encodes plain text at the default (medium) error correction level.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error only if the text is too long to encode.
+    pub fn for_text<D: AsRef<[u8]>>(text: D) -> QrResult<Self> {
+        Self::new(text)
+    }
+
+    /// Encodes a WiFi configuration that most phone cameras will offer to join.
+    ///
+    /// `auth` is one of `WPA`, `WEP` or `nopass`. Special characters in the
+    /// SSID/password are backslash-escaped per the WiFi QR specification.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the resulting payload is too long to encode.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::QrCode;
+    ///
+    /// let code = QrCode::for_wifi("MyNetwork", "p\\a;ss", "WPA").unwrap();
+    /// # let _ = code;
+    /// ```
+    pub fn for_wifi(ssid: &str, password: &str, auth: &str) -> QrResult<Self> {
+        let mut payload = String::from("WIFI:T:");
+        payload.push_str(auth);
+        payload.push_str(";S:");
+        push_escaped_wifi(&mut payload, ssid);
+        payload.push_str(";P:");
+        push_escaped_wifi(&mut payload, password);
+        payload.push_str(";;");
+        Self::new(payload)
+    }
+
+    /// Encodes a minimal vCard 3.0 contact card.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the resulting payload is too long to encode.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::QrCode;
+    ///
+    /// let code = QrCode::for_vcard("John Doe", "+1234567890", "john@example.com").unwrap();
+    /// # let _ = code;
+    /// ```
+    pub fn for_vcard(name: &str, phone: &str, email: &str) -> QrResult<Self> {
+        let vcard = format!(
+            "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:{name}\r\nTEL:{phone}\r\nEMAIL:{email}\r\nEND:VCARD\r\n"
+        );
+        Self::new(vcard)
+    }
+
+    /// Encodes `data` forced into a single `mode` at a pinned version. Used by
+    /// [`QrCodeBuilder::build`] when both a version and an encoding-mode hint
+    /// are set.
+    fn with_mode<D: AsRef<[u8]>>(data: D, version: Version, ec_level: EcLevel, mode: Mode) -> QrResult<Self> {
+        let mut bits = bits::Bits::new(version);
+        match mode {
+            Mode::Numeric => bits.push_numeric_data(data.as_ref())?,
+            Mode::Alphanumeric => bits.push_alphanumeric_data(data.as_ref())?,
+            Mode::Byte => bits.push_byte_data(data.as_ref())?,
+            Mode::Kanji => bits.push_kanji_data(data.as_ref())?,
+        }
+        bits.push_terminator(ec_level)?;
+        Self::with_bits(bits, ec_level)
+    }
+}
+
+/// Backslash-escapes the characters that are special in a WiFi QR payload.
+fn push_escaped_wifi(out: &mut String, s: &str) {
+    for c in s.chars() {
+        if matches!(c, ';' | ',' | '"' | '\\' | ':') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+}
+
 impl Index<(usize, usize)> for QrCode {
     type Output = Color;
 
@@ -273,6 +426,198 @@ impl Index<(usize, usize)> for QrCode {
         &self.content[index]
     }
 }
+
+//------------------------------------------------------------------------------
+//{{{ QrCodeBuilder
+
+/// A builder for [`QrCode`], offering ergonomic, chainable configuration.
+///
+/// Construct one with [`QrCode::builder`]. The builder delegates to the
+/// existing constructors, so its output is identical to calling them directly.
+#[derive(Clone, Debug)]
+pub struct QrCodeBuilder<D: AsRef<[u8]>> {
+    data: D,
+    ec_level: EcLevel,
+    version: Option<Version>,
+    micro: bool,
+    mode_hint: Option<Mode>,
+}
+
+impl<D: AsRef<[u8]>> QrCodeBuilder<D> {
+    fn new(data: D) -> Self {
+        Self { data, ec_level: EcLevel::M, version: None, micro: false, mode_hint: None }
+    }
+
+    /// Sets the error correction level (default [`EcLevel::M`]).
+    #[must_use]
+    pub fn ec_level(mut self, ec_level: EcLevel) -> Self {
+        self.ec_level = ec_level;
+        self
+    }
+
+    /// Pins a specific QR [`Version`]. When set, `build()` behaves like
+    /// [`QrCode::with_version`]. If [`micro`](Self::micro) is also set, the
+    /// explicit version takes precedence.
+    #[must_use]
+    pub fn version(mut self, version: Version) -> Self {
+        self.version = Some(version);
+        self
+    }
+
+    /// Requests a Micro QR code (the smallest fitting Micro version), behaving
+    /// like [`QrCode::micro_with_error_correction_level`] when no explicit
+    /// [`version`](Self::version) is set.
+    #[must_use]
+    pub fn micro(mut self, yes: bool) -> Self {
+        self.micro = yes;
+        self
+    }
+
+    /// Hints the encoding [`Mode`] (e.g. [`Mode::Byte`]). Best-effort: it is
+    /// honored only when a [`version`](Self::version) is also set; otherwise
+    /// automatic mode optimization is used.
+    #[must_use]
+    pub fn encoding_mode(mut self, mode: Mode) -> Self {
+        self.mode_hint = Some(mode);
+        self
+    }
+
+    /// Builds the [`QrCode`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates any [`QrError`](crate::QrError) from the underlying encoder
+    /// (e.g. data too long, or an incompatible version / error-correction
+    /// combination).
+    pub fn build(self) -> QrResult<QrCode> {
+        if let Some(version) = self.version {
+            if let Some(mode) = self.mode_hint {
+                return QrCode::with_mode(self.data, version, self.ec_level, mode);
+            }
+            return QrCode::with_version(self.data, version, self.ec_level);
+        }
+        if self.micro {
+            return QrCode::micro_with_error_correction_level(self.data, self.ec_level);
+        }
+        QrCode::with_error_correction_level(self.data, self.ec_level)
+    }
+}
+
+//}}}
+//------------------------------------------------------------------------------
+//{{{ Module iterators
+
+/// Iterator over the rows of a [`QrCode`], created by [`QrCode::rows`].
+pub struct Rows<'a> {
+    code: &'a QrCode,
+    y: usize,
+}
+
+impl<'a> Iterator for Rows<'a> {
+    type Item = Row<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let w = self.code.width;
+        if self.y < w {
+            let row = Row { code: self.code, y: self.y, x: 0 };
+            self.y += 1;
+            Some(row)
+        } else {
+            None
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let rem = self.code.width - self.y;
+        (rem, Some(rem))
+    }
+}
+
+impl<'a> ExactSizeIterator for Rows<'a> {
+    fn len(&self) -> usize {
+        self.code.width - self.y
+    }
+}
+
+impl<'a> FusedIterator for Rows<'a> {}
+
+/// A single row of modules, yielded by [`Rows`]. Iterates over [`Color`]s from
+/// left to right (quiet zone excluded).
+pub struct Row<'a> {
+    code: &'a QrCode,
+    y: usize,
+    x: usize,
+}
+
+impl<'a> Row<'a> {
+    /// The number of modules in this row.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.code.width
+    }
+
+    /// Whether the row is empty (always `false` for a valid QR code).
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.code.width == 0
+    }
+}
+
+impl<'a> Iterator for Row<'a> {
+    type Item = Color;
+
+    fn next(&mut self) -> Option<Color> {
+        let w = self.code.width;
+        if self.x < w {
+            let color = self.code.content[self.y * w + self.x];
+            self.x += 1;
+            Some(color)
+        } else {
+            None
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let rem = self.code.width - self.x;
+        (rem, Some(rem))
+    }
+}
+
+impl<'a> ExactSizeIterator for Row<'a> {
+    fn len(&self) -> usize {
+        self.code.width - self.x
+    }
+}
+
+impl<'a> FusedIterator for Row<'a> {}
+
+/// Iterator over the `(x, y)` coordinates of every dark module in a [`QrCode`],
+/// created by [`QrCode::dark_modules`].
+pub struct DarkModules<'a> {
+    code: &'a QrCode,
+    idx: usize,
+}
+
+impl<'a> Iterator for DarkModules<'a> {
+    type Item = (usize, usize);
+
+    fn next(&mut self) -> Option<(usize, usize)> {
+        let w = self.code.width;
+        let content = &self.code.content;
+        while self.idx < content.len() {
+            let i = self.idx;
+            self.idx += 1;
+            if content[i] == Color::Dark {
+                return Some((i % w, i / w));
+            }
+        }
+        None
+    }
+}
+
+impl<'a> FusedIterator for DarkModules<'a> {}
+
+//}}}
 
 #[cfg(test)]
 mod tests {
@@ -329,6 +674,125 @@ mod tests {
              ...#.#....##.\n\
              ###.#..##.###"
         );
+    }
+}
+
+#[cfg(test)]
+mod api_tests {
+    use crate::{Color, EcLevel, Mode, QrCode, Version};
+
+    fn colors(code: &QrCode) -> Vec<Color> {
+        code.to_colors()
+    }
+
+    #[test]
+    fn builder_matches_with_error_correction_level() {
+        let direct = QrCode::with_error_correction_level(b"Some data", EcLevel::H).unwrap();
+        let built = QrCode::builder(b"Some data").ec_level(EcLevel::H).build().unwrap();
+        assert_eq!(colors(&direct), colors(&built));
+        assert_eq!(direct.version(), built.version());
+        assert_eq!(direct.error_correction_level(), built.error_correction_level());
+    }
+
+    #[test]
+    fn builder_matches_with_version() {
+        let direct = QrCode::with_version(b"Some data", Version::Normal(1), EcLevel::M).unwrap();
+        let built = QrCode::builder(b"Some data").version(Version::Normal(1)).build().unwrap();
+        assert_eq!(colors(&direct), colors(&built));
+    }
+
+    #[test]
+    fn builder_micro_matches() {
+        let direct = QrCode::micro_with_error_correction_level(b"123", EcLevel::L).unwrap();
+        let built = QrCode::builder(b"123").ec_level(EcLevel::L).micro(true).build().unwrap();
+        assert_eq!(colors(&direct), colors(&built));
+        assert!(built.version().is_micro());
+    }
+
+    #[test]
+    fn builder_version_wins_over_micro() {
+        let built = QrCode::builder(b"01234567")
+            .version(Version::Micro(2))
+            .micro(true)
+            .build()
+            .unwrap();
+        assert_eq!(built.version(), Version::Micro(2));
+    }
+
+    #[test]
+    fn builder_forces_byte_mode() {
+        // Forcing Byte mode on digits must differ from the optimal (Numeric) mode.
+        let optimal = QrCode::builder(b"01234567").version(Version::Normal(2)).build().unwrap();
+        let byte = QrCode::builder(b"01234567")
+            .version(Version::Normal(2))
+            .encoding_mode(Mode::Byte)
+            .build()
+            .unwrap();
+        assert_ne!(colors(&optimal), colors(&byte));
+    }
+
+    #[test]
+    fn rows_iterate_full_grid() {
+        let code = QrCode::new(b"hello").unwrap();
+        let w = code.width();
+        let rows: Vec<Vec<Color>> = code.rows().map(|r| r.collect()).collect();
+        assert_eq!(rows.len(), w);
+        assert!(rows.iter().all(|r| r.len() == w));
+        for y in 0..w {
+            for x in 0..w {
+                assert_eq!(rows[y][x], code[(x, y)]);
+            }
+        }
+    }
+
+    #[test]
+    fn rows_exact_size() {
+        let code = QrCode::new(b"hello").unwrap();
+        let mut rows = code.rows();
+        let total = rows.len();
+        let mut counted = 0;
+        while rows.next().is_some() {
+            counted += 1;
+            assert_eq!(rows.len(), total - counted);
+        }
+    }
+
+    #[test]
+    fn dark_modules_match_indexed_dark_cells() {
+        let code = QrCode::new(b"hello").unwrap();
+        let w = code.width();
+        let expected: Vec<(usize, usize)> = (0..w)
+            .flat_map(|y| (0..w).map(move |x| (x, y)))
+            .filter(|&(x, y)| code[(x, y)] == Color::Dark)
+            .collect();
+        let actual: Vec<(usize, usize)> = code.dark_modules().collect();
+        // dark_modules scans in row-major order, matching the construction above.
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn for_url_uses_high_ec() {
+        let code = QrCode::for_url(b"https://example.com").unwrap();
+        assert_eq!(code.error_correction_level(), EcLevel::H);
+    }
+
+    #[test]
+    fn wifi_escape_helper() {
+        let mut out = String::new();
+        super::push_escaped_wifi(&mut out, "a;b,c\"d\\e:f");
+        assert_eq!(out, "a\\;b\\,c\\\"d\\\\e\\:f");
+    }
+
+    #[test]
+    fn for_wifi_encodes_with_special_chars() {
+        let code = QrCode::for_wifi("My;Net", "a,b", "WPA").unwrap();
+        assert!(code.width() > 0);
+    }
+
+    #[test]
+    fn for_vcard_encodes() {
+        let code = QrCode::for_vcard("John Doe", "+1234567890", "john@example.com").unwrap();
+        assert!(code.width() > 0);
     }
 }
 

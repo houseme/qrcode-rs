@@ -1,5 +1,5 @@
 use qrcode_rs::bits::{self, Bits};
-use qrcode_rs::{EcLevel, QrCode, Version};
+use qrcode_rs::{EcLevel, QrCode, QrError, Version};
 
 #[test]
 fn test_max_version_qr_v40() {
@@ -110,4 +110,40 @@ fn test_encode_auto_micro_function() {
     let bits = bits::encode_auto_micro(b"12345", EcLevel::L).unwrap();
     let code = QrCode::with_bits(bits, EcLevel::L).unwrap();
     assert!(code.version().is_micro());
+}
+
+#[test]
+fn test_enriched_invalid_eci_designator() {
+    let mut bits = Bits::new(Version::Normal(1));
+    assert_eq!(
+        bits.push_eci_designator(1_000_000),
+        Err(QrError::InvalidEciDesignator { value: 1_000_000 })
+    );
+}
+
+#[test]
+fn test_enriched_invalid_character_kanji() {
+    // An odd-length (single trailing byte) Shift-JIS payload reports position + byte.
+    let mut bits = Bits::new(Version::Normal(5));
+    assert_eq!(
+        bits.push_kanji_data(b"\x93"),
+        Err(QrError::InvalidCharacter { position: 0, byte: 0x93 })
+    );
+}
+
+#[test]
+fn test_enriched_invalid_version_carries_context() {
+    // Micro QR does not support error correction level H.
+    let err = match QrCode::with_version(b"0", Version::Micro(2), EcLevel::H) {
+        Ok(_) => panic!("expected an error for Micro(2) + EcLevel::H"),
+        Err(e) => e,
+    };
+    assert!(
+        matches!(err, QrError::InvalidVersion { version: Version::Micro(2), ec_level: EcLevel::H }),
+        "expected enriched InvalidVersion, got: {err:?}"
+    );
+    // Display must surface the context.
+    let msg = format!("{err}");
+    assert!(msg.contains("Micro(2)") || msg.contains("Micro"));
+    assert!(msg.contains("H"));
 }
