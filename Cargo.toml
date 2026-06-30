@@ -76,6 +76,10 @@ required-features = ["image"]
 name = "cli_tool"
 required-features = ["cli"]
 
+[[example]]
+name = "accessible_svg"
+required-features = ["svg"]
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
