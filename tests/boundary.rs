@@ -115,20 +115,14 @@ fn test_encode_auto_micro_function() {
 #[test]
 fn test_enriched_invalid_eci_designator() {
     let mut bits = Bits::new(Version::Normal(1));
-    assert_eq!(
-        bits.push_eci_designator(1_000_000),
-        Err(QrError::InvalidEciDesignator { value: 1_000_000 })
-    );
+    assert_eq!(bits.push_eci_designator(1_000_000), Err(QrError::InvalidEciDesignator { value: 1_000_000 }));
 }
 
 #[test]
 fn test_enriched_invalid_character_kanji() {
     // An odd-length (single trailing byte) Shift-JIS payload reports position + byte.
     let mut bits = Bits::new(Version::Normal(5));
-    assert_eq!(
-        bits.push_kanji_data(b"\x93"),
-        Err(QrError::InvalidCharacter { position: 0, byte: 0x93 })
-    );
+    assert_eq!(bits.push_kanji_data(b"\x93"), Err(QrError::InvalidCharacter { position: 0, byte: 0x93 }));
 }
 
 #[test]

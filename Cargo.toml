@@ -28,7 +28,7 @@ image = "0.25.10"
 
 [features]
 default = ["image", "svg", "pic", "eps", "html", "pdf"]
-image = ["dep:image"]
+image = ["dep:image", "image/png"]
 svg = []
 pic = []
 eps = []
@@ -67,6 +67,14 @@ required-features = ["pic"]
 [[example]]
 name = "encode_html"
 required-features = ["html"]
+
+[[example]]
+name = "custom_colors"
+required-features = ["image"]
+
+[[example]]
+name = "cli_tool"
+required-features = ["cli"]
 
 [package.metadata.docs.rs]
 all-features = true

@@ -299,10 +299,7 @@ mod eci_tests {
     #[test]
     fn test_invalid_designator() {
         let mut bits = Bits::new(Version::Normal(1));
-        assert_eq!(
-            bits.push_eci_designator(1000000),
-            Err(QrError::InvalidEciDesignator { value: 1000000 })
-        );
+        assert_eq!(bits.push_eci_designator(1000000), Err(QrError::InvalidEciDesignator { value: 1000000 }));
     }
 
     #[test]

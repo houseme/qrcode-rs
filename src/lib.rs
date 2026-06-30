@@ -386,9 +386,7 @@ impl QrCode {
     /// # let _ = code;
     /// ```
     pub fn for_vcard(name: &str, phone: &str, email: &str) -> QrResult<Self> {
-        let vcard = format!(
-            "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:{name}\r\nTEL:{phone}\r\nEMAIL:{email}\r\nEND:VCARD\r\n"
-        );
+        let vcard = format!("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:{name}\r\nTEL:{phone}\r\nEMAIL:{email}\r\nEND:VCARD\r\n");
         Self::new(vcard)
     }
 
@@ -711,11 +709,7 @@ mod api_tests {
 
     #[test]
     fn builder_version_wins_over_micro() {
-        let built = QrCode::builder(b"01234567")
-            .version(Version::Micro(2))
-            .micro(true)
-            .build()
-            .unwrap();
+        let built = QrCode::builder(b"01234567").version(Version::Micro(2)).micro(true).build().unwrap();
         assert_eq!(built.version(), Version::Micro(2));
     }
 
@@ -723,11 +717,7 @@ mod api_tests {
     fn builder_forces_byte_mode() {
         // Forcing Byte mode on digits must differ from the optimal (Numeric) mode.
         let optimal = QrCode::builder(b"01234567").version(Version::Normal(2)).build().unwrap();
-        let byte = QrCode::builder(b"01234567")
-            .version(Version::Normal(2))
-            .encoding_mode(Mode::Byte)
-            .build()
-            .unwrap();
+        let byte = QrCode::builder(b"01234567").version(Version::Normal(2)).encoding_mode(Mode::Byte).build().unwrap();
         assert_ne!(colors(&optimal), colors(&byte));
     }
 
@@ -761,10 +751,8 @@ mod api_tests {
     fn dark_modules_match_indexed_dark_cells() {
         let code = QrCode::new(b"hello").unwrap();
         let w = code.width();
-        let expected: Vec<(usize, usize)> = (0..w)
-            .flat_map(|y| (0..w).map(move |x| (x, y)))
-            .filter(|&(x, y)| code[(x, y)] == Color::Dark)
-            .collect();
+        let expected: Vec<(usize, usize)> =
+            (0..w).flat_map(|y| (0..w).map(move |x| (x, y))).filter(|&(x, y)| code[(x, y)] == Color::Dark).collect();
         let actual: Vec<(usize, usize)> = code.dark_modules().collect();
         // dark_modules scans in row-major order, matching the construction above.
         assert_eq!(expected, actual);

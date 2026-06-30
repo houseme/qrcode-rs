@@ -15,15 +15,11 @@
 //! # Example
 //!
 //! ```
-//! use qrcode_rs::QrCode;
-//! use qrcode_rs::render::svg;
+//! use qrcode_rs::render::colors::hex_to_rgb;
 //!
-//! let code = QrCode::new(b"Hello").unwrap();
-//! // SVG/HTML accept any CSS color string directly.
-//! let svg = code.render::<svg::Color>()
-//!     .dark_color(svg::Color("#1a1a2e"))
-//!     .light_color(svg::Color("#e0e0e0"))
-//!     .build();
+//! // Works under any feature combination (no renderer backend required).
+//! assert_eq!(hex_to_rgb("#1a1a2e"), Some((0x1a, 0x1a, 0x2e)));
+//! assert_eq!(hex_to_rgb("invalid"), None);
 //! ```
 
 /// Parses a `#rrggbb` or `#rrggbbaa` hex color string into RGB or RGBA bytes.

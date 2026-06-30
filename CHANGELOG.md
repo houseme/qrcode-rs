@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.4.0] - 2026-07-01
+
+### Added
+
+- `qrencodes` CLI: a full command-line generator behind the new opt-in `cli`
+  feature (`clap`-based, zero-dependency library by default). Supports all
+  output formats (`string`, `unicode`, `ansi`, `svg`, `png`, `eps`, `pic`,
+  `html`, `pdf`), error-correction level, QR/Micro version, module size,
+  quiet zone, `--dark`/`--light` colors, `--invert`, `--unicode-mode`, stdin
+  input, and `--batch` (one QR per line)
+- `QrCode::builder(data)` builder with `.ec_level()`, `.version()`, `.micro()`,
+  `.encoding_mode()` and `.build()`, delegating to the existing encoders
+- Convenience constructors: `QrCode::for_url`, `for_wifi`, `for_vcard`,
+  `for_text`
+- Module iterators: `QrCode::rows()` (yielding `Row`) and
+  `QrCode::dark_modules()` (yielding `(x, y)` coordinates), zero-allocation
+- `FromStr` implementations for `EcLevel`, `Version` (`1..=40`, `M1..M4`) and
+  `Mode`, plus a public `EnumParseError` type
+- New examples: `encode_kanji`, `encode_eci`, `encode_fnc1`, `custom_colors`,
+  `error_handling`, `cli_tool`, `structured_append`
+- `QrError` re-exported at the crate root
+
+### Changed
+
+- `QrError` is now `#[non_exhaustive]` and its variants carry structured,
+  `Copy` context: `InvalidVersion { version, ec_level }`,
+  `InvalidEciDesignator { value }`, `InvalidCharacter { position, byte }`.
+  `Display` messages now include this context. (Variant shapes changed — a
+  source-breaking change permitted at 0.x.)
+- The `image` feature now enables the PNG codec (`image/png`) so that
+  `encode_to_format(ImageFormat::Png)` and the CLI `-f png` actually work
+
+### Fixed
+
+- `render::colors` module doc example no longer requires the `svg` feature,
+  so `cargo test --no-default-features` is clean
+
+### Notes
+
+- WASM playground and `validate` subcommand (roadmap §5) are deferred to their
+  scheduled versions (v1.1.0 / v1.4.0); i18n error messages are deferred in
+  favor of the enriched English `Display`
+
 ## [0.3.0] - 2026-06-11
 
 ### Added
