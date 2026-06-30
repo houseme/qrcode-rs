@@ -141,6 +141,59 @@ impl<'a> Canvas<'a> {
     }
 }
 
+/// Injects custom attributes into the QR container element (`<table>` in
+/// [`Mode::Table`], `<div>` in [`Mode::Grid`]). If no container is found the
+/// input is returned unchanged.
+///
+/// # Example
+///
+/// ```
+/// use qrcode_rs::QrCode;
+/// use qrcode_rs::render::html::{self, Color};
+///
+/// let code = QrCode::new(b"Hello").unwrap();
+/// let html = code.render::<Color>().build();
+/// let html = html::inject_attributes(&html, &[("class", "qr")]);
+/// assert!(html.contains(r#"<table class="qr""#));
+/// ```
+pub fn inject_attributes(html: &str, attrs: &[(&str, &str)]) -> String {
+    let Some(start) = html.find("<table").or_else(|| html.find("<div")) else {
+        return html.to_owned();
+    };
+    let Some(close) = html[start..].find('>').map(|p| start + p) else {
+        return html.to_owned();
+    };
+    let mut result = String::with_capacity(html.len() + attrs.len() * 16);
+    result.push_str(&html[..close]);
+    for (key, value) in attrs {
+        result.push(' ');
+        result.push_str(key);
+        result.push_str(r#"=""#);
+        result.push_str(value);
+        result.push('"');
+    }
+    result.push_str(&html[close..]);
+    result
+}
+
+/// Adds screen-reader accessibility attributes (`role="img"` and
+/// `aria-label="<label>"`) to the QR container element.
+///
+/// # Example
+///
+/// ```
+/// use qrcode_rs::QrCode;
+/// use qrcode_rs::render::html::{self, Color};
+///
+/// let code = QrCode::new(b"Hello").unwrap();
+/// let html = code.render::<Color>().build();
+/// let html = html::aria_label(&html, "QR code saying Hello");
+/// assert!(html.contains(r#"aria-label="QR code saying Hello""#));
+/// ```
+pub fn aria_label(html: &str, label: &str) -> String {
+    inject_attributes(html, &[("role", "img"), ("aria-label", label)])
+}
+
 #[cfg(test)]
 mod tests {
     use crate::QrCode;
@@ -163,5 +216,17 @@ mod tests {
         let html = code.render::<Color>().dark_color(Color("#333")).light_color(Color("#eee")).build();
         assert!(html.contains("#333"));
         assert!(html.contains("#eee"));
+    }
+
+    #[test]
+    fn test_aria_label_injected_into_container() {
+        let code = QrCode::new(b"Hi").unwrap();
+        let html = code.render::<Color>().build();
+        let html = super::aria_label(&html, "a QR code");
+        // both attributes land inside the <table …> opening tag
+        let start = html.find("<table").unwrap();
+        let tag_end = start + html[start..].find('>').unwrap();
+        assert!(html[start..tag_end].contains(r#"role="img""#));
+        assert!(html[start..tag_end].contains(r#"aria-label="a QR code""#));
     }
 }

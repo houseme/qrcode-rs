@@ -151,6 +151,25 @@ pub fn inject_attributes(svg: &str, attrs: &[(&str, &str)]) -> String {
     result
 }
 
+/// Adds screen-reader accessibility attributes to the root `<svg>` element:
+/// `role="img"` and `aria-label="<label>"`.
+///
+/// # Example
+///
+/// ```
+/// use qrcode_rs::QrCode;
+/// use qrcode_rs::render::svg::{self, Color};
+///
+/// let code = QrCode::new(b"Hello").unwrap();
+/// let svg = code.render::<Color>().build();
+/// let svg = svg::aria_label(&svg, "QR code saying Hello");
+/// assert!(svg.contains(r#"role="img""#));
+/// assert!(svg.contains(r#"aria-label="QR code saying Hello""#));
+/// ```
+pub fn aria_label(svg: &str, label: &str) -> String {
+    inject_attributes(svg, &[("role", "img"), ("aria-label", label)])
+}
+
 /// Rounds the corners of rectangular path segments in an SVG string.
 ///
 /// This post-processes the SVG output from `render::<svg::Color>().build()`,
