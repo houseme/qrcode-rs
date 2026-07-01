@@ -14,7 +14,7 @@
 //! construct a [`Bits`] manually for advanced use cases like ECI designators
 //! or FNC1 patterns.
 
-use std::cmp::min;
+use core::cmp::min;
 
 use crate::cast::{As, Truncate};
 use crate::optimize::{Optimizer, Parser, Segment, total_encoded_len};

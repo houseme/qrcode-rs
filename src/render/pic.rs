@@ -13,7 +13,7 @@
 
 #![cfg(feature = "pic")]
 
-use std::fmt::Write;
+use core::fmt::Write;
 
 use crate::render::{Canvas as RenderCanvas, Pixel};
 use crate::types::Color as ModuleColor;

@@ -44,8 +44,8 @@ pub use crate::types::{Color, EcLevel, Mode, QrError, QrResult, Version};
 
 use crate::cast::As;
 use crate::render::{Pixel, Renderer};
-use std::iter::FusedIterator;
-use std::ops::Index;
+use core::iter::FusedIterator;
+use core::ops::Index;
 
 /// The encoded QR code symbol.
 ///

@@ -27,7 +27,7 @@
 //! [`draw_data`]: Canvas::draw_data
 //! [`apply_best_mask`]: Canvas::apply_best_mask
 
-use std::cmp::max;
+use core::cmp::max;
 
 use crate::cast::As;
 use crate::types::{Color, EcLevel, Version};

@@ -2,10 +2,10 @@
 //! [`QrError`] / [`QrResult`] error types, and string-parsing helpers.
 
 use crate::cast::As;
-use std::cmp::{Ordering, PartialOrd};
-use std::fmt::{Display, Error, Formatter};
-use std::ops::Not;
-use std::str::FromStr;
+use core::cmp::{Ordering, PartialOrd};
+use core::fmt::{Display, Error, Formatter};
+use core::ops::Not;
+use core::str::FromStr;
 
 //------------------------------------------------------------------------------
 //{{{ QrResult
@@ -69,7 +69,7 @@ impl Display for QrError {
     }
 }
 
-impl ::std::error::Error for QrError {}
+impl ::core::error::Error for QrError {}
 
 /// `QrResult` is a convenient alias for a QR code generation result.
 pub type QrResult<T> = Result<T, QrError>;
@@ -90,7 +90,7 @@ impl Display for EnumParseError {
     }
 }
 
-impl ::std::error::Error for EnumParseError {}
+impl ::core::error::Error for EnumParseError {}
 
 //}}}
 //------------------------------------------------------------------------------
@@ -169,7 +169,7 @@ impl FromStr for EcLevel {
     /// # Examples
     ///
     /// ```rust
-    /// use std::str::FromStr;
+    /// use core::str::FromStr;
     /// use qrcode_rs::types::EcLevel;
     /// assert_eq!(EcLevel::from_str("H"), Ok(EcLevel::H));
     /// assert_eq!(EcLevel::from_str("m"), Ok(EcLevel::M));
@@ -267,7 +267,7 @@ impl FromStr for Version {
     /// # Examples
     ///
     /// ```rust
-    /// use std::str::FromStr;
+    /// use core::str::FromStr;
     /// use qrcode_rs::types::Version;
     /// assert_eq!(Version::from_str("5"), Ok(Version::Normal(5)));
     /// assert_eq!(Version::from_str("M4"), Ok(Version::Micro(4)));
@@ -414,7 +414,7 @@ impl FromStr for Mode {
     /// # Examples
     ///
     /// ```rust
-    /// use std::str::FromStr;
+    /// use core::str::FromStr;
     /// use qrcode_rs::types::Mode;
     /// assert_eq!(Mode::from_str("Byte"), Ok(Mode::Byte));
     /// assert!(Mode::from_str("utf8").is_err());
@@ -432,7 +432,7 @@ impl FromStr for Mode {
 
 #[cfg(test)]
 mod parse_tests {
-    use std::str::FromStr;
+    use core::str::FromStr;
 
     use crate::types::{Color, EcLevel, EnumParseError, Mode, Version};
 
@@ -467,7 +467,7 @@ mod parse_tests {
     fn test_color_repr() {
         assert_eq!(Color::Light as u8, 0);
         assert_eq!(Color::Dark as u8, 1);
-        assert_eq!(std::mem::size_of::<Color>(), 1);
+        assert_eq!(core::mem::size_of::<Color>(), 1);
     }
 }
 

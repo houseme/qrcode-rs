@@ -243,7 +243,7 @@ fn encode_braille(rows: &[&[u8]], col: usize) -> &'static str {
 
     let bits = d1 | (d2 << 1) | (d3 << 2) | (d4 << 3) | (d5 << 4) | (d6 << 5) | (d7 << 6) | (d8 << 7);
     // SAFETY: BRAILLE_UTF8[bits] is valid UTF-8 for U+2800+bits.
-    unsafe { std::str::from_utf8_unchecked(&BRAILLE_UTF8[bits as usize]) }
+    unsafe { core::str::from_utf8_unchecked(&BRAILLE_UTF8[bits as usize]) }
 }
 
 impl_bit_canvas!(CanvasBraille, Braille, 4, 2, encode_braille as fn(&[&[u8]], usize) -> &'static str);
@@ -335,7 +335,7 @@ fn encode_3x2(rows: &[&[u8]], col: usize) -> &'static str {
         " "
     } else {
         // SAFETY: SEXTANT_UTF8[bits] is valid UTF-8 for U+1FB00+bits (bits > 0).
-        unsafe { std::str::from_utf8_unchecked(&SEXTANT_UTF8[bits as usize]) }
+        unsafe { core::str::from_utf8_unchecked(&SEXTANT_UTF8[bits as usize]) }
     }
 }
 

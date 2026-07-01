@@ -10,7 +10,7 @@
 //! transitions and selects the segmentation that produces the shortest
 //! bit stream for the target QR code version.
 use crate::types::{Mode, Version};
-use std::slice::Iter;
+use core::slice::Iter;
 
 //------------------------------------------------------------------------------
 //{{{ Segment

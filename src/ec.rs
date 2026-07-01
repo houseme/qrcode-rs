@@ -14,7 +14,7 @@
 //! The main entry point is [`construct_codewords`], which takes encoded data
 //! and produces the final data + error correction codewords ready for canvas placement.
 
-use std::ops::Deref;
+use core::ops::Deref;
 
 use crate::types::{EcLevel, QrResult, Version};
 

@@ -15,7 +15,7 @@
 
 #![cfg(feature = "html")]
 
-use std::marker::PhantomData;
+use core::marker::PhantomData;
 
 use crate::cast::As;
 use crate::render::{Canvas as RenderCanvas, Pixel};
