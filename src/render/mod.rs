@@ -60,7 +60,9 @@ pub trait Pixel: Copy + Sized {
 
 /// Rendering canvas of a QR code image.
 pub trait Canvas: Sized {
+    /// The pixel type stored in this canvas.
     type Pixel: Sized;
+    /// The finalized image type produced from this canvas.
     type Image: Sized;
 
     /// Constructs a new canvas of the given dimensions.
@@ -69,6 +71,8 @@ pub trait Canvas: Sized {
     /// Draws a single dark pixel at the (x, y) coordinate.
     fn draw_dark_pixel(&mut self, x: u32, y: u32);
 
+    /// Draws a filled dark rectangle covering the given module range. Default
+    /// implementation fills it pixel by pixel; override for a faster path.
     fn draw_dark_rect(&mut self, left: u32, top: u32, width: u32, height: u32) {
         for y in top..(top + height) {
             for x in left..(left + width) {

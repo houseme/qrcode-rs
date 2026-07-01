@@ -9,6 +9,7 @@ use crate::render::{Canvas as RenderCanvas, Color, Pixel};
 /// `ROW_GROUP` rows at a time with zero intermediate allocations.
 macro_rules! impl_bit_canvas {
     ($canvas:ident, $pixel:ident, $row_group:expr, $col_step:expr, $encode:expr) => {
+        #[doc(hidden)]
         pub struct $canvas {
             canvas: Vec<u8>,
             width: u32,
@@ -66,9 +67,13 @@ macro_rules! impl_bit_canvas {
 
 const CODEPAGE: [&str; 4] = [" ", "\u{2584}", "\u{2580}", "\u{2588}"];
 
+/// Unicode renderer packing 2 vertical pixels per character using half-block
+/// elements (U+2580–U+2588). Use with `QrCode::render::<Dense1x2>()`.
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Dense1x2 {
+    /// A dark module.
     Dark,
+    /// A light module.
     Light,
 }
 
@@ -124,9 +129,13 @@ const QUADRANT: [&str; 16] = [
     "\u{2588}", // 0b1111 full
 ];
 
+/// Unicode renderer packing a 2×2 block of pixels per character using
+/// quadrant elements (U+2596–U+259F).
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Dense2x2 {
+    /// A dark module.
     Dark,
+    /// A light module.
     Light,
 }
 
@@ -178,9 +187,13 @@ impl_bit_canvas!(Canvas2x2, Dense2x2, 2, 2, encode_2x2 as fn(&[&[u8]], usize) ->
 /// let text = code.render::<Braille>().module_dimensions(1, 1).build();
 /// println!("{}", text);
 /// ```
+/// Unicode renderer packing a 2×4 block of pixels per character using Braille
+/// patterns (U+2800–U+28FF) — the densest text output.
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Braille {
+    /// A dark module.
     Dark,
+    /// A light module.
     Light,
 }
 
@@ -261,9 +274,13 @@ impl_bit_canvas!(CanvasBraille, Braille, 4, 2, encode_braille as fn(&[&[u8]], us
 /// let text = code.render::<Dense3x2>().module_dimensions(1, 1).build();
 /// println!("{}", text);
 /// ```
+/// Unicode renderer packing a 3×2 block of pixels per character using
+/// sextant elements (U+1FB00–U+1FB3F).
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Dense3x2 {
+    /// A dark module.
     Dark,
+    /// A light module.
     Light,
 }
 

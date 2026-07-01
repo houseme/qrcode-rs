@@ -4,9 +4,16 @@ use crate::cast::As;
 use crate::render::{Canvas as RenderCanvas, Pixel};
 use crate::types::Color;
 
+/// A renderable character or string fragment used by the plain-text renderer.
+///
+/// Implemented for `char` and `&'static str` so a [`Renderer`](crate::render::Renderer)
+/// can be driven with either.
 pub trait Element: Copy {
+    /// Returns the default element for a dark or light module.
     fn default_color(color: Color) -> Self;
+    /// The length (in bytes/chars) of this element when rendered.
     fn strlen(self) -> usize;
+    /// Appends this element to `string`.
     fn append_to_string(self, string: &mut String);
 }
 

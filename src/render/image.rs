@@ -1,4 +1,8 @@
 #![cfg(feature = "image")]
+//! Image rendering via the [`image`] crate (PNG, JPEG, …).
+//!
+//! `QrCode::render::<image::Rgba<u8>>()` (or `Luma<u8>`, `Rgb<u8>`, …) produces
+//! an `image::ImageBuffer`, which can be saved or encoded with the `image` API.
 use crate::render::{Canvas, Pixel};
 use crate::types::Color;
 
@@ -170,8 +174,11 @@ pub enum GradientDirection {
 /// A linear gradient defined by two endpoint colors.
 #[derive(Copy, Clone, Debug)]
 pub struct Gradient {
+    /// Direction of the gradient across the image.
     pub direction: GradientDirection,
+    /// Color at the gradient's start position.
     pub start_color: Rgba<u8>,
+    /// Color at the gradient's end position.
     pub end_color: Rgba<u8>,
 }
 
