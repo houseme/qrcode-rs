@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.0] - 2026-07-01
+
+### Added
+
+- **Batch encoding**: `QrCode::batch(inputs, ec_level) -> QrResult<Vec<QrCode>>` — encodes many inputs at once, short-circuiting on the first error (no new deps; ~32ms/1000 short codes).
+- **Style templates**: `QrTemplate` (serde-derivable: dark/light hex colors, module size, quiet zone) with presets (`minimal`, `dark_mode`, `high_contrast`, `corporate`), applied via `Renderer::template` for `StyledPixel` backends.
+- `render::StyledPixel` trait (`from_hex`) implemented for the image RGB/RGBA, EPS, PDF, and ANSI backends.
+- `examples/batch_template.rs`.
+
+### Notes / deferred
+
+- `par_batch` (rayon), batch render-to-files / grid / packaging, streaming / CSV / JSON data sources, brand customization (logo / captions / color-scheme), and template inheritance / TOML-YAML loading are deferred (external crates / image-heavy / couple to deferred features).
+- Templates don't cover the borrowing `svg`/`html` backends (their color borrows the input) — apply those colors manually.
+
 ## [1.1.0] - 2026-07-01
 
 ### Added
