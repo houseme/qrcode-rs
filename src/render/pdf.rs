@@ -25,7 +25,7 @@ use alloc::{
 
 use core::fmt::Write;
 
-use crate::render::{Canvas as RenderCanvas, Pixel};
+use crate::render::{Canvas as RenderCanvas, Pixel, StyledPixel};
 use crate::types::Color as ModuleColor;
 
 /// A PDF color (`[R, G, B]`).
@@ -40,6 +40,13 @@ impl Pixel for Color {
 
     fn default_color(color: ModuleColor) -> Self {
         Self(color.select(Default::default(), [1.0; 3]))
+    }
+}
+
+impl StyledPixel for Color {
+    fn from_hex(hex: &str) -> Self {
+        let (r, g, b) = crate::render::colors::hex_to_rgb(hex).unwrap_or((0, 0, 0));
+        Self([r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0])
     }
 }
 

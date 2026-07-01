@@ -3,7 +3,7 @@
 //!
 //! `QrCode::render::<image::Rgba<u8>>()` (or `Luma<u8>`, `Rgb<u8>`, …) produces
 //! an `image::ImageBuffer`, which can be saved or encoded with the `image` API.
-use crate::render::{Canvas, Pixel};
+use crate::render::{Canvas, Pixel, StyledPixel};
 use crate::types::Color;
 
 use image::{DynamicImage, GenericImageView, ImageBuffer, Luma, LumaA, Primitive, Rgb, Rgba};
@@ -31,6 +31,20 @@ impl_pixel_for_image_pixel! { Luma<S>: p => [p] }
 impl_pixel_for_image_pixel! { LumaA<S>: p => [p, S::max_value()] }
 impl_pixel_for_image_pixel! { Rgb<S>: p => [p, p, p] }
 impl_pixel_for_image_pixel! { Rgba<S>: p => [p, p, p, S::max_value()] }
+
+impl StyledPixel for Rgb<u8> {
+    fn from_hex(hex: &str) -> Self {
+        let (r, g, b) = crate::render::colors::hex_to_rgb(hex).unwrap_or((0, 0, 0));
+        Rgb([r, g, b])
+    }
+}
+
+impl StyledPixel for Rgba<u8> {
+    fn from_hex(hex: &str) -> Self {
+        let (r, g, b) = crate::render::colors::hex_to_rgb(hex).unwrap_or((0, 0, 0));
+        Rgba([r, g, b, 255])
+    }
+}
 
 impl<P: image::Pixel + 'static> Canvas for (P, ImageBuffer<P, Vec<P::Subpixel>>) {
     type Pixel = P;

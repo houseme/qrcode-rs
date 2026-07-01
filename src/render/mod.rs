@@ -68,6 +68,19 @@ pub trait Pixel: Copy + Sized {
     fn default_color(color: Color) -> Self;
 }
 
+/// A [`Pixel`] constructible from a CSS-style hex color string (`"#rrggbb"` or
+/// `"#rgb"`), used by `Renderer::template` to apply a `QrTemplate`.
+///
+/// Implemented for the owned, styled backends (image RGB/RGBA, EPS, PDF, ANSI).
+/// The borrowing backends (`svg::Color`, `html::Color`) are not `StyledPixel`
+/// because their color borrows from the input and can't be stored generically;
+/// apply those colors manually instead.
+pub trait StyledPixel: Pixel {
+    /// Builds a pixel from a hex color string, falling back to black on an
+    /// unparseable value.
+    fn from_hex(hex: &str) -> Self;
+}
+
 /// Rendering canvas of a QR code image.
 pub trait Canvas: Sized {
     /// The pixel type stored in this canvas.

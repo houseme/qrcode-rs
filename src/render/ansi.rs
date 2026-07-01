@@ -33,7 +33,7 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::render::{Canvas as RenderCanvas, Pixel};
+use crate::render::{Canvas as RenderCanvas, Pixel, StyledPixel};
 use crate::types::Color as ModuleColor;
 
 /// An ANSI TrueColor (24-bit) pixel.
@@ -77,6 +77,13 @@ impl Pixel for Color {
             ModuleColor::Dark => Color::new(0, 0, 0),
             ModuleColor::Light => Color::new(255, 255, 255),
         }
+    }
+}
+
+impl StyledPixel for Color {
+    fn from_hex(hex: &str) -> Self {
+        let (r, g, b) = crate::render::colors::hex_to_rgb(hex).unwrap_or((0, 0, 0));
+        Color::new(r, g, b)
     }
 }
 
