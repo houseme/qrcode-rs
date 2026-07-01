@@ -138,7 +138,7 @@ pub fn rgba_to_css(r: u8, g: u8, b: u8, a: u8) -> String {
 /// A unified sRGBA color type for use across all render backends.
 ///
 /// `Srgba` provides a single type that can create colors for any renderer:
-/// SVG (CSS hex), ANSI (escape codes), EPS/PDF (0.0–1.0 arrays), image (Rgba<u8>).
+/// SVG (CSS hex), ANSI (escape codes), EPS/PDF (0.0–1.0 arrays), image (`Rgba<u8>`).
 ///
 /// # Example
 ///
@@ -153,9 +153,13 @@ pub fn rgba_to_css(r: u8, g: u8, b: u8, a: u8) -> String {
 /// ```
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Srgba {
+    /// Red component.
     pub r: u8,
+    /// Green component.
     pub g: u8,
+    /// Blue component.
     pub b: u8,
+    /// Alpha component (0 = transparent, 255 = opaque).
     pub a: u8,
 }
 

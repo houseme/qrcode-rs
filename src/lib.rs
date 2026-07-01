@@ -661,7 +661,7 @@ impl<D: AsRef<[u8]>> QrCodeBuilder<D> {
     ///
     /// # Errors
     ///
-    /// Propagates any [`QrError`](crate::QrError) from the underlying encoder
+    /// Propagates any [`QrError`] from the underlying encoder
     /// (e.g. data too long, or an incompatible version / error-correction
     /// combination).
     pub fn build(self) -> QrResult<QrCode> {

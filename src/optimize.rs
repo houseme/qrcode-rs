@@ -253,6 +253,8 @@ mod parse_tests {
 //------------------------------------------------------------------------------
 //{{{ Optimizer
 
+/// Iterator that greedily merges consecutive segments to minimize the total
+/// encoded length for a given [`Version`]. Created via [`Parser::optimize`].
 pub struct Optimizer<I> {
     parser: I,
     last_segment: Segment,
@@ -289,6 +291,8 @@ impl<I: Iterator<Item = Segment>> Optimizer<I> {
 }
 
 impl<'a> Parser<'a> {
+    /// Turns this parser into an [`Optimizer`] for `version`, which yields
+    /// optimally merged segments.
     pub fn optimize(self, version: Version) -> Optimizer<Parser<'a>> {
         Optimizer::new(self, version)
     }

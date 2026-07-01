@@ -1,3 +1,6 @@
+//! Core data types: module [`Color`], [`EcLevel`], [`Version`], [`Mode`], the
+//! [`QrError`] / [`QrResult`] error types, and string-parsing helpers.
+
 use crate::cast::As;
 use std::cmp::{Ordering, PartialOrd};
 use std::fmt::{Display, Error, Formatter};
@@ -19,7 +22,12 @@ pub enum QrError {
 
     /// The provided version / error correction level combination is invalid.
     /// Carries the offending [`Version`] and [`EcLevel`].
-    InvalidVersion { version: Version, ec_level: EcLevel },
+    InvalidVersion {
+        /// The version that was requested.
+        version: Version,
+        /// The error-correction level that was requested.
+        ec_level: EcLevel,
+    },
 
     /// Some characters in the data cannot be supported by the provided QR code
     /// version.
@@ -27,11 +35,19 @@ pub enum QrError {
 
     /// The provided ECI designator is invalid. Carries the offending `value`;
     /// a valid designator must be between 0 and 999999.
-    InvalidEciDesignator { value: u32 },
+    InvalidEciDesignator {
+        /// The invalid ECI designator value.
+        value: u32,
+    },
 
     /// A character not belonging to the character set is found. Carries the
     /// byte `position` (offset into the input) and the offending `byte` value.
-    InvalidCharacter { position: usize, byte: u8 },
+    InvalidCharacter {
+        /// Byte offset of the offending character within the input.
+        position: usize,
+        /// The offending byte value.
+        byte: u8,
+    },
 }
 
 impl Display for QrError {
