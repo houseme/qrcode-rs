@@ -20,6 +20,12 @@ fn bench_encode(c: &mut Criterion) {
             b.iter(|| QrCode::with_version(std::hint::black_box(b"hello"), Version::Normal(v), EcLevel::L).unwrap())
         });
     }
+
+    // Batch encoding of 1000 short inputs.
+    let batch_inputs: Vec<&[u8]> = (0..1000).map(|_| &b"hi"[..]).collect();
+    g.bench_function("batch_1000", |b| {
+        b.iter(|| QrCode::batch(std::hint::black_box(&batch_inputs), EcLevel::M).unwrap())
+    });
     g.finish();
 }
 

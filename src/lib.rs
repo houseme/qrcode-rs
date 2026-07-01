@@ -216,6 +216,25 @@ impl QrCode {
         Ok(Self { content: canvas.into_colors(), version, ec_level, width: version.width().as_usize() })
     }
 
+    /// Encodes many inputs at once at the given error-correction level, stopping
+    /// at the first input that fails to encode.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::{QrCode, EcLevel};
+    ///
+    /// let codes = QrCode::batch(&["alpha", "beta", "gamma"], EcLevel::M).unwrap();
+    /// assert_eq!(codes.len(), 3);
+    /// ```
+    pub fn batch<I, D>(inputs: I, ec_level: EcLevel) -> QrResult<Vec<Self>>
+    where
+        I: IntoIterator<Item = D>,
+        D: AsRef<[u8]>,
+    {
+        inputs.into_iter().map(|d| Self::with_error_correction_level(d, ec_level)).collect()
+    }
+
     /// Gets the version of this QR code.
     pub const fn version(&self) -> Version {
         self.version
@@ -1106,6 +1125,16 @@ mod api_tests {
         assert_eq!(borrowed.len(), code.width() * code.width());
         // matches the cloning accessor
         assert_eq!(borrowed, code.to_colors().as_slice());
+    }
+
+    #[test]
+    fn batch_encodes_many_and_short_circuits() {
+        let codes = QrCode::batch(vec![b"hi"; 1000], crate::EcLevel::M).unwrap();
+        assert_eq!(codes.len(), 1000);
+        // short-circuit: a 5000-byte input cannot fit even v40-L.
+        let huge: Vec<u8> = (0..5000).map(|i| (i % 256) as u8).collect();
+        let mixed: Vec<&[u8]> = vec![&b"ok"[..], &huge[..], &b"also ok"[..]];
+        assert!(QrCode::batch(mixed, crate::EcLevel::L).is_err());
     }
 
     #[test]
