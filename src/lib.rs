@@ -285,6 +285,33 @@ impl QrCode {
         }
     }
 
+    /// Returns diagnostic stats for this code: dark-module ratio and the split
+    /// between functional and data modules. Combine with [`QrCode::info`] for
+    /// version / capacity. Computed on demand (scans the grid).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::QrCode;
+    ///
+    /// let code = QrCode::new(b"hello").unwrap();
+    /// let a = code.analyze();
+    /// assert!(a.dark_ratio() > 0.0 && a.dark_ratio() < 1.0);
+    /// assert_eq!(a.functional_modules() + a.data_modules(), code.width() * code.width());
+    /// ```
+    #[must_use]
+    pub fn analyze(&self) -> Analysis {
+        let total = self.width * self.width;
+        let dark = self.content.iter().filter(|c| **c == Color::Dark).count();
+        let functional =
+            (0..self.width).map(|y| (0..self.width).filter(|x| self.is_functional(*x, y)).count()).sum::<usize>();
+        Analysis {
+            dark_ratio: if total == 0 { 0.0 } else { dark as f64 / total as f64 },
+            functional_modules: functional,
+            data_modules: total - functional,
+        }
+    }
+
     /// Checks whether a module at coordinate (x, y) is a functional module or
     /// not.
     pub fn is_functional(&self, x: usize, y: usize) -> bool {
@@ -815,6 +842,40 @@ impl QrCode {
 
 //}}}
 //------------------------------------------------------------------------------
+//{{{ Analysis
+
+/// Diagnostic stats for a constructed [`QrCode`], returned by [`QrCode::analyze`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct Analysis {
+    dark_ratio: f64,
+    functional_modules: usize,
+    data_modules: usize,
+}
+
+impl Analysis {
+    /// Fraction of modules that are dark, in `0.0..=1.0`.
+    #[must_use]
+    pub const fn dark_ratio(&self) -> f64 {
+        self.dark_ratio
+    }
+
+    /// Number of functional modules (finder / alignment / timing / format / version).
+    #[must_use]
+    pub const fn functional_modules(&self) -> usize {
+        self.functional_modules
+    }
+
+    /// Number of data + error-correction modules (`width² − functional`).
+    #[must_use]
+    pub const fn data_modules(&self) -> usize {
+        self.data_modules
+    }
+}
+
+//}}}
+//------------------------------------------------------------------------------
 //{{{ QrTemplate
 
 /// A reusable render-time style: dark/light hex colors, module size, and quiet
@@ -1193,6 +1254,19 @@ mod api_tests {
         assert!(minimal.contains("0 0 0 setrgbcolor"), "minimal should use a black foreground");
         assert!(!dark.contains("0 0 0 setrgbcolor"), "dark_mode should change the foreground");
         assert_ne!(minimal, dark);
+    }
+
+    #[test]
+    fn analyze_reports_diagnostics() {
+        let code = QrCode::with_version(b"01234567", Version::Normal(1), crate::EcLevel::M).unwrap();
+        let a = code.analyze();
+        let total = code.width() * code.width();
+        assert!(a.functional_modules() > 0, "should have functional modules");
+        assert!(a.data_modules() > 0, "should have data modules");
+        assert_eq!(a.functional_modules() + a.data_modules(), total);
+        assert!(a.dark_ratio() > 0.0 && a.dark_ratio() < 1.0);
+        let dark = code.colors().iter().filter(|c| **c == Color::Dark).count();
+        assert!((a.dark_ratio() - dark as f64 / total as f64).abs() < 1e-9);
     }
 
     #[test]
