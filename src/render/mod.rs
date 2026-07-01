@@ -271,4 +271,19 @@ impl<'a, P: Pixel> Renderer<'a, P> {
     }
 }
 
+impl<'a, P: StyledPixel> Renderer<'a, P> {
+    /// Applies a [`QrTemplate`](crate::QrTemplate): dark/light colors (via
+    /// [`StyledPixel::from_hex`]), optional module size, and the quiet-zone
+    /// setting.
+    pub fn template(mut self, tmpl: &crate::QrTemplate) -> Self {
+        self.dark_color = P::from_hex(&tmpl.dark_color);
+        self.light_color = P::from_hex(&tmpl.light_color);
+        if let Some((w, h)) = tmpl.module_size {
+            self.module_size = (w, h);
+        }
+        self.has_quiet_zone = tmpl.quiet_zone;
+        self
+    }
+}
+
 //}}}

@@ -815,6 +815,52 @@ impl QrCode {
 
 //}}}
 //------------------------------------------------------------------------------
+//{{{ QrTemplate
+
+/// A reusable render-time style: dark/light hex colors, module size, and quiet
+/// zone. Apply to a [`Renderer`] with [`Renderer::template`] when the pixel type
+/// is a [`StyledPixel`](crate::render::StyledPixel).
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct QrTemplate {
+    /// Dark module color as a CSS hex string (e.g. `"#1a1a2e"`).
+    pub dark_color: String,
+    /// Light module color as a CSS hex string (e.g. `"#e0e0e0"`).
+    pub light_color: String,
+    /// Optional module dimensions `(width, height)` in output units/pixels.
+    pub module_size: Option<(u32, u32)>,
+    /// Whether to include the quiet zone.
+    pub quiet_zone: bool,
+}
+
+impl QrTemplate {
+    /// Black on white, default size, with quiet zone — the standard look.
+    #[must_use]
+    pub fn minimal() -> Self {
+        Self { dark_color: "#000000".into(), light_color: "#ffffff".into(), module_size: None, quiet_zone: true }
+    }
+
+    /// Light modules on a dark background.
+    #[must_use]
+    pub fn dark_mode() -> Self {
+        Self { dark_color: "#e0e0e0".into(), light_color: "#1a1a2e".into(), module_size: None, quiet_zone: true }
+    }
+
+    /// Pure black/white, maximum contrast (accessibility).
+    #[must_use]
+    pub fn high_contrast() -> Self {
+        Self { dark_color: "#000000".into(), light_color: "#ffffff".into(), module_size: None, quiet_zone: true }
+    }
+
+    /// Corporate navy on white.
+    #[must_use]
+    pub fn corporate() -> Self {
+        Self { dark_color: "#003366".into(), light_color: "#ffffff".into(), module_size: None, quiet_zone: true }
+    }
+}
+
+//}}}
+//------------------------------------------------------------------------------
 //{{{ Module iterators
 
 /// Iterator over the rows of a [`QrCode`], created by [`QrCode::rows`].
@@ -1135,6 +1181,18 @@ mod api_tests {
         let huge: Vec<u8> = (0..5000).map(|i| (i % 256) as u8).collect();
         let mixed: Vec<&[u8]> = vec![&b"ok"[..], &huge[..], &b"also ok"[..]];
         assert!(QrCode::batch(mixed, crate::EcLevel::L).is_err());
+    }
+
+    #[cfg(feature = "eps")]
+    #[test]
+    fn template_applies_colors() {
+        let code = QrCode::new(b"template").unwrap();
+        let minimal = code.render::<crate::render::eps::Color>().template(&crate::QrTemplate::minimal()).build();
+        let dark = code.render::<crate::render::eps::Color>().template(&crate::QrTemplate::dark_mode()).build();
+        // minimal => black foreground ("0 0 0 setrgbcolor"); dark_mode changes it.
+        assert!(minimal.contains("0 0 0 setrgbcolor"), "minimal should use a black foreground");
+        assert!(!dark.contains("0 0 0 setrgbcolor"), "dark_mode should change the foreground");
+        assert_ne!(minimal, dark);
     }
 
     #[test]
