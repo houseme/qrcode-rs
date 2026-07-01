@@ -2,7 +2,7 @@
 //!
 //! Run with: `cargo bench --bench encoding`
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use qrcode_rs::{EcLevel, QrCode, Version};
 
 fn bench_encode(c: &mut Criterion) {
