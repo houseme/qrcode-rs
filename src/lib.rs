@@ -27,11 +27,15 @@
 //! ```
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(not(feature = "std"), no_std)]
 #![deny(missing_docs)]
 #![deny(clippy::uninlined_format_args, clippy::manual_range_contains, clippy::semicolon_if_nothing_returned)]
 #![allow(
     clippy::must_use_candidate, // This is just annoying.
 )]
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
 
 pub mod bits;
 pub mod canvas;
@@ -41,6 +45,16 @@ pub mod optimize;
 pub mod render;
 pub mod types;
 pub use crate::types::{Color, EcLevel, Mode, QrError, QrResult, Version};
+
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+use alloc::{
+    borrow::ToOwned,
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 
 use crate::cast::As;
 use crate::render::{Pixel, Renderer};

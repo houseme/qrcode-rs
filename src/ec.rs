@@ -14,6 +14,16 @@
 //! The main entry point is [`construct_codewords`], which takes encoded data
 //! and produces the final data + error correction codewords ready for canvas placement.
 
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+use alloc::{
+    borrow::ToOwned,
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
+
 use core::ops::Deref;
 
 use crate::types::{EcLevel, QrResult, Version};

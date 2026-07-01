@@ -22,6 +22,16 @@
 //! assert_eq!(hex_to_rgb("invalid"), None);
 //! ```
 
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+use alloc::{
+    borrow::ToOwned,
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
+
 /// Parses a `#rrggbb` or `#rrggbbaa` hex color string into RGB or RGBA bytes.
 ///
 /// Returns `None` if the format is invalid.

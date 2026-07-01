@@ -22,6 +22,16 @@
 //! The [`Pixel`] trait defines how to create dark/light pixels and how to
 //! finalize a canvas into a concrete image.
 
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+use alloc::{
+    borrow::ToOwned,
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
+
 use crate::cast::As;
 use crate::types::Color;
 use core::cmp::max;

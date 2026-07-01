@@ -31,8 +31,10 @@ criterion = { version = "0.8", default-features = false }
 serde_json = "1"
 
 [features]
-default = ["image", "svg", "pic", "eps", "html", "pdf"]
-image = ["dep:image", "image/png"]
+default = ["std", "image", "svg", "pic", "eps", "html", "pdf"]
+# Links the `std` crate (enabled by default). Disable for `no_std` + `alloc`.
+std = []
+image = ["dep:image", "image/png", "std"]
 svg = []
 pic = []
 eps = []

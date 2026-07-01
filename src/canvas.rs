@@ -27,6 +27,16 @@
 //! [`draw_data`]: Canvas::draw_data
 //! [`apply_best_mask`]: Canvas::apply_best_mask
 
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+use alloc::{
+    borrow::ToOwned,
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
+
 use core::cmp::max;
 
 use crate::cast::As;

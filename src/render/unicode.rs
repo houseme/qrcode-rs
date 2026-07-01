@@ -1,5 +1,15 @@
 //! UTF-8 rendering, with various pixel densities.
 
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+use alloc::{
+    borrow::ToOwned,
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
+
 use crate::render::{Canvas as RenderCanvas, Color, Pixel};
 
 //{{{ Shared macro for bit-packed canvas

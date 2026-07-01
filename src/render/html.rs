@@ -15,6 +15,16 @@
 
 #![cfg(feature = "html")]
 
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+use alloc::{
+    borrow::ToOwned,
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
+
 use core::marker::PhantomData;
 
 use crate::cast::As;

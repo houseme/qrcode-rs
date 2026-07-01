@@ -1,6 +1,16 @@
 //! Core data types: module [`Color`], [`EcLevel`], [`Version`], [`Mode`], the
 //! [`QrError`] / [`QrResult`] error types, and string-parsing helpers.
 
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+use alloc::{
+    borrow::ToOwned,
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
+
 use crate::cast::As;
 use core::cmp::{Ordering, PartialOrd};
 use core::fmt::{Display, Error, Formatter};

@@ -13,6 +13,16 @@
 
 #![cfg(feature = "pic")]
 
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+use alloc::{
+    borrow::ToOwned,
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
+
 use core::fmt::Write;
 
 use crate::render::{Canvas as RenderCanvas, Pixel};

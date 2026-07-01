@@ -12,6 +12,16 @@
 
 #![cfg(feature = "svg")]
 
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+use alloc::{
+    borrow::ToOwned,
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
+
 use core::fmt::Write;
 use core::marker::PhantomData;
 

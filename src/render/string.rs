@@ -1,5 +1,15 @@
 //! String rendering support.
 
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+use alloc::{
+    borrow::ToOwned,
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
+
 use crate::cast::As;
 use crate::render::{Canvas as RenderCanvas, Pixel};
 use crate::types::Color;

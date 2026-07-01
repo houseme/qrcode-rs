@@ -9,6 +9,16 @@
 //! The optimizer uses dynamic programming to explore all possible mode
 //! transitions and selects the segmentation that produces the shortest
 //! bit stream for the target QR code version.
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+use alloc::{
+    borrow::ToOwned,
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
+
 use crate::types::{Mode, Version};
 use core::slice::Iter;
 

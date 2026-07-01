@@ -14,6 +14,16 @@
 //! construct a [`Bits`] manually for advanced use cases like ECI designators
 //! or FNC1 patterns.
 
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
+use alloc::{
+    borrow::ToOwned,
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
+
 use core::cmp::min;
 
 use crate::cast::{As, Truncate};
