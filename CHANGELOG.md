@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.6.0] - 2026-07-01
+
+### Added
+
+- Criterion benchmark suite (`benches/encoding.rs`, `benches/rendering.rs`; dev-dependency only — the library stays zero-dependency). Encoding: short/medium/long payloads + v1/v10/v20/v30/v40; rendering: string/svg/image/eps
+- `QrCode::colors() -> &[Color]` — zero-copy borrow of the module slice (complements `to_colors()` / `into_colors()`)
+- `Color` is now `#[repr(u8)]` with explicit discriminants (`Light = 0`, `Dark = 1`) — deterministic 1-byte layout, FFI-friendly, makes `Color as u8` sound
+- Compile-time guarantee (and docs) that `QrCode: Send + Sync`
+
+### Changed (Performance)
+
+- `ec::create_error_correction_code` allocates its buffer once (`Vec::with_capacity`) instead of `to_vec()` + `resize()` realloc — bench: `encode/long` ~6.06ms → ~5.68ms (~6%), no regression elsewhere
+- EPS renderer preallocates its output buffer (was the only renderer that didn't) — bench: `render/eps` ~15.5µs → ~14.7µs
+
+### Notes
+
+- Deferred (external deps conflict with zero-dependency): `SmallVec`, `bumpalo` arena, `rayon` parallel (a future `parallel` feature).
+- Deferred (breaking/complex): 1-bit-per-module storage, `unsafe new_unchecked`, DP segmentation.
+- Deferred (infra): CI bench regression detection, memory profiling, compile-time/monomorphization opts.
+
 ## [0.5.0] - 2026-07-01
 
 ### Added
