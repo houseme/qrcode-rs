@@ -21,11 +21,11 @@ debug = false
 
 [dependencies]
 image = { version = "0.25.10", default-features = false, optional = true }
-clap = { version = "4.5", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"], optional = true }
+clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"], optional = true }
 
 [dev-dependencies]
 image = "0.25.10"
-criterion = { version = "0.5", default-features = false }
+criterion = { version = "0.8", default-features = false }
 
 [features]
 default = ["image", "svg", "pic", "eps", "html", "pdf"]
