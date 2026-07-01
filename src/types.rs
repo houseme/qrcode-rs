@@ -16,6 +16,7 @@ use std::str::FromStr;
 /// external callers should match with a `_` arm.
 #[non_exhaustive]
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum QrError {
     /// The data is too long to encode into a QR code for the given version.
     DataTooLong,
@@ -100,6 +101,7 @@ impl ::std::error::Error for EnumParseError {}
 /// Guaranteed to be a single byte (`#[repr(u8)]`) — useful for FFI and dense
 /// storage. `Light = 0`, `Dark = 1`.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u8)]
 pub enum Color {
     /// The module is light colored.
@@ -144,6 +146,7 @@ impl Not for Color {
 /// The error correction level. It allows the original information be recovered
 /// even if parts of the code is damaged.
 #[derive(Debug, PartialEq, Eq, Copy, Clone, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum EcLevel {
     /// Low error correction. Allows up to 7% of wrong blocks.
     L = 0,
@@ -194,6 +197,7 @@ impl FromStr for EcLevel {
 /// The smallest version is `Version::Normal(1)` of size 21×21, and the largest
 /// is `Version::Normal(40)` of size 177×177.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Version {
     /// A normal QR code version. The parameter should be between 1 and 40.
     Normal(i16),
@@ -296,6 +300,7 @@ impl FromStr for Version {
 
 /// The mode indicator, which specifies the character set of the encoded data.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Mode {
     /// The data contains only characters 0 to 9.
     Numeric,

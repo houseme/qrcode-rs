@@ -812,6 +812,8 @@ dependencies = [
  "clap",
  "criterion",
  "image",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

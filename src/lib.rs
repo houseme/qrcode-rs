@@ -692,6 +692,7 @@ impl<D: AsRef<[u8]>> QrCodeBuilder<D> {
 /// `encoding_modes`, `mask_pattern`, `remaining_capacity`) are intentionally
 /// omitted to keep `QrCode` zero-overhead; they may be added in a later version.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub struct Info {
     version: Version,
@@ -737,6 +738,45 @@ impl Info {
     #[must_use]
     pub const fn data_capacity_bytes(&self) -> usize {
         self.data_capacity_bytes
+    }
+}
+
+//}}}
+//------------------------------------------------------------------------------
+//{{{ Serde (QrCodeData)
+
+/// A serializable view of a [`QrCode`] (matrix + metadata), enabled by the
+/// `serde` feature. Round-trips via [`QrCode::to_serializable`] and
+/// [`QrCode::from_serializable`].
+#[cfg(feature = "serde")]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct QrCodeData {
+    /// The [`Version`].
+    pub version: Version,
+    /// The error-correction level.
+    pub ec_level: EcLevel,
+    /// Modules per side (excluding the quiet zone).
+    pub width: usize,
+    /// Module colors, row-major (`width * width` entries).
+    pub content: Vec<Color>,
+}
+
+#[cfg(feature = "serde")]
+impl QrCode {
+    /// Serializes this QR code into a [`QrCodeData`] (requires the `serde` feature).
+    #[must_use]
+    pub fn to_serializable(&self) -> QrCodeData {
+        QrCodeData { version: self.version, ec_level: self.ec_level, width: self.width, content: self.content.clone() }
+    }
+
+    /// Reconstructs a [`QrCode`] from [`QrCodeData`] (requires the `serde` feature).
+    ///
+    /// `data` is trusted: `content.len()` must equal `width * width` (checked in
+    /// debug builds). Pair with [`QrCode::to_serializable`].
+    #[must_use]
+    pub fn from_serializable(data: QrCodeData) -> Self {
+        debug_assert_eq!(data.content.len(), data.width * data.width, "malformed QrCodeData");
+        Self { content: data.content, version: data.version, ec_level: data.ec_level, width: data.width }
     }
 }
 
