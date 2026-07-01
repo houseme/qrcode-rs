@@ -44,30 +44,31 @@ impl RenderCanvas for Canvas {
     type Image = String;
 
     fn new(width: u32, height: u32, dark_pixel: Color, light_pixel: Color) -> Self {
-        Self {
-            eps: format!(
-                concat!(
-                    "%!PS-Adobe-3.0 EPSF-3.0\n",
-                    "%%BoundingBox: 0 0 {w} {h}\n",
-                    "%%Pages: 1\n",
-                    "%%EndComments\n",
-                    "gsave\n",
-                    "{bgr} {bgg} {bgb} setrgbcolor\n",
-                    "0 0 {w} {h} rectfill\n",
-                    "grestore\n",
-                    "{fgr} {fgg} {fgb} setrgbcolor\n"
-                ),
-                w = width,
-                h = height,
-                fgr = dark_pixel.0[0],
-                fgg = dark_pixel.0[1],
-                fgb = dark_pixel.0[2],
-                bgr = light_pixel.0[0],
-                bgg = light_pixel.0[1],
-                bgb = light_pixel.0[2],
+        let mut eps = format!(
+            concat!(
+                "%!PS-Adobe-3.0 EPSF-3.0\n",
+                "%%BoundingBox: 0 0 {w} {h}\n",
+                "%%Pages: 1\n",
+                "%%EndComments\n",
+                "gsave\n",
+                "{bgr} {bgg} {bgb} setrgbcolor\n",
+                "0 0 {w} {h} rectfill\n",
+                "grestore\n",
+                "{fgr} {fgg} {fgb} setrgbcolor\n"
             ),
-            height,
-        }
+            w = width,
+            h = height,
+            fgr = dark_pixel.0[0],
+            fgg = dark_pixel.0[1],
+            fgb = dark_pixel.0[2],
+            bgr = light_pixel.0[0],
+            bgg = light_pixel.0[1],
+            bgb = light_pixel.0[2],
+        );
+        // Preallocate for the worst-case dark-module rectfill lines (~20 B each),
+        // matching the per-module heuristic used by the HTML renderer.
+        eps.reserve((width as usize) * (height as usize) * 20);
+        Self { eps, height }
     }
 
     fn draw_dark_pixel(&mut self, x: u32, y: u32) {

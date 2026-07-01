@@ -23,6 +23,12 @@ fn bench_render(c: &mut Criterion) {
         g.bench_function("image", |b| b.iter(|| code.render::<Rgba<u8>>().min_dimensions(200, 200).build()));
     }
 
+    #[cfg(feature = "eps")]
+    {
+        use qrcode_rs::render::eps;
+        g.bench_function("eps", |b| b.iter(|| code.render::<eps::Color>().build()));
+    }
+
     g.finish();
 }
 
