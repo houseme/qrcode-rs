@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.0.0] - 2026-07-01
+
+🎉 **First stable release.** The public API is now frozen; future breaking
+changes will require a new major version.
+
+### Stable-release work
+
+- **API freeze & full documentation**: every public item is now documented, and
+  `#![deny(missing_docs)]` is enforced at the crate root so the standard holds
+  going forward. `cargo doc --all-features` is warning/error-free.
+- **`Info` is `#[non_exhaustive]`** — metadata fields may grow in 1.x without a
+  breaking change (`QrError` was already `#[non_exhaustive]`).
+- **MSRV declared**: `rust-version = "1.85"` (edition 2024).
+- **`CONTRIBUTING.md`** added: dev setup, feature flags, the quality bar,
+  commit conventions, and the release flow.
+- **Packaging verified**: `cargo package` is clean.
+
+### Notes / deferred (maintainer / external infrastructure)
+
+- Stabilization items needing external tooling or credentials remain the
+  maintainer's responsibility: `cargo-tarpaulin` coverage reporting,
+  `cargo-fuzz` / `cargo miri`, cross-platform/WASM CI, the actual
+  `cargo publish` to crates.io, and the GitHub Release.
+- No behavioral change versus 0.6.0; this release codifies API stability.
+
 ## [0.6.0] - 2026-07-01
 
 ### Added

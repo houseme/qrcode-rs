@@ -2,7 +2,7 @@
 name = "qrcode-rs"
 description = "QR code encoder in Rust，Generate QR Code matrices and images in RAW, PNG and SVG formats."
 license = "MIT OR Apache-2.0"
-version = "0.6.0"
+version = "1.0.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["houseme <housemecn@gmail.com>"]
