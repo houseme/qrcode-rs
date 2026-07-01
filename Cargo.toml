@@ -88,6 +88,10 @@ required-features = ["cli"]
 name = "accessible_svg"
 required-features = ["svg"]
 
+[[example]]
+name = "batch_template"
+required-features = ["image"]
+
 [[bench]]
 name = "encoding"
 harness = false
