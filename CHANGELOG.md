@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.3.0] - 2026-07-02
+
+### Added
+
+- **`QrError::suggestion()`** — per-variant actionable fix hints (every current variant has one).
+- **`QrCode::analyze() -> Analysis`** — diagnostic stats: dark ratio, functional-module count, and data-module count (computed from `colors()` / `is_functional()`; combine with `info()` for version/capacity).
+- **`log` facade** (opt-in `log` feature, no_std-safe): `debug!`/`info!` records at the `QrCode::with_bits` encode chokepoint.
+
+### Notes / deferred
+
+- `tracing` spans, `metrics` counters, encode-trace replay, visual debug render, retention-dependent error fields, and test-utils (Mock renderer / `random_seed` — encoding is already deterministic) are deferred (observability sinks needing a consumer / image-heavy / need data retention).
+
 ## [1.2.0] - 2026-07-01
 
 ### Added
