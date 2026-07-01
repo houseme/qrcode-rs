@@ -21,7 +21,7 @@ struct Cli {
     /// Text to encode. If omitted, reads from stdin (when piped or redirected).
     text: Option<String>,
 
-    /// Write output to <FILE> instead of stdout ("-" means stdout).
+    /// Write output to `<FILE>` instead of stdout ("-" means stdout).
     #[arg(short, long, value_name = "FILE")]
     output: Option<String>,
 
@@ -62,7 +62,7 @@ struct Cli {
     #[arg(long, value_enum, default_value_t = UnicodeMode::Dense1x2)]
     unicode_mode: UnicodeMode,
 
-    /// Generate one QR code per non-empty line of <FILE>.
+    /// Generate one QR code per non-empty line of `<FILE>`.
     #[arg(long, value_name = "FILE")]
     batch: Option<PathBuf>,
 }
