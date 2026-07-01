@@ -24,6 +24,7 @@ debug = false
 image = { version = "0.25.10", default-features = false, optional = true }
 clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"], optional = true }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
+log = { version = "0.4", default-features = false, optional = true }
 
 [dev-dependencies]
 image = "0.25.10"
@@ -42,6 +43,8 @@ html = []
 pdf = []
 # Enables serde Serialize/Deserialize on the core types and a QrCodeData wrapper.
 serde = ["dep:serde"]
+# Emits log::debug!/info! at the encode chokepoint (no behavior without a logger).
+log = ["dep:log"]
 # Enables the `qrencodes` CLI binary (pulls in clap + all render backends).
 # The library stays zero-dependency when this feature is off.
 cli = ["dep:clap", "image", "svg", "eps", "pic", "html", "pdf"]

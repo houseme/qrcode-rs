@@ -207,13 +207,18 @@ impl QrCode {
     /// incompatible.
     pub fn with_bits(bits: bits::Bits, ec_level: EcLevel) -> QrResult<Self> {
         let version = bits.version();
+        #[cfg(feature = "log")]
+        log::debug!("qrcode_rs: encoding at version {version:?}, ec {ec_level:?}");
         let data = bits.into_bytes();
         let (encoded_data, ec_data) = ec::construct_codewords(&data, version, ec_level)?;
         let mut canvas = canvas::Canvas::new(version, ec_level);
         canvas.draw_all_functional_patterns();
         canvas.draw_data(&encoded_data, &ec_data);
         let canvas = canvas.apply_best_mask();
-        Ok(Self { content: canvas.into_colors(), version, ec_level, width: version.width().as_usize() })
+        let width = version.width().as_usize();
+        #[cfg(feature = "log")]
+        log::info!("qrcode_rs: encoded version {version:?} ec {ec_level:?} ({} modules)", width * width);
+        Ok(Self { content: canvas.into_colors(), version, ec_level, width })
     }
 
     /// Encodes many inputs at once at the given error-correction level, stopping
