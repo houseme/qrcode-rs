@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.0] - 2026-07-01
+
+### Added
+
+- **Serde serialization** (opt-in `serde` feature): `Serialize`/`Deserialize` on `Color`, `EcLevel`, `Version`, `Mode`, `QrError`, and `Info`, plus a `QrCodeData` wrapper with `QrCode::to_serializable()` / `from_serializable()`. JSON round-trip tested (`tests/serde.rs`).
+- **`no_std` + `alloc` support**: a default-on `std` feature; with it disabled the library builds as `#![no_std]` + `alloc` (`cargo build --no-default-features --features svg`). The `image` and `cli` features imply `std`.
+
+### Changed
+
+- Library internals use `core::` / `alloc::` instead of `std::` throughout (no behavior change for std users).
+
+### Notes / deferred
+
+- WASM bindings, framework integrations (Axum/Actix/Rocket/Leptos/Yew), interop with other QR crates, and GBK/Big5 charsets are deferred (separate companion crates / external infra / algorithmic work).
+
 ## [1.0.0] - 2026-07-01
 
 🎉 **First stable release.** The public API is now frozen; future breaking
