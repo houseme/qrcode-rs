@@ -27,6 +27,7 @@
 //! ```
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![deny(missing_docs)]
 #![deny(clippy::uninlined_format_args, clippy::manual_range_contains, clippy::semicolon_if_nothing_returned)]
 #![allow(
     clippy::must_use_candidate, // This is just annoying.
@@ -691,6 +692,7 @@ impl<D: AsRef<[u8]>> QrCodeBuilder<D> {
 /// `encoding_modes`, `mask_pattern`, `remaining_capacity`) are intentionally
 /// omitted to keep `QrCode` zero-overhead; they may be added in a later version.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Info {
     version: Version,
     ec_level: EcLevel,
