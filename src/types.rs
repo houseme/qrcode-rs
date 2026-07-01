@@ -81,6 +81,38 @@ impl Display for QrError {
 
 impl ::core::error::Error for QrError {}
 
+impl QrError {
+    /// Returns an actionable hint for fixing this error, if one applies — useful
+    /// for surfacing user-facing guidance alongside the error message.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::QrError;
+    ///
+    /// let err = QrError::DataTooLong;
+    /// assert!(err.suggestion().is_some());
+    /// ```
+    #[must_use]
+    pub fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            QrError::DataTooLong => {
+                Some("lower the error-correction level, use a larger version, or split the data with Structured Append")
+            }
+            QrError::InvalidVersion { .. } => Some(
+                "the version / error-correction-level combination is unsupported (e.g. Micro QR supports only L/M)",
+            ),
+            QrError::UnsupportedCharacterSet => {
+                Some("the data cannot be encoded in any mode supported by the chosen version")
+            }
+            QrError::InvalidEciDesignator { .. } => Some("ECI designators must be in the range 0..=999999"),
+            QrError::InvalidCharacter { .. } => {
+                Some("the input contains a byte that is invalid for the requested encoding mode")
+            }
+        }
+    }
+}
+
 /// `QrResult` is a convenient alias for a QR code generation result.
 pub type QrResult<T> = Result<T, QrError>;
 
@@ -444,7 +476,7 @@ impl FromStr for Mode {
 mod parse_tests {
     use core::str::FromStr;
 
-    use crate::types::{Color, EcLevel, EnumParseError, Mode, Version};
+    use crate::types::{Color, EcLevel, EnumParseError, Mode, QrError, Version};
 
     #[test]
     fn test_ec_level_from_str() {
@@ -478,6 +510,16 @@ mod parse_tests {
         assert_eq!(Color::Light as u8, 0);
         assert_eq!(Color::Dark as u8, 1);
         assert_eq!(core::mem::size_of::<Color>(), 1);
+    }
+
+    #[test]
+    fn test_error_suggestions() {
+        // Every current variant has an actionable suggestion.
+        assert!(QrError::DataTooLong.suggestion().is_some());
+        assert!(QrError::InvalidVersion { version: Version::Normal(1), ec_level: EcLevel::M }.suggestion().is_some());
+        assert!(QrError::UnsupportedCharacterSet.suggestion().is_some());
+        assert!(QrError::InvalidEciDesignator { value: 1_000_000 }.suggestion().is_some());
+        assert!(QrError::InvalidCharacter { position: 0, byte: 0 }.suggestion().is_some());
     }
 }
 
