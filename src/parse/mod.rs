@@ -10,6 +10,7 @@
 //! Encoding is one-way — a [`QrCode`](crate::QrCode) does not retain its input
 //! payload — so these parsers operate on a `&str`/`&[u8]` the caller supplies.
 
+pub mod gs1;
 pub mod vcard;
 pub mod wifi;
 
