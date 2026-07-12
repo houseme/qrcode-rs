@@ -98,6 +98,19 @@ required-features = ["svg"]
 name = "batch_template"
 required-features = ["image"]
 
+[[example]]
+name = "parse_wifi"
+
+[[example]]
+name = "parse_vcard"
+
+[[example]]
+name = "parse_gs1"
+
+[[example]]
+name = "decode_roundtrip"
+required-features = ["decode-rqrr"]
+
 [[bench]]
 name = "encoding"
 harness = false
