@@ -16,6 +16,8 @@ use alloc::vec::Vec;
 
 use crate::types::{EcLevel, Version};
 
+pub mod rqrr;
+
 /// A borrowed grayscale (luma) pixel view: the universal input to a
 /// [`QrDecoder`].
 ///
