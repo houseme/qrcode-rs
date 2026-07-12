@@ -484,14 +484,7 @@ impl QrCode {
     /// # let _ = code;
     /// ```
     pub fn for_wifi(ssid: &str, password: &str, auth: &str) -> QrResult<Self> {
-        let mut payload = String::from("WIFI:T:");
-        payload.push_str(auth);
-        payload.push_str(";S:");
-        push_escaped_wifi(&mut payload, ssid);
-        payload.push_str(";P:");
-        push_escaped_wifi(&mut payload, password);
-        payload.push_str(";;");
-        Self::new(payload)
+        Self::new(parse::wifi::encode_wifi(ssid, password, auth))
     }
 
     /// Encodes a minimal vCard 3.0 contact card.
@@ -633,16 +626,6 @@ impl QrCode {
             return Self::with_bits(bits, ec_level);
         }
         Err(last_err)
-    }
-}
-
-/// Backslash-escapes the characters that are special in a WiFi QR payload.
-fn push_escaped_wifi(out: &mut String, s: &str) {
-    for c in s.chars() {
-        if matches!(c, ';' | ',' | '"' | '\\' | ':') {
-            out.push('\\');
-        }
-        out.push(c);
     }
 }
 
@@ -1187,13 +1170,6 @@ mod api_tests {
     fn for_url_uses_high_ec() {
         let code = QrCode::for_url(b"https://example.com").unwrap();
         assert_eq!(code.error_correction_level(), EcLevel::H);
-    }
-
-    #[test]
-    fn wifi_escape_helper() {
-        let mut out = String::new();
-        super::push_escaped_wifi(&mut out, "a;b,c\"d\\e:f");
-        assert_eq!(out, "a\\;b\\,c\\\"d\\\\e\\:f");
     }
 
     #[test]
