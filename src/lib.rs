@@ -40,6 +40,7 @@ extern crate alloc;
 pub mod bits;
 pub mod canvas;
 mod cast;
+pub mod decode;
 pub mod ec;
 pub mod optimize;
 pub mod parse;
