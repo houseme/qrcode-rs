@@ -502,8 +502,7 @@ impl QrCode {
     /// # let _ = code;
     /// ```
     pub fn for_vcard(name: &str, phone: &str, email: &str) -> QrResult<Self> {
-        let vcard = format!("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:{name}\r\nTEL:{phone}\r\nEMAIL:{email}\r\nEND:VCARD\r\n");
-        Self::new(vcard)
+        Self::new(parse::vcard::encode_vcard(name, phone, email))
     }
 
     /// Encodes a GS1 data carrier (FNC1 in first position), e.g. a GTIN /
