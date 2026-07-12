@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.4.0] - 2026-07-12
+
+### Added
+
+- **Content parsers** (`qrcode_rs::parse`) — the symmetric decode-side of the
+  `for_*` encoders, operating on caller-provided `&str`/`&[u8]` (encoding is
+  one-way): `WifiConfig::parse` (+ `WifiSecurity`), `VCard::parse` (tolerant of
+  vCard 2.1/3.0/4.0, line folding, and property params), and `Gs1Result::parse`
+  with a curated GS1 application-identifier table including the `310n`–`369n`
+  measure families. `for_wifi`/`for_vcard` now share their wire-format logic with
+  the parsers, so encode↔parse round-trips by construction.
+- **Decode bridge** (`qrcode_rs::decode`): a `QrDecoder` trait, `DecodedQrCode`,
+  and `GrayPixels` (a borrowed grayscale view that keeps the trait decoupled from
+  the `image` crate, preserving the zero-dependency core), plus an opt-in
+  `rqrr`-backed adapter (`RqrrDecoder`, behind the `decode-rqrr` feature). The
+  encode → render → decode round-trip is verified end-to-end in tests.
+- `parse::ParseError` (`#[non_exhaustive]`, no_std + alloc compatible).
+
+### Notes / deferred
+
+- Data Matrix / Aztec encoders, the unified `Barcode` interface, and
+  cross-format benchmarks are deferred (each DM/Aztec encoder is major
+  algorithmic work; better as companion crates or later versions).
+- The image preprocessor / `QrLocator` and a `quircs` adapter are deferred
+  (image-intensive, and a second adapter — `rqrr` already validates the trait).
+
 ## [1.3.0] - 2026-07-02
 
 ### Added
