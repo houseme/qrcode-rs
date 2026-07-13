@@ -59,6 +59,13 @@ pub enum QrError {
         /// The offending byte value.
         byte: u8,
     },
+
+    /// Invalid Structured Append parameter — the symbol count is not in 2..=16,
+    /// or the position is not in 1..=total. Carries the offending `value`.
+    InvalidStructuredAppend {
+        /// The out-of-range symbol count or position.
+        value: u8,
+    },
 }
 
 impl Display for QrError {
@@ -74,6 +81,9 @@ impl Display for QrError {
             }
             QrError::InvalidCharacter { position, byte } => {
                 write!(fmt, "invalid character byte 0x{byte:02x} at position {position}")
+            }
+            QrError::InvalidStructuredAppend { value } => {
+                write!(fmt, "invalid Structured Append parameter {value} (symbols must be 2..=16, position 1..=total)")
             }
         }
     }
@@ -108,6 +118,9 @@ impl QrError {
             QrError::InvalidEciDesignator { .. } => Some("ECI designators must be in the range 0..=999999"),
             QrError::InvalidCharacter { .. } => {
                 Some("the input contains a byte that is invalid for the requested encoding mode")
+            }
+            QrError::InvalidStructuredAppend { .. } => {
+                Some("Structured Append requires 2..=16 symbols and each position in 1..=total")
             }
         }
     }
@@ -520,6 +533,7 @@ mod parse_tests {
         assert!(QrError::UnsupportedCharacterSet.suggestion().is_some());
         assert!(QrError::InvalidEciDesignator { value: 1_000_000 }.suggestion().is_some());
         assert!(QrError::InvalidCharacter { position: 0, byte: 0 }.suggestion().is_some());
+        assert!(QrError::InvalidStructuredAppend { value: 17 }.suggestion().is_some());
     }
 }
 

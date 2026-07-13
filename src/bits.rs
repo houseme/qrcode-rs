@@ -644,6 +644,128 @@ impl Bits {
 
 //}}}
 //------------------------------------------------------------------------------
+//{{{ Structured Append
+
+impl Bits {
+    /// Pushes a Structured Append header (ISO/IEC 18004 §7.4) to the front of
+    /// the bit stream.
+    ///
+    /// Structured Append splits one logical message across 2..=16 QR symbols.
+    /// Every symbol in the sequence carries this 20-bit header as the very
+    /// first thing in its bit stream, *before* the data mode indicator:
+    ///
+    /// - 4-bit mode indicator `0011`,
+    /// - an 8-bit symbol-sequence indicator whose **high nibble** is this
+    ///   symbol's `position` (1-based, `1..=total`) and whose **low nibble** is
+    ///   the `total` symbol count (`2..=16`),
+    /// - an 8-bit `parity` byte (the XOR of every byte of the original,
+    ///   un-split message — identical in every symbol).
+    ///
+    /// A `position`/`total` of 16 wraps to nibble `0` (the only encoding of 16
+    /// in four bits); a spec-aware reader reads nibble `0` as 16.
+    ///
+    /// Structured Append is **not** valid for Micro QR; this method returns
+    /// `Err(QrError::UnsupportedCharacterSet)` for a Micro QR version.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QrError::UnsupportedCharacterSet`] on a Micro QR version, and
+    /// [`QrError::InvalidStructuredAppend`] if `total` is not `2..=16` or
+    /// `position` is not `1..=total`.
+    ///
+    /// ```
+    /// use qrcode_rs::bits::Bits;
+    /// use qrcode_rs::types::Version;
+    ///
+    /// let mut bits = Bits::new(Version::Normal(1));
+    /// bits.push_structured_append_header(1, 3, 0x5a);
+    /// // First symbol of a 3-symbol sequence; parity 0x5a.
+    /// ```
+    pub fn push_structured_append_header(&mut self, position: u8, total: u8, parity: u8) -> QrResult<()> {
+        if self.version.is_micro() {
+            return Err(QrError::UnsupportedCharacterSet);
+        }
+        if !(2..=16).contains(&total) || !(1..=total).contains(&position) {
+            return Err(QrError::InvalidStructuredAppend {
+                value: if !(2..=16).contains(&total) { total } else { position },
+            });
+        }
+        // 8-bit symbol-sequence indicator: high nibble = position, low = total.
+        // Masking lets the value 16 wrap to nibble 0.
+        let sequence = (u16::from(position & 0x0f) << 4) | u16::from(total & 0x0f);
+        self.reserve(20);
+        self.push_mode_indicator(ExtendedMode::StructuredAppend)?;
+        self.push_number(8, sequence);
+        self.push_number(8, u16::from(parity));
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod structured_append_tests {
+    use crate::bits::Bits;
+    use crate::types::{EcLevel, QrError, Version};
+
+    #[test]
+    fn test_header_bit_layout() {
+        // First symbol of a 3-symbol sequence, parity 0x5a.
+        // Bits: 0011 | 0001 0011 (pos 1 | total 3) | 0101 1010 (parity) = 20 bits.
+        let mut bits = Bits::new(Version::Normal(1));
+        assert_eq!(bits.push_structured_append_header(1, 3, 0x5a), Ok(()));
+        assert_eq!(bits.into_bytes(), vec![0x31, 0x35, 0xA0]);
+    }
+
+    #[test]
+    fn test_header_bit_layout_second_of_two() {
+        // Second symbol of a 2-symbol sequence, parity 0xff.
+        // sequence indicator = (2 << 4) | 2 = 0x22.
+        // Bits: 0011 | 0010 0010 | 1111 1111 → 0x32 0x2f 0xf0.
+        let mut bits = Bits::new(Version::Normal(1));
+        assert_eq!(bits.push_structured_append_header(2, 2, 0xff), Ok(()));
+        assert_eq!(bits.into_bytes(), vec![0x32, 0x2F, 0xF0]);
+    }
+
+    #[test]
+    fn test_header_value_16_wraps_to_zero_nibble() {
+        // 16th symbol of a 16-symbol sequence, parity 0 → both nibbles wrap to 0.
+        // Bits: 0011 | 0000 0000 | 0000 0000 → 0x30 0x00 0x00.
+        let mut bits = Bits::new(Version::Normal(1));
+        assert_eq!(bits.push_structured_append_header(16, 16, 0x00), Ok(()));
+        assert_eq!(bits.into_bytes(), vec![0x30, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn test_micro_rejected() {
+        let mut bits = Bits::new(Version::Micro(2));
+        assert_eq!(bits.push_structured_append_header(1, 2, 0), Err(QrError::UnsupportedCharacterSet));
+    }
+
+    #[test]
+    fn test_invalid_total() {
+        let mut bits = Bits::new(Version::Normal(1));
+        assert_eq!(bits.push_structured_append_header(1, 1, 0), Err(QrError::InvalidStructuredAppend { value: 1 }));
+        assert_eq!(bits.push_structured_append_header(1, 17, 0), Err(QrError::InvalidStructuredAppend { value: 17 }));
+    }
+
+    #[test]
+    fn test_invalid_position() {
+        let mut bits = Bits::new(Version::Normal(1));
+        assert_eq!(bits.push_structured_append_header(0, 3, 0), Err(QrError::InvalidStructuredAppend { value: 0 }));
+        assert_eq!(bits.push_structured_append_header(4, 3, 0), Err(QrError::InvalidStructuredAppend { value: 4 }));
+    }
+
+    #[test]
+    fn test_header_then_data_round_trips() {
+        // Header + a byte-mode segment + terminator must yield a valid symbol.
+        let mut bits = Bits::new(Version::Normal(1));
+        bits.push_structured_append_header(1, 2, 0).unwrap();
+        bits.push_byte_data(b"ab").unwrap();
+        assert!(bits.push_terminator(EcLevel::M).is_ok());
+    }
+}
+
+//}}}
+//------------------------------------------------------------------------------
 //{{{ Finish
 
 // This table is copied from ISO/IEC 18004:2006 §6.4.10, Table 7.
