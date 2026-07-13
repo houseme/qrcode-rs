@@ -8,13 +8,16 @@
 //! parity byte.
 //!
 //! Encoding is one-way — a [`QrCode`] does not retain its input payload — so
-//! this module only *encodes* the split.
+//! this module only *encodes* the split. To recombine symbols a decoder has
+//! scanned, use [`reassemble`] with the per-symbol metadata that decoder
+//! supplies.
 
 #[cfg(not(feature = "std"))]
 #[allow(unused_imports)]
 use alloc::vec::Vec;
 
 use core::cmp::min;
+use core::fmt::{Display, Error, Formatter};
 
 use crate::QrCode;
 use crate::bits::{self, Bits};
@@ -149,6 +152,116 @@ fn encode_one_symbol(data: &[u8], position: u8, total: u8, parity: u8, ec: EcLev
     Err(QrError::DataTooLong)
 }
 
+/// Errors returned by [`reassemble`] when decoded Structured Append symbols
+/// cannot be recombined.
+///
+/// The enum is `#[non_exhaustive]`: future versions may add variants, so
+/// external callers should match with a `_` arm.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SaError {
+    /// Fewer symbols were supplied than the total count requires.
+    Incomplete,
+    /// Two symbols claim the same position. Carries the duplicated position.
+    DuplicatePosition(u8),
+    /// The symbols disagree on the total symbol count.
+    CountMismatch,
+    /// The symbols disagree on the parity byte.
+    ParityMismatch,
+    /// A total count or position is outside its valid range (`2..=16` /
+    /// `1..=total`). Carries the offending value.
+    OutOfRange(u8),
+}
+
+impl Display for SaError {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        match self {
+            Self::Incomplete => f.write_str("incomplete Structured Append sequence (symbols missing)"),
+            Self::DuplicatePosition(position) => {
+                write!(f, "duplicate Structured Append position {position}")
+            }
+            Self::CountMismatch => f.write_str("Structured Append symbols disagree on the total count"),
+            Self::ParityMismatch => f.write_str("Structured Append symbols disagree on the parity byte"),
+            Self::OutOfRange(value) => {
+                write!(f, "Structured Append value {value} out of range (total 2..=16, position 1..=total)")
+            }
+        }
+    }
+}
+
+impl ::core::error::Error for SaError {}
+
+/// One decoded Structured Append symbol's metadata, ready for [`reassemble`].
+///
+/// Build this from whatever your decoder exposes: the position and total count
+/// (the high and low nibbles of the 8-bit symbol-sequence indicator), the
+/// parity byte, and that symbol's decoded payload bytes. The fields are public
+/// so it can be constructed with a struct literal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SaSymbol<'a> {
+    /// 1-based position of this symbol within the sequence (`1..=total`).
+    pub position: u8,
+    /// Total number of symbols in the sequence (`2..=16`).
+    pub total: u8,
+    /// The parity byte (identical in every symbol of the sequence).
+    pub parity: u8,
+    /// This symbol's decoded payload bytes.
+    pub data: &'a [u8],
+}
+
+/// Reassembles the original message from decoded Structured Append symbols.
+///
+/// Validates that every symbol agrees on the total count and parity, that the
+/// positions form a complete `1..=total` set (no gaps, no duplicates), then
+/// orders them by position and concatenates their data.
+///
+/// The parity byte each symbol carries is the XOR of the *original* full
+/// message, not of any one symbol — so `reassemble` only checks that all
+/// symbols report the *same* parity. To confirm the reassembled bytes match a
+/// known original, XOR them yourself and compare to that shared parity.
+///
+/// # Errors
+///
+/// Returns [`SaError`] if `parts` is empty, disagrees on the total count or
+/// parity, holds an out-of-range value, is incomplete, or repeats a position.
+pub fn reassemble(parts: &[SaSymbol<'_>]) -> Result<Vec<u8>, SaError> {
+    let Some(first) = parts.first() else { return Err(SaError::Incomplete) };
+    if !(2..=16).contains(&first.total) {
+        return Err(SaError::OutOfRange(first.total));
+    }
+    let total = first.total;
+    let parity = first.parity;
+    for p in parts {
+        if p.total != total {
+            return Err(SaError::CountMismatch);
+        }
+        if p.parity != parity {
+            return Err(SaError::ParityMismatch);
+        }
+        if !(1..=total).contains(&p.position) {
+            return Err(SaError::OutOfRange(p.position));
+        }
+    }
+    if parts.len() != usize::from(total) {
+        return Err(SaError::Incomplete);
+    }
+    let mut seen = [false; 16];
+    for p in parts {
+        let idx = usize::from(p.position - 1);
+        if seen[idx] {
+            return Err(SaError::DuplicatePosition(p.position));
+        }
+        seen[idx] = true;
+    }
+    let mut ordered: Vec<&SaSymbol<'_>> = parts.iter().collect();
+    ordered.sort_by_key(|s| s.position);
+    let mut out = Vec::new();
+    for s in ordered {
+        out.extend_from_slice(s.data);
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::StructuredAppend;
@@ -225,5 +338,87 @@ mod tests {
         let payload = vec![0u8; 16 * 4000];
         let result = StructuredAppend::new(16, &payload).unwrap().encode(EcLevel::H);
         assert_eq!(result.err(), Some(QrError::DataTooLong));
+    }
+}
+
+#[cfg(test)]
+mod reassemble_tests {
+    use super::{SaError, SaSymbol, reassemble};
+
+    fn sym(position: u8, total: u8, parity: u8, data: &[u8]) -> SaSymbol<'_> {
+        SaSymbol { position, total, parity, data }
+    }
+
+    #[test]
+    fn test_reassemble_ok() {
+        let parts = [sym(1, 3, 0x5a, b"hel"), sym(2, 3, 0x5a, b"lo "), sym(3, 3, 0x5a, b"world")];
+        assert_eq!(reassemble(&parts).unwrap(), b"hello world");
+    }
+
+    #[test]
+    fn test_reassemble_out_of_order() {
+        // Supplied as 3, 1, 2 — reassemble must order by position.
+        let parts = [sym(3, 3, 0x5a, b"wor"), sym(1, 3, 0x5a, b"hel"), sym(2, 3, 0x5a, b"lo")];
+        assert_eq!(reassemble(&parts).unwrap(), b"hellowor");
+    }
+
+    #[test]
+    fn test_reassemble_empty() {
+        assert_eq!(reassemble(&[]), Err(SaError::Incomplete));
+    }
+
+    #[test]
+    fn test_reassemble_incomplete() {
+        let parts = [sym(1, 3, 0x5a, b"a"), sym(2, 3, 0x5a, b"b")];
+        assert_eq!(reassemble(&parts), Err(SaError::Incomplete));
+    }
+
+    #[test]
+    fn test_reassemble_duplicate() {
+        let parts = [sym(1, 3, 0x5a, b"a"), sym(1, 3, 0x5a, b"b"), sym(3, 3, 0x5a, b"c")];
+        assert_eq!(reassemble(&parts), Err(SaError::DuplicatePosition(1)));
+    }
+
+    #[test]
+    fn test_reassemble_count_mismatch() {
+        let parts = [sym(1, 3, 0x5a, b"a"), sym(2, 4, 0x5a, b"b")];
+        assert_eq!(reassemble(&parts), Err(SaError::CountMismatch));
+    }
+
+    #[test]
+    fn test_reassemble_parity_mismatch() {
+        let parts = [sym(1, 2, 0x5a, b"a"), sym(2, 2, 0x5b, b"b")];
+        assert_eq!(reassemble(&parts), Err(SaError::ParityMismatch));
+    }
+
+    #[test]
+    fn test_reassemble_out_of_range_total() {
+        assert_eq!(reassemble(&[sym(1, 1, 0, b"a")]), Err(SaError::OutOfRange(1)));
+        assert_eq!(reassemble(&[sym(1, 17, 0, b"a")]), Err(SaError::OutOfRange(17)));
+    }
+
+    #[test]
+    fn test_reassemble_out_of_range_position() {
+        let parts = [sym(0, 2, 0x5a, b"a"), sym(2, 2, 0x5a, b"b")];
+        assert_eq!(reassemble(&parts), Err(SaError::OutOfRange(0)));
+        let parts = [sym(1, 2, 0x5a, b"a"), sym(3, 2, 0x5a, b"b")];
+        assert_eq!(reassemble(&parts), Err(SaError::OutOfRange(3)));
+    }
+
+    #[test]
+    fn test_reassemble_max_sequence() {
+        // 16 symbols (the spec maximum): positions 1..=16, each carrying one byte.
+        let bytes: Vec<u8> = (1u8..=16).collect();
+        let parts: Vec<SaSymbol<'_>> = bytes
+            .iter()
+            .enumerate()
+            .map(|(i, _)| SaSymbol {
+                position: u8::try_from(i + 1).unwrap(),
+                total: 16,
+                parity: 0xff,
+                data: &bytes[i..=i],
+            })
+            .collect();
+        assert_eq!(reassemble(&parts).unwrap(), bytes);
     }
 }
