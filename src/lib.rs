@@ -540,6 +540,36 @@ impl QrCode {
         Err(QrError::DataTooLong)
     }
 
+    /// Splits `payload` across `symbols` QR codes (2..=16) using Structured
+    /// Append (ISO/IEC 18004 §7.4), each at error-correction level `ec`. Every
+    /// symbol is the smallest version that fits its chunk plus the 20-bit
+    /// Structured Append header.
+    ///
+    /// This is a thin convenience over
+    /// [`crate::structured_append::StructuredAppend`]; see that type for the
+    /// split and parity details, and [`crate::structured_append::reassemble`]
+    /// for recombining decoded symbols.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QrError::InvalidStructuredAppend`] if `symbols` is not in
+    /// `2..=16`, or [`QrError::DataTooLong`] if a chunk cannot fit even version
+    /// 40 at `ec`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::{EcLevel, QrCode};
+    ///
+    /// let codes = QrCode::structured_append(b"split across multiple symbols", 3, EcLevel::M)?;
+    /// assert_eq!(codes.len(), 3);
+    /// # Ok::<(), qrcode_rs::QrError>(())
+    /// ```
+    pub fn structured_append<D: AsRef<[u8]>>(payload: D, symbols: u8, ec: EcLevel) -> QrResult<Vec<Self>> {
+        let sa = structured_append::StructuredAppend::new(symbols, payload.as_ref())?;
+        sa.encode(ec)
+    }
+
     /// Generates accessible alt text describing a QR code that encodes `data`.
     ///
     /// URLs are described as "linking to …"; other payloads as "containing: …".
@@ -1192,6 +1222,25 @@ mod api_tests {
         // GS1 uses FNC1 first position; smallest fitting version, medium EC.
         assert!(!code.version().is_micro());
         assert_eq!(code.error_correction_level(), crate::EcLevel::M);
+    }
+
+    #[test]
+    fn structured_append_encodes_n_symbols() {
+        let codes = QrCode::structured_append(b"hello structured append world", 3, EcLevel::M).unwrap();
+        assert_eq!(codes.len(), 3);
+        assert!(codes.iter().all(|c| !c.version().is_micro()));
+    }
+
+    #[test]
+    fn structured_append_rejects_invalid_symbol_count() {
+        assert_eq!(
+            QrCode::structured_append(b"x", 1, EcLevel::M).err(),
+            Some(crate::QrError::InvalidStructuredAppend { value: 1 })
+        );
+        assert_eq!(
+            QrCode::structured_append(b"x", 17, EcLevel::M).err(),
+            Some(crate::QrError::InvalidStructuredAppend { value: 17 })
+        );
     }
 
     #[test]
