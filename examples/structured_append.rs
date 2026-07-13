@@ -1,24 +1,34 @@
-//! Structured append — splitting a payload across multiple QR symbols.
+//! Structured Append — splitting one payload across multiple QR symbols.
 //!
-//! NOTE: this crate currently provides only the structured-append *mode
-//! indicator* (`ExtendedMode::StructuredAppend`). Full multi-symbol sequence
-//! splitting (position / parity / distributing data across N symbols) is not
-//! implemented, so this example emits a single symbol carrying the mode
-//! indicator for illustration only — it is not a valid structured-append
-//! sequence. See the capability matrix (structured append: partial support).
+//! Encodes a single message as a 3-symbol Structured Append sequence
+//! (ISO/IEC 18004 §7.4): every symbol carries the 20-bit sequence header and
+//! the shared parity byte, so a spec-aware scanner can reassemble them in order.
+//!
+//! Note: this crate's bundled decoder (`rqrr`, behind `decode-rqrr`) does not
+//! parse Structured Append symbols — it returns `UnknownDataType` for the
+//! `0011` mode. Read these symbols with an SA-aware scanner, or decode the bit
+//! stream yourself and feed [`reassemble`](qrcode_rs::structured_append::reassemble).
 //!
 //! Run: `cargo run --example structured_append`
 
-use qrcode_rs::bits::{Bits, ExtendedMode};
-use qrcode_rs::{EcLevel, QrCode, Version};
+use qrcode_rs::{EcLevel, QrCode};
 
 fn main() {
-    let mut bits = Bits::new(Version::Normal(2));
-    bits.push_mode_indicator(ExtendedMode::StructuredAppend).unwrap();
-    bits.push_byte_data(b"part of a sequence").unwrap();
-    bits.push_terminator(EcLevel::M).unwrap();
+    let payload = b"Split across multiple QR symbols for resilience!";
+    let symbols = 3;
 
-    let code = QrCode::with_bits(bits, EcLevel::M).unwrap();
-    println!("(single-symbol illustration of the structured-append mode indicator)");
-    println!("{}", code.render().dark_color('#').light_color(' ').build());
+    let codes = QrCode::structured_append(payload, symbols, EcLevel::M).expect("payload fits in 3 symbols at level M");
+
+    println!("Structured Append: {symbols} symbols for {} bytes\n", payload.len());
+    for (i, code) in codes.iter().enumerate() {
+        println!(
+            "── symbol {}/{} (version {:?}, {}×{} modules) ──",
+            i + 1,
+            symbols,
+            code.version(),
+            code.width(),
+            code.width()
+        );
+        println!("{}", code.render().dark_color('#').light_color(' ').build());
+    }
 }

@@ -108,6 +108,9 @@ name = "parse_vcard"
 name = "parse_gs1"
 
 [[example]]
+name = "structured_append"
+
+[[example]]
 name = "decode_roundtrip"
 required-features = ["decode-rqrr"]
 
