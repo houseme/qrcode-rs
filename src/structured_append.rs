@@ -171,6 +171,13 @@ pub enum SaError {
     /// A total count or position is outside its valid range (`2..=16` /
     /// `1..=total`). Carries the offending value.
     OutOfRange(u8),
+    /// The decoded bit stream does not begin with the Structured Append mode
+    /// indicator (`0011`) — the symbol is not part of a Structured Append
+    /// sequence (or the wrong bytes were supplied).
+    NotStructuredAppend,
+    /// The bit stream was truncated or otherwise malformed while parsing a
+    /// Structured Append header or data segment.
+    MalformedStream,
 }
 
 impl Display for SaError {
@@ -185,6 +192,8 @@ impl Display for SaError {
             Self::OutOfRange(value) => {
                 write!(f, "Structured Append value {value} out of range (total 2..=16, position 1..=total)")
             }
+            Self::NotStructuredAppend => f.write_str("not a Structured Append symbol (no `0011` mode indicator)"),
+            Self::MalformedStream => f.write_str("malformed Structured Append bit stream"),
         }
     }
 }
