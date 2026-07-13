@@ -45,6 +45,7 @@ pub mod ec;
 pub mod optimize;
 pub mod parse;
 pub mod render;
+pub mod structured_append;
 pub mod types;
 pub use crate::types::{Color, EcLevel, Mode, QrError, QrResult, Version};
 
