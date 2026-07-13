@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.5.0] - 2026-07-13
+
+### Added
+
+- **Structured Append** (`qrcode_rs::structured_append`) — full ISO/IEC 18004
+  §7.4 support: split one payload across 2..=16 QR symbols. The
+  `StructuredAppend` builder computes the 20-bit header — mode `0011`, an 8-bit
+  symbol-sequence indicator (high nibble = position, low = total), and the XOR
+  parity of the original message — and encodes each symbol at the smallest
+  fitting version. `QrCode::structured_append(payload, symbols, ec)` is a thin
+  convenience, and the symmetric, decoder-agnostic `reassemble(&[SaSymbol])`
+  recombines decoded symbols (validating uniform total/parity and a complete
+  position set).
+- `Bits::push_structured_append_header(position, total, parity)` low-level
+  primitive. A position/total of 16 wraps to nibble `0` (the only 4-bit
+  encoding).
+- `QrError::InvalidStructuredAppend { value }` (`#[non_exhaustive]`, with a
+  `suggestion()`).
+- `SaError` (`#[non_exhaustive]`, no_std + alloc compatible).
+- `examples/structured_append.rs` rewritten as a real multi-symbol demo.
+
+### Notes / deferred
+
+- **rqrr cannot decode Structured Append symbols** — it matches data modes
+  `0/1/2/4/7/8` and returns `UnknownDataType` for mode `3`. The v1.4.0-style
+  encode→rqrr→decode round-trip is therefore not possible for Structured
+  Append; verification is bit-level + structural + the split-rule↔`reassemble`
+  symmetry, all pure-core. A future `quircs` adapter or native SA decoder
+  would close the gap.
+- Uniform-version mode (all symbols sharing one QR version) is deferred;
+  v1.5.0 uses per-symbol auto-version (spec-compliant and more compact).
+
 ## [1.4.0] - 2026-07-12
 
 ### Added
