@@ -3,6 +3,7 @@
 //! Run with: `cargo bench --bench encoding`
 
 use criterion::{Criterion, criterion_group, criterion_main};
+use qrcode_rs::structured_append::StructuredAppend;
 use qrcode_rs::{EcLevel, QrCode, Version};
 
 fn bench_encode(c: &mut Criterion) {
@@ -26,6 +27,19 @@ fn bench_encode(c: &mut Criterion) {
     g.bench_function("batch_1000", |b| {
         b.iter(|| QrCode::batch(std::hint::black_box(&batch_inputs), EcLevel::M).unwrap())
     });
+    g.finish();
+
+    // Structured Append: split a payload across N symbols (per-symbol version
+    // search via the tier-based path).
+    let sa_payload: Vec<u8> = (0..400).map(|i| (i % 256) as u8).collect();
+    let mut g = c.benchmark_group("structured_append");
+    for &n in &[2_usize, 8, 16] {
+        g.bench_function(format!("encode_{n}"), |b| {
+            b.iter(|| {
+                StructuredAppend::new(n as u8, std::hint::black_box(&sa_payload)).unwrap().encode(EcLevel::M).unwrap()
+            })
+        });
+    }
     g.finish();
 }
 
