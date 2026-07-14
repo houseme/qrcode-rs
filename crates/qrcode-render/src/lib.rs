@@ -38,6 +38,7 @@ use alloc::{
 };
 
 use core::cmp::max;
+use core::fmt;
 use qrcode_core::As;
 pub use qrcode_core::Color;
 
@@ -133,6 +134,40 @@ pub trait Canvas: Sized {
 //------------------------------------------------------------------------------
 //{{{ Renderer
 
+/// Errors returned by fallible render construction or rendering.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RenderError {
+    /// The module source is not a non-empty square row-major QR module grid.
+    InvalidModuleSource {
+        /// Source width in modules.
+        width: usize,
+        /// Source height in modules.
+        height: usize,
+        /// Number of row-major modules exposed by the source.
+        len: usize,
+    },
+
+    /// The module source is wider than this renderer can represent internally.
+    ModuleSourceTooWide {
+        /// Source width in modules.
+        width: usize,
+    },
+}
+
+impl fmt::Display for RenderError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RenderError::InvalidModuleSource { width, height, len } => {
+                write!(f, "invalid module source dimensions: width={width}, height={height}, len={len}")
+            }
+            RenderError::ModuleSourceTooWide { width } => write!(f, "module source width {width} exceeds u32::MAX"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for RenderError {}
+
 /// A QR code renderer. This is a builder type which converts a bool-vector into
 /// an image.
 pub struct Renderer<'a, P: Pixel> {
@@ -179,8 +214,40 @@ impl<'a, P: Pixel> Renderer<'a, P> {
     where
         C: qrcode_core::ModuleSource + ?Sized,
     {
-        assert_eq!(source.width(), source.height());
-        Self::new(source.modules(), source.width(), quiet_zone)
+        match Self::try_from_source(source, quiet_zone) {
+            Ok(renderer) => renderer,
+            Err(err) => panic!("{err}"),
+        }
+    }
+
+    /// Tries to create a new renderer from a module-grid source.
+    ///
+    /// Unlike [`Renderer::from_source`], this constructor reports malformed
+    /// sources as [`RenderError`] instead of panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RenderError::InvalidModuleSource`] when `source` is empty,
+    /// non-square, or its row-major module slice length does not match
+    /// `width() * height()`. Returns [`RenderError::ModuleSourceTooWide`] when
+    /// the width cannot be represented by this renderer.
+    pub fn try_from_source<C>(source: &'a C, quiet_zone: u32) -> Result<Renderer<'a, P>, RenderError>
+    where
+        C: qrcode_core::ModuleSource + ?Sized,
+    {
+        let width = source.width();
+        let height = source.height();
+        let len = source.modules().len();
+        let Some(expected_len) = width.checked_mul(height) else {
+            return Err(RenderError::InvalidModuleSource { width, height, len });
+        };
+        if width == 0 || width != height || len != expected_len {
+            return Err(RenderError::InvalidModuleSource { width, height, len });
+        }
+        if width > u32::MAX as usize {
+            return Err(RenderError::ModuleSourceTooWide { width });
+        }
+        Ok(Self::new(source.modules(), width, quiet_zone))
     }
 
     /// Sets color of a dark module. Default is opaque black.
@@ -317,10 +384,10 @@ where
     P: Pixel,
 {
     type Output = P::Image;
-    type Error = core::convert::Infallible;
+    type Error = RenderError;
 
     fn render(&self, code: &C) -> Result<Self::Output, Self::Error> {
-        let mut renderer = Renderer::from_source(code, self.quiet_zone);
+        let mut renderer = Renderer::try_from_source(code, self.quiet_zone)?;
         renderer.module_size = self.module_size;
         renderer.dark_color = self.dark_color;
         renderer.light_color = self.light_color;
@@ -345,3 +412,51 @@ impl<'a, P: StyledPixel> Renderer<'a, P> {
 }
 
 //}}}
+
+#[cfg(test)]
+mod tests {
+    use super::{RenderError, Renderer};
+    use qrcode_core::{Color, ModuleSource, Renderer as CoreRenderer};
+
+    struct BadSource {
+        modules: [Color; 4],
+    }
+
+    impl ModuleSource for BadSource {
+        fn get(&self, x: usize, y: usize) -> Color {
+            self.modules[y * self.width() + x]
+        }
+
+        fn width(&self) -> usize {
+            3
+        }
+
+        fn height(&self) -> usize {
+            2
+        }
+
+        fn modules(&self) -> &[Color] {
+            &self.modules
+        }
+    }
+
+    #[test]
+    fn try_from_source_returns_error_for_invalid_dimensions() {
+        let source = BadSource { modules: [Color::Dark; 4] };
+
+        let result = Renderer::<char>::try_from_source(&source, 0);
+        assert!(matches!(result, Err(RenderError::InvalidModuleSource { width: 3, height: 2, len: 4 })));
+    }
+
+    #[test]
+    fn core_renderer_returns_error_for_invalid_source() {
+        let modules = [Color::Dark, Color::Light, Color::Light, Color::Dark];
+        let renderer = Renderer::<char>::new(&modules, 2, 0);
+        let source = BadSource { modules: [Color::Dark; 4] };
+
+        assert_eq!(
+            CoreRenderer::render(&renderer, &source).unwrap_err(),
+            RenderError::InvalidModuleSource { width: 3, height: 2, len: 4 }
+        );
+    }
+}
