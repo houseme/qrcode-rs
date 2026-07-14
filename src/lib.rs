@@ -1487,6 +1487,23 @@ mod api_tests {
     }
 
     #[test]
+    fn render_with_uses_builtin_plain_text_plugin() {
+        let code = QrCode::new(b"plugin").unwrap();
+        let mut registry = PluginRegistry::new();
+        registry.register_plugin(&crate::render::plugin::PlainTextRendererPlugin);
+        let config =
+            RenderConfig::new().with_option("dark", "X").with_option("light", ".").with_option("quiet_zone", "0");
+
+        let output = code
+            .render_with(&registry, crate::render::plugin::PlainTextRendererPlugin::RENDERER_NAME, &config)
+            .unwrap();
+        let expected =
+            code.render::<char>().dark_color('X').light_color('.').quiet_zone(false).module_dimensions(1, 1).build();
+
+        assert_eq!(output, RenderOutput::Text(expected));
+    }
+
+    #[test]
     fn builder_version_wins_over_micro() {
         let built = QrCode::builder(b"01234567").version(Version::Micro(2)).micro(true).build().unwrap();
         assert_eq!(built.version(), Version::Micro(2));
