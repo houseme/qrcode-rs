@@ -29,6 +29,16 @@ fn bench_encode(c: &mut Criterion) {
     });
     g.finish();
 
+    let fixed_payload = b"https://example.com/fixed-version";
+    let mut fixed = c.benchmark_group("fixed_version");
+    fixed.bench_function("dynamic_v5", |b| {
+        b.iter(|| QrCode::with_version(std::hint::black_box(fixed_payload), Version::Normal(5), EcLevel::M).unwrap())
+    });
+    fixed.bench_function("const_v5", |b| {
+        b.iter(|| QrCode::with_const_version::<5, _>(std::hint::black_box(fixed_payload), EcLevel::M).unwrap())
+    });
+    fixed.finish();
+
     // Structured Append: split a payload across N symbols (per-symbol version
     // search via the tier-based path).
     let sa_payload: Vec<u8> = (0..400).map(|i| (i % 256) as u8).collect();
