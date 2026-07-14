@@ -17,12 +17,14 @@ pub mod bits;
 pub mod canvas;
 pub mod cast;
 pub mod ec;
+pub mod mode;
 pub mod optimize;
 pub mod plugin;
 pub mod traits;
 pub mod types;
 
 pub use cast::{As, Truncate};
+pub use mode::{AlphanumericMode, ByteMode, EncodingMode, KanjiMode, NumericMode};
 pub use plugin::{
     DynEncoder, DynRenderer, EncodeConfig, EncodedOutput, EncoderFactory, ModuleGrid, PluginError, PluginRegistry,
     PostProcessor, QrPlugin, RenderConfig, RenderOutput, RendererFactory,

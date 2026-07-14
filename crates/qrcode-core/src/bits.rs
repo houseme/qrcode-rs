@@ -27,6 +27,7 @@ use alloc::{
 use core::cmp::min;
 
 use crate::cast::{As, Truncate};
+use crate::mode::EncodingMode;
 use crate::optimize::{Optimizer, Parser, Segment, total_encoded_len};
 use crate::types::{EcLevel, Mode, QrError, QrResult, Version};
 
@@ -554,6 +555,73 @@ impl Bits {
             self.push_number(13, number);
         }
         Ok(())
+    }
+}
+
+impl Bits {
+    /// Encodes data with a type-level QR encoding mode.
+    ///
+    /// This is the type-safe counterpart to calling one of
+    /// [`push_numeric_data`](Self::push_numeric_data),
+    /// [`push_alphanumeric_data`](Self::push_alphanumeric_data),
+    /// [`push_byte_data`](Self::push_byte_data), or
+    /// [`push_kanji_data`](Self::push_kanji_data) directly.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QrError::InvalidCharacter`] when `data` is not valid for `M`.
+    /// Returns the same length or version errors as the mode-specific push
+    /// method after validation succeeds.
+    pub fn push_mode_data<M: EncodingMode>(&mut self, data: &[u8]) -> QrResult<()> {
+        if let Some((position, byte)) = M::invalid_character(data) {
+            return Err(QrError::InvalidCharacter { position, byte });
+        }
+
+        match M::MODE {
+            Mode::Numeric => self.push_numeric_data(data),
+            Mode::Alphanumeric => self.push_alphanumeric_data(data),
+            Mode::Byte => self.push_byte_data(data),
+            Mode::Kanji => self.push_kanji_data(data),
+        }
+    }
+}
+
+#[cfg(test)]
+mod typed_mode_tests {
+    use crate::bits::Bits;
+    use crate::mode::{AlphanumericMode, ByteMode, KanjiMode, NumericMode};
+    use crate::types::{QrError, Version};
+
+    #[test]
+    fn push_mode_data_matches_numeric_specific_encoder() {
+        let mut typed = Bits::new(Version::Normal(1));
+        let mut direct = Bits::new(Version::Normal(1));
+
+        assert_eq!(typed.push_mode_data::<NumericMode>(b"01234567"), Ok(()));
+        assert_eq!(direct.push_numeric_data(b"01234567"), Ok(()));
+        assert_eq!(typed.into_bytes(), direct.into_bytes());
+    }
+
+    #[test]
+    fn push_mode_data_matches_other_specific_encoders() {
+        let mut alphanumeric = Bits::new(Version::Normal(1));
+        let mut byte = Bits::new(Version::Normal(1));
+        let mut kanji = Bits::new(Version::Normal(1));
+
+        assert_eq!(alphanumeric.push_mode_data::<AlphanumericMode>(b"AC-42"), Ok(()));
+        assert_eq!(byte.push_mode_data::<ByteMode>(b"\x12\x34"), Ok(()));
+        assert_eq!(kanji.push_mode_data::<KanjiMode>(b"\x93\x5f\xe4\xaa"), Ok(()));
+    }
+
+    #[test]
+    fn push_mode_data_rejects_invalid_mode_input_before_writing() {
+        let mut bits = Bits::new(Version::Normal(1));
+
+        assert_eq!(
+            bits.push_mode_data::<NumericMode>(b"12a"),
+            Err(QrError::InvalidCharacter { position: 2, byte: b'a' })
+        );
+        assert!(bits.into_bytes().is_empty());
     }
 }
 
