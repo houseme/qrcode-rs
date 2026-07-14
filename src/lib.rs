@@ -42,7 +42,11 @@ pub mod structured_append;
 
 // The encoding primitive layer lives in `qrcode-core` and is re-exported here
 // so the public API (`qrcode_rs::bits::Bits`, `qrcode_rs::Version`, …) is unchanged.
-pub use qrcode_core::{bits, canvas, ec, optimize, traits, types};
+pub use qrcode_core::{
+    DynEncoder, DynRenderer, EncodeConfig, EncodedOutput, EncoderFactory, ModuleGrid, PluginError, PluginRegistry,
+    PostProcessor, QrPlugin, RenderConfig, RenderOutput, RendererFactory,
+};
+pub use qrcode_core::{bits, canvas, ec, optimize, plugin, traits, types};
 pub use qrcode_decode as decode;
 pub use qrcode_parse as parse;
 // `cast` stays crate-private (not part of the public API); re-import it so
@@ -424,6 +428,33 @@ impl QrCode {
     ///
     pub fn render<P: Pixel>(&self) -> Renderer<'_, P> {
         Renderer::from_symbol(self)
+    }
+
+    /// Renders the QR code through a named plugin renderer.
+    ///
+    /// The method looks up `renderer_name` in `registry`, copies this QR code's
+    /// module grid into a mutable [`ModuleGrid`], applies all registered
+    /// [`PostProcessor`] values in registration order, then renders the
+    /// transformed grid through the selected dynamic renderer.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError::RendererNotFound`] when no renderer is registered
+    /// with `renderer_name`, or another [`PluginError`] from grid construction,
+    /// postprocessing, or rendering.
+    pub fn render_with(
+        &self,
+        registry: &PluginRegistry,
+        renderer_name: &str,
+        config: &RenderConfig,
+    ) -> Result<RenderOutput, PluginError> {
+        let mut modules = ModuleGrid::new(self.content.clone(), self.width, self.width)?;
+        for postprocessor in registry.postprocessors() {
+            postprocessor.process(&mut modules)?;
+        }
+        let factory =
+            registry.renderer(renderer_name).ok_or_else(|| PluginError::RendererNotFound(renderer_name.to_owned()))?;
+        factory.build(config).render(&modules)
     }
 }
 
@@ -1332,7 +1363,8 @@ mod tests {
 #[cfg(test)]
 mod api_tests {
     use crate::{
-        AutoEncoder, Builder as CoreBuilder, Color, EcLevel, MicroEncoder, Mode, ModuleView, QrCode, QrSymbol, Version,
+        AutoEncoder, Builder as CoreBuilder, Color, DynRenderer, EcLevel, MicroEncoder, Mode, ModuleView,
+        PluginRegistry, PostProcessor, QrCode, QrSymbol, RenderConfig, RenderOutput, RendererFactory, Version,
         VersionEncoder,
     };
     use qrcode_core::traits::{
@@ -1342,6 +1374,37 @@ mod api_tests {
 
     fn colors(code: &QrCode) -> Vec<Color> {
         code.to_colors()
+    }
+
+    struct TextPluginRenderer;
+
+    impl DynRenderer for TextPluginRenderer {
+        fn render(&self, code: &dyn CoreModuleSource) -> Result<RenderOutput, crate::PluginError> {
+            let mut output = String::new();
+            for y in 0..code.height() {
+                for x in 0..code.width() {
+                    output.push(if code.get(x, y) == Color::Dark { '#' } else { '.' });
+                }
+            }
+            Ok(RenderOutput::Text(output))
+        }
+    }
+
+    struct TextPluginFactory;
+
+    impl RendererFactory for TextPluginFactory {
+        fn build(&self, _config: &RenderConfig) -> Box<dyn DynRenderer> {
+            Box::new(TextPluginRenderer)
+        }
+    }
+
+    struct DarkenFirstModule;
+
+    impl PostProcessor for DarkenFirstModule {
+        fn process(&self, modules: &mut dyn CoreModuleStorage) -> Result<(), crate::PluginError> {
+            modules.set(0, 0, Color::Dark);
+            Ok(())
+        }
     }
 
     #[test]
@@ -1394,6 +1457,33 @@ mod api_tests {
         let built = QrCode::builder(b"123").ec_level(EcLevel::L).micro(true).build().unwrap();
         assert_eq!(colors(&direct), colors(&built));
         assert!(built.version().is_micro());
+    }
+
+    #[test]
+    fn render_with_uses_registered_renderer_and_postprocessors() {
+        let code = QrCode::new(b"plugin").unwrap();
+        let mut registry = PluginRegistry::new();
+        registry.register_renderer("text", Box::new(TextPluginFactory));
+        registry.register_postprocessor(Box::new(DarkenFirstModule));
+
+        let output = code.render_with(&registry, "text", &RenderConfig::new()).unwrap();
+        let RenderOutput::Text(text) = output else {
+            panic!("expected text output");
+        };
+
+        assert_eq!(text.len(), code.width() * code.width());
+        assert!(text.starts_with('#'));
+    }
+
+    #[test]
+    fn render_with_reports_missing_renderer() {
+        let code = QrCode::new(b"plugin").unwrap();
+        let registry = PluginRegistry::new();
+
+        assert!(matches!(
+            code.render_with(&registry, "missing", &RenderConfig::new()),
+            Err(crate::PluginError::RendererNotFound(name)) if name == "missing"
+        ));
     }
 
     #[test]
