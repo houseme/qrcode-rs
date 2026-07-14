@@ -23,5 +23,5 @@ pub mod traits;
 pub mod types;
 
 pub use cast::{As, Truncate};
-pub use traits::{Encoder, ModuleSource, ModuleStorage, ModuleView, QrSymbol, Renderer};
+pub use traits::{Builder, Encoder, ModuleSource, ModuleStorage, ModuleView, QrSymbol, Renderer};
 pub use types::{Color, EcLevel, Mode, QrError, QrResult, Version};

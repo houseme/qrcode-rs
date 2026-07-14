@@ -68,6 +68,25 @@ pub trait Encoder {
     fn encode(&self, input: &[u8]) -> Result<Self::Output, Self::Error>;
 }
 
+/// Builds a configured value into its final output.
+///
+/// This small trait gives encoders, renderers, and future plugin factories a
+/// shared builder contract without forcing them into one concrete builder type.
+pub trait Builder {
+    /// The successfully built value.
+    type Output;
+
+    /// The build error type.
+    type Error;
+
+    /// Consumes the builder and returns its output.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Self::Error`] when the configured value cannot be built.
+    fn build(self) -> Result<Self::Output, Self::Error>;
+}
+
 /// Renders a module-grid source into a concrete output type.
 ///
 /// The `Code` parameter is usually a type implementing [`ModuleSource`], such
@@ -193,7 +212,7 @@ impl<T: ModuleStorage + ?Sized> ModuleSource for T {
 
 #[cfg(test)]
 mod tests {
-    use super::{ModuleSource, ModuleView, QrSymbol};
+    use super::{Builder, ModuleSource, ModuleView, QrSymbol};
     use crate::{Color, EcLevel, Version};
 
     struct DummySymbol {
@@ -229,6 +248,19 @@ mod tests {
         }
     }
 
+    struct DummyBuilder {
+        value: u8,
+    }
+
+    impl Builder for DummyBuilder {
+        type Output = u8;
+        type Error = ();
+
+        fn build(self) -> Result<Self::Output, Self::Error> {
+            Ok(self.value)
+        }
+    }
+
     #[test]
     fn module_view_reads_row_major_modules() {
         let modules = [Color::Dark, Color::Light, Color::Light, Color::Dark];
@@ -261,5 +293,12 @@ mod tests {
         let symbol = DummySymbol { version: Version::Micro(1), modules: [Color::Dark] };
 
         assert_eq!(symbol.quiet_zone(), 2);
+    }
+
+    #[test]
+    fn builder_trait_builds_configured_output() {
+        let result = DummyBuilder { value: 7 }.build();
+
+        assert_eq!(result, Ok(7));
     }
 }

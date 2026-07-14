@@ -49,7 +49,9 @@ pub use qrcode_parse as parse;
 // `crate::cast::As` keeps resolving across the facade and render modules.
 pub use crate::types::{Color, EcLevel, Mode, QrError, QrResult, Version};
 use qrcode_core::cast;
-pub use qrcode_core::traits::{Encoder, ModuleSource, ModuleStorage, ModuleView, QrSymbol, Renderer as CoreRenderer};
+pub use qrcode_core::traits::{
+    Builder, Encoder, ModuleSource, ModuleStorage, ModuleView, QrSymbol, Renderer as CoreRenderer,
+};
 
 #[cfg(not(feature = "std"))]
 #[allow(unused_imports)]
@@ -948,6 +950,15 @@ impl<D: AsRef<[u8]>> QrCodeBuilder<D> {
     }
 }
 
+impl<D: AsRef<[u8]>> Builder for QrCodeBuilder<D> {
+    type Output = QrCode;
+    type Error = QrError;
+
+    fn build(self) -> QrResult<QrCode> {
+        QrCodeBuilder::build(self)
+    }
+}
+
 //}}}
 //------------------------------------------------------------------------------
 //{{{ Info
@@ -1321,7 +1332,8 @@ mod tests {
 #[cfg(test)]
 mod api_tests {
     use crate::{
-        AutoEncoder, Color, EcLevel, MicroEncoder, Mode, ModuleView, QrCode, QrSymbol, Version, VersionEncoder,
+        AutoEncoder, Builder as CoreBuilder, Color, EcLevel, MicroEncoder, Mode, ModuleView, QrCode, QrSymbol, Version,
+        VersionEncoder,
     };
     use qrcode_core::traits::{
         Encoder as CoreEncoder, ModuleSource as CoreModuleSource, ModuleStorage as CoreModuleStorage,
@@ -1339,6 +1351,13 @@ mod api_tests {
         assert_eq!(colors(&direct), colors(&built));
         assert_eq!(direct.version(), built.version());
         assert_eq!(direct.error_correction_level(), built.error_correction_level());
+    }
+
+    #[test]
+    fn core_builder_trait_builds_qrcode_builder() {
+        let code = CoreBuilder::build(QrCode::builder(b"Some data").ec_level(EcLevel::H)).unwrap();
+
+        assert_eq!(code.error_correction_level(), EcLevel::H);
     }
 
     #[test]
