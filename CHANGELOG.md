@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.6.0] - 2026-07-14
+
+### Added
+
+- **Structured Append bit-stream parser** (`qrcode_rs::decode::sa_parse`) — the
+  pure-core, decoder-agnostic decode counterpart to
+  `StructuredAppend::encode`. `parse_sa_datastream(bits, version)` reads the
+  20-bit Structured Append header (mode `0011`, the symbol-sequence indicator,
+  the parity byte) and decodes the Numeric / Alphanumeric / Byte / Kanji
+  segments, returning `SaSymbolData { position, total, parity, data }`. Feed it
+  the bytes any decoder recovers, then
+  [`reassemble`](crate::structured_append::reassemble) the symbols.
+- `SaError::NotStructuredAppend` and `SaError::MalformedStream` (both
+  `#[non_exhaustive]`, non-breaking).
+
+### Fixed
+
+- **`RqrrDecoder` EC-level mapping** — `rqrr` stores the raw QR
+  format-information EC bits (`M=00, L=01, H=10, Q=11`), not a sequential
+  index, so `RqrrDecoder::decode` was returning the wrong `EcLevel` on
+  `DecodedQrCode` (e.g. an M-level symbol read back as L). Now correct, with a
+  round-trip assertion in `tests/decode_roundtrip.rs`.
+
+### Notes / deferred
+
+- **`rqrr` cannot decode Structured Append data** — it reaches the `0011` mode
+  and returns `UnknownDataType`. The pure-core parser recovers the data from a
+  byte stream, but `rqrr`'s public API can't supply the corrected,
+  correctly-oriented stream (it reads the crate's rendered symbols mirrored,
+  and its `MirroredGrid` / `codestream_ecc` are private), so a full
+  encode→render→decode round-trip isn't wired through the bundled decoder.
+  `tests/sa_roundtrip.rs` instead asserts `rqrr` *recognizes* the symbols
+  (`UnknownDataType`), proving they are well-formed. A native SA-aware decoder
+  (image → grid → Reed-Solomon → modes) is deferred to v2.0.0.
+
 ## [1.5.0] - 2026-07-13
 
 ### Added
