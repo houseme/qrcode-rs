@@ -42,10 +42,11 @@ pub mod structured_append;
 
 // The encoding primitive layer lives in `qrcode-core` and is re-exported here
 // so the public API (`qrcode_rs::bits::Bits`, `qrcode_rs::Version`, …) is unchanged.
+pub use qrcode_core::ConstVersion;
 pub use qrcode_core::{
     AlphanumericMode, ByteMode, DynEncoder, DynRenderer, EncodeConfig, EncodedOutput, EncoderFactory, EncodingMode,
     KanjiMode, ModuleGrid, NumericMode, PluginError, PluginRegistry, PostProcessor, QrPlugin, RenderConfig,
-    RenderOutput, RendererFactory,
+    RenderOutput, RendererFactory, StaticVersion,
 };
 pub use qrcode_core::{bits, canvas, ec, optimize, plugin, traits, types};
 pub use qrcode_decode as decode;
@@ -183,6 +184,24 @@ impl QrCode {
     /// incompatible.
     pub fn with_version<D: AsRef<[u8]>>(data: D, version: Version, ec_level: EcLevel) -> QrResult<Self> {
         VersionEncoder::new(version, ec_level).encode(data.as_ref())
+    }
+
+    /// Constructs a new QR code with a compile-time checked normal QR version.
+    ///
+    /// `N` must be in `1..=40`. Invalid values fail during const evaluation
+    /// when this fixed-version path is monomorphized.
+    ///
+    ///     use qrcode_rs::{EcLevel, QrCode};
+    ///
+    ///     let code = QrCode::with_const_version::<5, _>(b"Some data", EcLevel::M).unwrap();
+    ///     assert_eq!(code.version(), qrcode_rs::Version::Normal(5));
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the QR code cannot be constructed for version `N`, e.g.
+    /// when the data is too long for that version and error correction level.
+    pub fn with_const_version<const N: i16, D: AsRef<[u8]>>(data: D, ec_level: EcLevel) -> QrResult<Self> {
+        ConstVersionEncoder::<N>::new(ec_level).encode(data.as_ref())
     }
 
     fn encode_auto(data: &[u8], ec_level: EcLevel) -> QrResult<Self> {
@@ -887,6 +906,45 @@ impl Encoder for VersionEncoder {
     }
 }
 
+/// Encoder adapter for a compile-time checked normal QR version and [`EcLevel`].
+///
+/// This is the trait-friendly counterpart to
+/// [`QrCode::with_const_version`]. `N` must be in `1..=40`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ConstVersionEncoder<const N: i16> {
+    ec_level: EcLevel,
+}
+
+impl<const N: i16> ConstVersionEncoder<N> {
+    /// Creates an encoder for fixed normal QR version `N`.
+    #[must_use]
+    pub const fn new(ec_level: EcLevel) -> Self {
+        let _ = ConstVersion::<N>::VALUE;
+        Self { ec_level }
+    }
+
+    /// Returns the compile-time checked dynamic version value.
+    #[must_use]
+    pub const fn version(&self) -> Version {
+        ConstVersion::<N>::VALUE
+    }
+
+    /// Returns the configured error-correction level.
+    #[must_use]
+    pub const fn ec_level(&self) -> EcLevel {
+        self.ec_level
+    }
+}
+
+impl<const N: i16> Encoder for ConstVersionEncoder<N> {
+    type Output = QrCode;
+    type Error = QrError;
+
+    fn encode(&self, input: &[u8]) -> QrResult<QrCode> {
+        QrCode::encode_with_version(input, ConstVersion::<N>::VALUE, self.ec_level)
+    }
+}
+
 //}}}
 
 //------------------------------------------------------------------------------
@@ -1394,9 +1452,9 @@ mod tests {
 #[cfg(test)]
 mod api_tests {
     use crate::{
-        AutoEncoder, Builder as CoreBuilder, Color, DynRenderer, EcLevel, MicroEncoder, Mode, ModuleView, NumericMode,
-        PluginRegistry, PostProcessor, QrCode, QrError, QrSymbol, RenderConfig, RenderOutput, RendererFactory, Version,
-        VersionEncoder,
+        AutoEncoder, Builder as CoreBuilder, Color, ConstVersion, ConstVersionEncoder, DynRenderer, EcLevel,
+        MicroEncoder, Mode, ModuleView, NumericMode, PluginRegistry, PostProcessor, QrCode, QrError, QrSymbol,
+        RenderConfig, RenderOutput, RendererFactory, Version, VersionEncoder,
     };
     use qrcode_core::traits::{
         Encoder as CoreEncoder, ModuleSource as CoreModuleSource, ModuleStorage as CoreModuleStorage,
@@ -1472,6 +1530,20 @@ mod api_tests {
     fn version_encoder_matches_constructor() {
         let direct = QrCode::with_version(b"Some data", Version::Normal(1), EcLevel::M).unwrap();
         let encoded = VersionEncoder::new(Version::Normal(1), EcLevel::M).encode(b"Some data").unwrap();
+        assert_eq!(colors(&direct), colors(&encoded));
+    }
+
+    #[test]
+    fn const_version_encoder_matches_dynamic_version() {
+        const V5: Version = ConstVersion::<5>::VALUE;
+        let direct = QrCode::with_version(b"Some data", Version::Normal(5), EcLevel::M).unwrap();
+        let const_ctor = QrCode::with_const_version::<5, _>(b"Some data", EcLevel::M).unwrap();
+        let encoded = ConstVersionEncoder::<5>::new(EcLevel::M).encode(b"Some data").unwrap();
+
+        assert_eq!(V5, Version::Normal(5));
+        assert_eq!(ConstVersion::<5>::new().version(), Version::Normal(5));
+        assert_eq!(ConstVersionEncoder::<5>::new(EcLevel::M).version(), Version::Normal(5));
+        assert_eq!(colors(&direct), colors(&const_ctor));
         assert_eq!(colors(&direct), colors(&encoded));
     }
 

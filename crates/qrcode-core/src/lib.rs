@@ -22,6 +22,7 @@ pub mod optimize;
 pub mod plugin;
 pub mod traits;
 pub mod types;
+pub mod version;
 
 pub use cast::{As, Truncate};
 pub use mode::{AlphanumericMode, ByteMode, EncodingMode, KanjiMode, NumericMode};
@@ -31,3 +32,4 @@ pub use plugin::{
 };
 pub use traits::{Builder, Encoder, ModuleSource, ModuleStorage, ModuleView, QrSymbol, Renderer};
 pub use types::{Color, EcLevel, Mode, QrError, QrResult, Version};
+pub use version::{ConstVersion, StaticVersion};
