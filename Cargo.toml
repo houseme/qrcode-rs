@@ -18,6 +18,7 @@ exclude = ["tests/*", ".gitignore"]
 members = [
     "crates/qrcode-core",
     "crates/qrcode-decode",
+    "crates/qrcode-html",
     "crates/qrcode-parse",
     "crates/qrcode-render",
     "crates/qrcode-svg",
@@ -36,6 +37,7 @@ serde = { version = "1", default-features = false, features = ["derive", "alloc"
 log = { version = "0.4", default-features = false, optional = true }
 qrcode-core = { path = "crates/qrcode-core", version = "0.1.0", default-features = false }
 qrcode-decode = { path = "crates/qrcode-decode", version = "0.1.0", default-features = false }
+qrcode-html = { path = "crates/qrcode-html", version = "0.1.0", default-features = false, optional = true }
 qrcode-parse = { path = "crates/qrcode-parse", version = "0.1.0", default-features = false }
 qrcode-render = { path = "crates/qrcode-render", version = "0.1.0", default-features = false }
 qrcode-svg = { path = "crates/qrcode-svg", version = "0.1.0", default-features = false, optional = true }
@@ -48,12 +50,19 @@ serde_json = "1"
 [features]
 default = ["std", "image", "svg", "pic", "eps", "html", "pdf"]
 # Links the `std` crate (enabled by default). Disable for `no_std` + `alloc`.
-std = ["qrcode-core/std", "qrcode-decode/std", "qrcode-parse/std", "qrcode-render/std", "qrcode-svg?/std"]
+std = [
+    "qrcode-core/std",
+    "qrcode-decode/std",
+    "qrcode-html?/std",
+    "qrcode-parse/std",
+    "qrcode-render/std",
+    "qrcode-svg?/std",
+]
 image = ["dep:image", "image/png", "std", "qrcode-decode/image", "qrcode-render/image"]
 svg = ["dep:qrcode-svg"]
 pic = []
 eps = []
-html = []
+html = ["dep:qrcode-html"]
 pdf = []
 # Enables serde Serialize/Deserialize on the core types and a QrCodeData wrapper.
 serde = ["dep:serde", "qrcode-core/serde"]
