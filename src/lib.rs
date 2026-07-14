@@ -43,8 +43,9 @@ pub mod structured_append;
 // The encoding primitive layer lives in `qrcode-core` and is re-exported here
 // so the public API (`qrcode_rs::bits::Bits`, `qrcode_rs::Version`, …) is unchanged.
 pub use qrcode_core::{
-    DynEncoder, DynRenderer, EncodeConfig, EncodedOutput, EncoderFactory, ModuleGrid, PluginError, PluginRegistry,
-    PostProcessor, QrPlugin, RenderConfig, RenderOutput, RendererFactory,
+    AlphanumericMode, ByteMode, DynEncoder, DynRenderer, EncodeConfig, EncodedOutput, EncoderFactory, EncodingMode,
+    KanjiMode, ModuleGrid, NumericMode, PluginError, PluginRegistry, PostProcessor, QrPlugin, RenderConfig,
+    RenderOutput, RendererFactory,
 };
 pub use qrcode_core::{bits, canvas, ec, optimize, plugin, traits, types};
 pub use qrcode_decode as decode;
@@ -949,12 +950,42 @@ impl<D: AsRef<[u8]>> QrCodeBuilder<D> {
         self
     }
 
+    /// Hints the encoding mode with a type-level [`EncodingMode`] marker.
+    ///
+    /// Unlike [`encoding_mode`](Self::encoding_mode), this validates `data`
+    /// immediately and returns [`QrError::InvalidCharacter`] when the selected
+    /// mode cannot represent it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QrError::InvalidCharacter`] with the first invalid byte when
+    /// `data` is not valid for `M`.
+    pub fn encoding_mode_typed<M: EncodingMode>(mut self) -> QrResult<Self> {
+        if let Some((position, byte)) = M::invalid_character(self.data.as_ref()) {
+            return Err(QrError::InvalidCharacter { position, byte });
+        }
+        self.mode_hint = Some(M::MODE);
+        Ok(self)
+    }
+
     /// Forces a specific encoding [`Mode`], bypassing automatic optimization.
     /// This is an alias for [`encoding_mode`](Self::encoding_mode), provided for
     /// familiarity with the QR-code vocabulary.
     #[must_use]
     pub fn force_mode(self, mode: Mode) -> Self {
         self.encoding_mode(mode)
+    }
+
+    /// Forces a type-level encoding mode after validating the input.
+    ///
+    /// This is an alias for [`encoding_mode_typed`](Self::encoding_mode_typed).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QrError::InvalidCharacter`] with the first invalid byte when
+    /// `data` is not valid for `M`.
+    pub fn force_mode_typed<M: EncodingMode>(self) -> QrResult<Self> {
+        self.encoding_mode_typed::<M>()
     }
 
     /// Builds the [`QrCode`].
@@ -1363,8 +1394,8 @@ mod tests {
 #[cfg(test)]
 mod api_tests {
     use crate::{
-        AutoEncoder, Builder as CoreBuilder, Color, DynRenderer, EcLevel, MicroEncoder, Mode, ModuleView,
-        PluginRegistry, PostProcessor, QrCode, QrSymbol, RenderConfig, RenderOutput, RendererFactory, Version,
+        AutoEncoder, Builder as CoreBuilder, Color, DynRenderer, EcLevel, MicroEncoder, Mode, ModuleView, NumericMode,
+        PluginRegistry, PostProcessor, QrCode, QrError, QrSymbol, RenderConfig, RenderOutput, RendererFactory, Version,
         VersionEncoder,
     };
     use qrcode_core::traits::{
@@ -1515,6 +1546,27 @@ mod api_tests {
         let optimal = QrCode::builder(b"01234567").version(Version::Normal(2)).build().unwrap();
         let byte = QrCode::builder(b"01234567").version(Version::Normal(2)).encoding_mode(Mode::Byte).build().unwrap();
         assert_ne!(colors(&optimal), colors(&byte));
+    }
+
+    #[test]
+    fn builder_typed_encoding_mode_matches_dynamic_mode() {
+        let typed = QrCode::builder(b"01234567")
+            .version(Version::Normal(2))
+            .encoding_mode_typed::<NumericMode>()
+            .unwrap()
+            .build()
+            .unwrap();
+        let dynamic =
+            QrCode::builder(b"01234567").version(Version::Normal(2)).encoding_mode(Mode::Numeric).build().unwrap();
+
+        assert_eq!(colors(&typed), colors(&dynamic));
+    }
+
+    #[test]
+    fn builder_typed_encoding_mode_rejects_invalid_input() {
+        let err = QrCode::builder(b"12a").encoding_mode_typed::<NumericMode>().unwrap_err();
+
+        assert_eq!(err, QrError::InvalidCharacter { position: 2, byte: b'a' });
     }
 
     #[test]
