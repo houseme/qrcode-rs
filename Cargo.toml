@@ -122,6 +122,13 @@ required-features = ["image"]
 name = "plugin_plain_text"
 
 [[example]]
+name = "const_version"
+
+[[example]]
+name = "cmyk_print"
+required-features = ["eps", "pdf"]
+
+[[example]]
 name = "cli_tool"
 required-features = ["cli"]
 
