@@ -24,7 +24,6 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-#[cfg(not(feature = "std"))]
 extern crate alloc;
 
 #[cfg(not(feature = "std"))]
@@ -46,6 +45,7 @@ pub mod ansi;
 pub mod colors;
 #[cfg(feature = "image")]
 pub mod image;
+pub mod plugin;
 pub mod string;
 pub mod unicode;
 
