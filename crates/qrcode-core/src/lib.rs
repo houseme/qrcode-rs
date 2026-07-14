@@ -11,7 +11,6 @@
 #![cfg_attr(all(not(feature = "std"), not(test)), no_std)]
 #![deny(missing_docs)]
 
-#[cfg(not(feature = "std"))]
 extern crate alloc;
 
 pub mod bits;
@@ -19,9 +18,14 @@ pub mod canvas;
 pub mod cast;
 pub mod ec;
 pub mod optimize;
+pub mod plugin;
 pub mod traits;
 pub mod types;
 
 pub use cast::{As, Truncate};
+pub use plugin::{
+    DynEncoder, DynRenderer, EncodeConfig, EncodedOutput, EncoderFactory, ModuleGrid, PluginError, PluginRegistry,
+    PostProcessor, QrPlugin, RenderConfig, RenderOutput, RendererFactory,
+};
 pub use traits::{Builder, Encoder, ModuleSource, ModuleStorage, ModuleView, QrSymbol, Renderer};
 pub use types::{Color, EcLevel, Mode, QrError, QrResult, Version};
