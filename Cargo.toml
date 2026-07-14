@@ -14,6 +14,10 @@ readme = "README.md"
 # Crate build related
 exclude = ["tests/*", ".gitignore"]
 
+[workspace]
+members = ["crates/qrcode-core"]
+resolver = "2"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [profile.release]
 opt-level = 3
@@ -25,6 +29,7 @@ clap = { version = "4.6", default-features = false, features = ["std", "derive",
 serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
 log = { version = "0.4", default-features = false, optional = true }
 rqrr = { version = "0.10", default-features = false, optional = true }
+qrcode-core = { path = "crates/qrcode-core", version = "0.1.0", default-features = false }
 
 [dev-dependencies]
 image = "0.25.10"
@@ -34,7 +39,7 @@ serde_json = "1"
 [features]
 default = ["std", "image", "svg", "pic", "eps", "html", "pdf"]
 # Links the `std` crate (enabled by default). Disable for `no_std` + `alloc`.
-std = []
+std = ["qrcode-core/std"]
 image = ["dep:image", "image/png", "std"]
 svg = []
 pic = []
@@ -42,7 +47,7 @@ eps = []
 html = []
 pdf = []
 # Enables serde Serialize/Deserialize on the core types and a QrCodeData wrapper.
-serde = ["dep:serde"]
+serde = ["dep:serde", "qrcode-core/serde"]
 # Emits log::debug!/info! at the encode chokepoint (no behavior without a logger).
 log = ["dep:log"]
 # Enables the `qrencodes` CLI binary (pulls in clap + all render backends).

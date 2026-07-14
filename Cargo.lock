@@ -883,6 +883,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "qrcode-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "qrcode-rs"
 version = "1.6.0"
 dependencies = [
@@ -890,6 +897,7 @@ dependencies = [
  "criterion",
  "image",
  "log",
+ "qrcode-core",
  "rqrr",
  "serde",
  "serde_json",
