@@ -922,8 +922,17 @@ dependencies = [
  "qrcode-decode",
  "qrcode-parse",
  "qrcode-render",
+ "qrcode-svg",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "qrcode-svg"
+version = "0.1.0"
+dependencies = [
+ "qrcode-core",
+ "qrcode-render",
 ]
 
 [[package]]
