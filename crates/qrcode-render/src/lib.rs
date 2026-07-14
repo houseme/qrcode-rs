@@ -220,6 +220,21 @@ impl<'a, P: Pixel> Renderer<'a, P> {
         }
     }
 
+    /// Creates a new renderer from a QR symbol.
+    ///
+    /// This is the metadata-aware counterpart to [`Renderer::from_source`].
+    /// The quiet zone is inferred from [`qrcode_core::QrSymbol::quiet_zone`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if `symbol` exposes an invalid module grid.
+    pub fn from_symbol<S>(symbol: &'a S) -> Renderer<'a, P>
+    where
+        S: qrcode_core::QrSymbol + ?Sized,
+    {
+        Self::from_source(symbol, symbol.quiet_zone())
+    }
+
     /// Tries to create a new renderer from a module-grid source.
     ///
     /// Unlike [`Renderer::from_source`], this constructor reports malformed
@@ -248,6 +263,23 @@ impl<'a, P: Pixel> Renderer<'a, P> {
             return Err(RenderError::ModuleSourceTooWide { width });
         }
         Ok(Self::new(source.modules(), width, quiet_zone))
+    }
+
+    /// Tries to create a new renderer from a QR symbol.
+    ///
+    /// This is the fallible, metadata-aware counterpart to
+    /// [`Renderer::try_from_source`]. The quiet zone is inferred from
+    /// [`qrcode_core::QrSymbol::quiet_zone`].
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`Renderer::try_from_source`] when the symbol
+    /// exposes an invalid module grid.
+    pub fn try_from_symbol<S>(symbol: &'a S) -> Result<Renderer<'a, P>, RenderError>
+    where
+        S: qrcode_core::QrSymbol + ?Sized,
+    {
+        Self::try_from_source(symbol, symbol.quiet_zone())
     }
 
     /// Sets color of a dark module. Default is opaque black.
@@ -416,7 +448,7 @@ impl<'a, P: StyledPixel> Renderer<'a, P> {
 #[cfg(test)]
 mod tests {
     use super::{RenderError, Renderer};
-    use qrcode_core::{Color, ModuleSource, Renderer as CoreRenderer};
+    use qrcode_core::{Color, EcLevel, ModuleSource, QrSymbol, Renderer as CoreRenderer, Version};
 
     struct BadSource {
         modules: [Color; 4],
@@ -440,6 +472,39 @@ mod tests {
         }
     }
 
+    struct SymbolSource {
+        version: Version,
+        modules: [Color; 1],
+    }
+
+    impl ModuleSource for SymbolSource {
+        fn get(&self, _x: usize, _y: usize) -> Color {
+            self.modules[0]
+        }
+
+        fn width(&self) -> usize {
+            1
+        }
+
+        fn height(&self) -> usize {
+            1
+        }
+
+        fn modules(&self) -> &[Color] {
+            &self.modules
+        }
+    }
+
+    impl QrSymbol for SymbolSource {
+        fn version(&self) -> Version {
+            self.version
+        }
+
+        fn error_correction_level(&self) -> EcLevel {
+            EcLevel::M
+        }
+    }
+
     #[test]
     fn try_from_source_returns_error_for_invalid_dimensions() {
         let source = BadSource { modules: [Color::Dark; 4] };
@@ -458,5 +523,23 @@ mod tests {
             CoreRenderer::render(&renderer, &source).unwrap_err(),
             RenderError::InvalidModuleSource { width: 3, height: 2, len: 4 }
         );
+    }
+
+    #[test]
+    fn from_symbol_uses_normal_qr_quiet_zone() {
+        let source = SymbolSource { version: Version::Normal(1), modules: [Color::Dark] };
+
+        let output = Renderer::<char>::from_symbol(&source).dark_color('#').light_color('.').build();
+
+        assert_eq!(output.lines().next().map(str::len), Some(9));
+    }
+
+    #[test]
+    fn from_symbol_uses_micro_qr_quiet_zone() {
+        let source = SymbolSource { version: Version::Micro(1), modules: [Color::Dark] };
+
+        let output = Renderer::<char>::from_symbol(&source).dark_color('#').light_color('.').build();
+
+        assert_eq!(output.lines().next().map(str::len), Some(5));
     }
 }

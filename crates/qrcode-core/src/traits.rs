@@ -4,7 +4,7 @@
 //! crates can share the same abstraction layer without pulling renderer or image
 //! dependencies into `qrcode-core`.
 
-use crate::types::Color;
+use crate::types::{Color, EcLevel, Version};
 
 /// Borrowed row-major view over a read-only QR module grid.
 ///
@@ -114,6 +114,26 @@ pub trait ModuleSource {
     }
 }
 
+/// Read-only QR symbol metadata plus module-grid access.
+///
+/// `QrSymbol` is the higher-level counterpart to [`ModuleSource`]: renderers
+/// and adapters can use it when they need both the module grid and QR-specific
+/// metadata such as [`Version`] and [`EcLevel`].
+pub trait QrSymbol: ModuleSource {
+    /// Returns the encoded QR or Micro QR version.
+    fn version(&self) -> Version;
+
+    /// Returns the encoded error-correction level.
+    fn error_correction_level(&self) -> EcLevel;
+
+    /// Returns the default quiet-zone width in modules for this symbol.
+    ///
+    /// Normal QR symbols use four modules. Micro QR symbols use two modules.
+    fn quiet_zone(&self) -> u32 {
+        if self.version().is_micro() { 2 } else { 4 }
+    }
+}
+
 /// Read/write access to a QR module grid.
 ///
 /// Rendering and inspection APIs should prefer [`ModuleSource`] when they only
@@ -173,8 +193,41 @@ impl<T: ModuleStorage + ?Sized> ModuleSource for T {
 
 #[cfg(test)]
 mod tests {
-    use super::{ModuleSource, ModuleView};
-    use crate::Color;
+    use super::{ModuleSource, ModuleView, QrSymbol};
+    use crate::{Color, EcLevel, Version};
+
+    struct DummySymbol {
+        version: Version,
+        modules: [Color; 1],
+    }
+
+    impl ModuleSource for DummySymbol {
+        fn get(&self, _x: usize, _y: usize) -> Color {
+            self.modules[0]
+        }
+
+        fn width(&self) -> usize {
+            1
+        }
+
+        fn height(&self) -> usize {
+            1
+        }
+
+        fn modules(&self) -> &[Color] {
+            &self.modules
+        }
+    }
+
+    impl QrSymbol for DummySymbol {
+        fn version(&self) -> Version {
+            self.version
+        }
+
+        fn error_correction_level(&self) -> EcLevel {
+            EcLevel::M
+        }
+    }
 
     #[test]
     fn module_view_reads_row_major_modules() {
@@ -194,5 +247,19 @@ mod tests {
 
         assert!(ModuleView::new(&modules, 2).is_none());
         assert!(ModuleView::new(&modules, 0).is_none());
+    }
+
+    #[test]
+    fn qr_symbol_default_quiet_zone_for_normal_qr_is_four_modules() {
+        let symbol = DummySymbol { version: Version::Normal(1), modules: [Color::Dark] };
+
+        assert_eq!(symbol.quiet_zone(), 4);
+    }
+
+    #[test]
+    fn qr_symbol_default_quiet_zone_for_micro_qr_is_two_modules() {
+        let symbol = DummySymbol { version: Version::Micro(1), modules: [Color::Dark] };
+
+        assert_eq!(symbol.quiet_zone(), 2);
     }
 }

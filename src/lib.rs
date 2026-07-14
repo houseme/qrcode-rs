@@ -49,7 +49,7 @@ pub use qrcode_parse as parse;
 // `crate::cast::As` keeps resolving across the facade and render modules.
 pub use crate::types::{Color, EcLevel, Mode, QrError, QrResult, Version};
 use qrcode_core::cast;
-pub use qrcode_core::traits::{Encoder, ModuleSource, ModuleStorage, ModuleView, Renderer as CoreRenderer};
+pub use qrcode_core::traits::{Encoder, ModuleSource, ModuleStorage, ModuleView, QrSymbol, Renderer as CoreRenderer};
 
 #[cfg(not(feature = "std"))]
 #[allow(unused_imports)]
@@ -421,8 +421,7 @@ impl QrCode {
     /// ```
     ///
     pub fn render<P: Pixel>(&self) -> Renderer<'_, P> {
-        let quiet_zone = if self.version.is_micro() { 2 } else { 4 };
-        Renderer::new(&self.content, self.width, quiet_zone)
+        Renderer::from_symbol(self)
     }
 }
 
@@ -724,6 +723,16 @@ impl ModuleStorage for QrCode {
 
     fn modules(&self) -> &[Color] {
         self.colors()
+    }
+}
+
+impl QrSymbol for QrCode {
+    fn version(&self) -> Version {
+        self.version
+    }
+
+    fn error_correction_level(&self) -> EcLevel {
+        self.ec_level
     }
 }
 
@@ -1311,7 +1320,9 @@ mod tests {
 
 #[cfg(test)]
 mod api_tests {
-    use crate::{AutoEncoder, Color, EcLevel, MicroEncoder, Mode, ModuleView, QrCode, Version, VersionEncoder};
+    use crate::{
+        AutoEncoder, Color, EcLevel, MicroEncoder, Mode, ModuleView, QrCode, QrSymbol, Version, VersionEncoder,
+    };
     use qrcode_core::traits::{
         Encoder as CoreEncoder, ModuleSource as CoreModuleSource, ModuleStorage as CoreModuleStorage,
         Renderer as CoreRenderer,
@@ -1509,6 +1520,22 @@ mod api_tests {
     }
 
     #[test]
+    fn qr_symbol_exposes_metadata() {
+        let code = QrCode::with_version(b"hello", Version::Normal(1), EcLevel::H).unwrap();
+
+        assert_eq!(QrSymbol::version(&code), Version::Normal(1));
+        assert_eq!(QrSymbol::error_correction_level(&code), EcLevel::H);
+        assert_eq!(QrSymbol::quiet_zone(&code), 4);
+    }
+
+    #[test]
+    fn qr_symbol_uses_micro_quiet_zone() {
+        let code = QrCode::with_version(b"123", Version::Micro(1), EcLevel::L).unwrap();
+
+        assert_eq!(QrSymbol::quiet_zone(&code), 2);
+    }
+
+    #[test]
     fn module_view_exposes_borrowed_source() {
         let code = QrCode::new(b"hello").unwrap();
         let view = code.module_view();
@@ -1533,6 +1560,19 @@ mod api_tests {
         let renderer = code.render::<char>();
         let trait_output = CoreRenderer::render(&renderer, &code).unwrap();
         assert_eq!(trait_output, builder_output);
+    }
+
+    #[test]
+    fn renderer_from_symbol_matches_qrcode_render() {
+        let code = QrCode::new(b"hello").unwrap();
+
+        let from_symbol = crate::render::Renderer::<char>::from_symbol(&code)
+            .quiet_zone(false)
+            .dark_color('X')
+            .light_color('.')
+            .build();
+        let from_qrcode = code.render::<char>().quiet_zone(false).dark_color('X').light_color('.').build();
+        assert_eq!(from_symbol, from_qrcode);
     }
 
     #[test]
