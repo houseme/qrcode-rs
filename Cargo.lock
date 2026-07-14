@@ -911,6 +911,14 @@ name = "qrcode-parse"
 version = "0.1.0"
 
 [[package]]
+name = "qrcode-pic"
+version = "0.1.0"
+dependencies = [
+ "qrcode-core",
+ "qrcode-render",
+]
+
+[[package]]
 name = "qrcode-render"
 version = "0.1.0"
 dependencies = [
@@ -930,6 +938,7 @@ dependencies = [
  "qrcode-decode",
  "qrcode-html",
  "qrcode-parse",
+ "qrcode-pic",
  "qrcode-render",
  "qrcode-svg",
  "serde",
