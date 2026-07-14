@@ -119,6 +119,9 @@ name = "custom_colors"
 required-features = ["image"]
 
 [[example]]
+name = "plugin_plain_text"
+
+[[example]]
 name = "cli_tool"
 required-features = ["cli"]
 
