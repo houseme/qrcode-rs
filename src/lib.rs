@@ -1522,10 +1522,23 @@ mod api_tests {
         }
 
         let code = QrCode::new(b"hello").unwrap();
-        let view = BorrowedModules { modules: code.colors(), width: code.width() };
-        let renderer = code.render::<char>();
+        let mut inverted = code.to_colors();
+        for color in &mut inverted {
+            *color = !*color;
+        }
+        let view = BorrowedModules { modules: &inverted, width: code.width() };
+        let mut renderer = code.render::<char>();
+        renderer.quiet_zone(false).dark_color('X').light_color('.');
+
         let trait_output = CoreRenderer::render(&renderer, &view).unwrap();
-        assert_eq!(trait_output, code.render::<char>().build());
+        let expected = crate::render::Renderer::<char>::from_source(&view, 4)
+            .quiet_zone(false)
+            .dark_color('X')
+            .light_color('.')
+            .build();
+        let original = code.render::<char>().quiet_zone(false).dark_color('X').light_color('.').build();
+        assert_eq!(trait_output, expected);
+        assert_ne!(trait_output, original);
     }
 
     #[test]

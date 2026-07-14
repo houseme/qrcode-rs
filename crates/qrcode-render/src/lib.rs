@@ -164,6 +164,25 @@ impl<'a, P: Pixel> Renderer<'a, P> {
         }
     }
 
+    /// Creates a new renderer from a module-grid source.
+    ///
+    /// This is the read-only-source counterpart to [`Renderer::new`]. It is
+    /// useful when rendering a borrowed view that implements
+    /// [`qrcode_core::ModuleSource`] but does not expose facade-specific QR code
+    /// methods.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `source` is not square or if its row-major module slice length
+    /// does not match `width() * height()`.
+    pub fn from_source<C>(source: &'a C, quiet_zone: u32) -> Renderer<'a, P>
+    where
+        C: qrcode_core::ModuleSource + ?Sized,
+    {
+        assert_eq!(source.width(), source.height());
+        Self::new(source.modules(), source.width(), quiet_zone)
+    }
+
     /// Sets color of a dark module. Default is opaque black.
     pub fn dark_color(&mut self, color: P) -> &mut Self {
         self.dark_color = color;
@@ -300,8 +319,13 @@ where
     type Output = P::Image;
     type Error = core::convert::Infallible;
 
-    fn render(&self, _code: &C) -> Result<Self::Output, Self::Error> {
-        Ok(self.build())
+    fn render(&self, code: &C) -> Result<Self::Output, Self::Error> {
+        let mut renderer = Renderer::from_source(code, self.quiet_zone);
+        renderer.module_size = self.module_size;
+        renderer.dark_color = self.dark_color;
+        renderer.light_color = self.light_color;
+        renderer.has_quiet_zone = self.has_quiet_zone;
+        Ok(renderer.build())
     }
 }
 
