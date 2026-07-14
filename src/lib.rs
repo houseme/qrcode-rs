@@ -37,17 +37,18 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-pub mod bits;
-pub mod canvas;
-mod cast;
 pub mod decode;
-pub mod ec;
-pub mod optimize;
 pub mod parse;
 pub mod render;
 pub mod structured_append;
-pub mod types;
+
+// The encoding primitive layer lives in `qrcode-core` and is re-exported here
+// so the public API (`qrcode_rs::bits::Bits`, `qrcode_rs::Version`, …) is unchanged.
+pub use qrcode_core::{bits, canvas, ec, optimize, types};
+// `cast` stays crate-private (not part of the public API); re-import it so
+// `crate::cast::As` keeps resolving across the facade and render modules.
 pub use crate::types::{Color, EcLevel, Mode, QrError, QrResult, Version};
+use qrcode_core::cast;
 
 #[cfg(not(feature = "std"))]
 #[allow(unused_imports)]

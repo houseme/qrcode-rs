@@ -94,7 +94,7 @@ impl Bits {
     }
 
     /// Reserves `n` extra bits of space for pushing.
-    pub(crate) fn reserve(&mut self, n: usize) {
+    pub fn reserve(&mut self, n: usize) {
         let extra_bytes = (n + (8 - self.bit_offset) % 8) / 8;
         self.data.reserve(extra_bytes);
     }
@@ -229,8 +229,8 @@ impl Bits {
     ///
     ///     #![allow(unused_must_use)]
     ///
-    ///     use qrcode_rs::bits::Bits;
-    ///     use qrcode_rs::types::Version;
+    ///     use qrcode_core::bits::Bits;
+    ///     use qrcode_core::types::Version;
     ///
     ///     let mut bits = Bits::new(Version::Normal(1));
     ///     bits.push_eci_designator(9); // 9 = ISO-8859-7 (Greek).
@@ -592,8 +592,8 @@ impl Bits {
     ///
     ///     #![allow(unused_must_use)]
     ///
-    ///     use qrcode_rs::bits::Bits;
-    ///     use qrcode_rs::types::Version;
+    ///     use qrcode_core::bits::Bits;
+    ///     use qrcode_core::types::Version;
     ///
     ///     let mut bits = Bits::new(Version::Normal(1));
     ///     bits.push_fnc1_first_position();
@@ -616,8 +616,8 @@ impl Bits {
     ///
     ///     #![allow(unused_must_use)]
     ///
-    ///     use qrcode_rs::bits::Bits;
-    ///     use qrcode_rs::types::Version;
+    ///     use qrcode_core::bits::Bits;
+    ///     use qrcode_core::types::Version;
     ///
     ///     let mut bits = Bits::new(Version::Normal(1));
     ///     bits.push_fnc1_second_position(37);
@@ -674,8 +674,8 @@ impl Bits {
     /// `position` is not `1..=total`.
     ///
     /// ```
-    /// use qrcode_rs::bits::Bits;
-    /// use qrcode_rs::types::Version;
+    /// use qrcode_core::bits::Bits;
+    /// use qrcode_core::types::Version;
     ///
     /// let mut bits = Bits::new(Version::Normal(1));
     /// bits.push_structured_append_header(1, 3, 0x5a);
@@ -1077,7 +1077,7 @@ pub fn encode_auto_micro(data: &[u8], ec_level: EcLevel) -> QrResult<Bits> {
 
 /// Finds the smallest version (QR code only) that can store N bits of data
 /// in the given error correction level.
-pub(crate) fn find_min_version(length: usize, ec_level: EcLevel) -> Version {
+pub fn find_min_version(length: usize, ec_level: EcLevel) -> Version {
     let mut base = 0_usize;
     let mut size = 39;
     while size > 1 {

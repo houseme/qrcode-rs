@@ -1,5 +1,8 @@
+//! Checked narrowing conversions and truncation helpers used across the encoder.
+
 /// Truncate a value to u8 by masking the lower 8 bits.
 pub trait Truncate {
+    /// Truncates this value to its low 8 bits as a `u8`.
     fn truncate_as_u8(self) -> u8;
 }
 
@@ -19,10 +22,15 @@ impl Truncate for u16 {
 /// `TryFrom` returns `Result` which would require changing all call sites.
 #[allow(clippy::wrong_self_convention)]
 pub trait As {
+    /// Narrows to `u16` (panics on overflow in debug, `as` in release).
     fn as_u16(self) -> u16;
+    /// Narrows to `i16` (panics on overflow in debug, `as` in release).
     fn as_i16(self) -> i16;
+    /// Widens/narrows to `u32` (panics on overflow in debug, `as` in release).
     fn as_u32(self) -> u32;
+    /// Widens/narrows to `usize` (panics on overflow in debug, `as` in release).
     fn as_usize(self) -> usize;
+    /// Widens/narrows to `isize` (panics on overflow in debug, `as` in release).
     fn as_isize(self) -> isize;
 }
 

@@ -98,7 +98,7 @@ impl QrError {
     /// # Examples
     ///
     /// ```rust
-    /// use qrcode_rs::QrError;
+    /// use qrcode_core::QrError;
     ///
     /// let err = QrError::DataTooLong;
     /// assert!(err.suggestion().is_some());
@@ -172,7 +172,7 @@ impl Color {
     /// # Examples
     ///
     /// ```rust
-    /// # use qrcode_rs::types::Color;
+    /// # use qrcode_core::types::Color;
     /// assert_eq!(Color::Light.select(1, 0), 0);
     /// assert_eq!(Color::Dark.select("black", "white"), "black");
     /// ```
@@ -225,7 +225,7 @@ impl FromStr for EcLevel {
     ///
     /// ```rust
     /// use core::str::FromStr;
-    /// use qrcode_rs::types::EcLevel;
+    /// use qrcode_core::types::EcLevel;
     /// assert_eq!(EcLevel::from_str("H"), Ok(EcLevel::H));
     /// assert_eq!(EcLevel::from_str("m"), Ok(EcLevel::M));
     /// assert!(EcLevel::from_str("X").is_err());
@@ -323,7 +323,7 @@ impl FromStr for Version {
     ///
     /// ```rust
     /// use core::str::FromStr;
-    /// use qrcode_rs::types::Version;
+    /// use qrcode_core::types::Version;
     /// assert_eq!(Version::from_str("5"), Ok(Version::Normal(5)));
     /// assert_eq!(Version::from_str("M4"), Ok(Version::Micro(4)));
     /// assert!(Version::from_str("99").is_err());
@@ -374,7 +374,7 @@ pub enum Mode {
 impl Mode {
     /// Computes the number of bits needed to encode the data length.
     ///
-    ///     use qrcode_rs::types::{Version, Mode};
+    ///     use qrcode_core::types::{Version, Mode};
     ///
     ///     assert_eq!(Mode::Numeric.length_bits_count(Version::Normal(1)), 10);
     ///
@@ -412,7 +412,7 @@ impl Mode {
 
     /// Computes the number of bits needed to some data of a given raw length.
     ///
-    ///     use qrcode_rs::types::Mode;
+    ///     use qrcode_core::types::Mode;
     ///
     ///     assert_eq!(Mode::Numeric.data_bits_count(7), 24);
     ///
@@ -429,7 +429,7 @@ impl Mode {
 
     /// Find the lowest common mode which both modes are compatible with.
     ///
-    ///     use qrcode_rs::types::Mode;
+    ///     use qrcode_core::types::Mode;
     ///
     ///     let a = Mode::Numeric;
     ///     let b = Mode::Kanji;
@@ -470,7 +470,7 @@ impl FromStr for Mode {
     ///
     /// ```rust
     /// use core::str::FromStr;
-    /// use qrcode_rs::types::Mode;
+    /// use qrcode_core::types::Mode;
     /// assert_eq!(Mode::from_str("Byte"), Ok(Mode::Byte));
     /// assert!(Mode::from_str("utf8").is_err());
     /// ```

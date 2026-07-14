@@ -107,8 +107,8 @@ impl<'a> Parser<'a> {
     /// Creates a new iterator which parse the data into segments that only
     /// contains their exclusive subsets. No optimization is done at this point.
     ///
-    ///     use qrcode_rs::optimize::{Parser, Segment};
-    ///     use qrcode_rs::types::Mode::{Alphanumeric, Numeric, Byte};
+    ///     use qrcode_core::optimize::{Parser, Segment};
+    ///     use qrcode_core::types::Mode::{Alphanumeric, Numeric, Byte};
     ///
     ///     let parse_res = Parser::new(b"ABC123abcd").collect::<Vec<Segment>>();
     ///     assert_eq!(parse_res, vec![Segment { mode: Alphanumeric, begin: 0, end: 3 },

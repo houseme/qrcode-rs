@@ -13,8 +13,8 @@
 //! 4. Apply the best mask with [`apply_best_mask`] (evaluates all 8 patterns)
 //!
 //! ```
-//! use qrcode_rs::types::{Version, EcLevel};
-//! use qrcode_rs::canvas::Canvas;
+//! use qrcode_core::types::{Version, EcLevel};
+//! use qrcode_core::canvas::Canvas;
 //!
 //! let mut c = Canvas::new(Version::Normal(1), EcLevel::L);
 //! c.draw_all_functional_patterns();
@@ -76,8 +76,8 @@ impl Module {
 
     /// Apply a mask to the unmasked modules.
     ///
-    ///     use qrcode_rs::canvas::Module;
-    ///     use qrcode_rs::types::Color;
+    ///     use qrcode_core::canvas::Module;
+    ///     use qrcode_core::types::Color;
     ///
     ///     assert_eq!(Module::Unmasked(Color::Light).mask(true), Module::Masked(Color::Dark));
     ///     assert_eq!(Module::Unmasked(Color::Dark).mask(true), Module::Masked(Color::Light));

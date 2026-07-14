@@ -1,14 +1,25 @@
 //! Zero-dependency QR code encoding core (`no_std` + `alloc`) for `qrcode-rs`.
 //!
-//! Holds the encoding primitive layer — bit-stream construction, mode
-//! optimization, Reed–Solomon error correction, and module-grid canvas drawing
-//! — with no external crate dependencies. The `qrcode-rs` facade crate depends
-//! on this and re-exports its public surface, so most users depend on
-//! `qrcode-rs` directly; `qrcode-core` is for embedders who want only the
-//! encoder with no rendering or image dependencies.
+//! Holds the encoding primitive layer — bit-stream construction ([`bits::Bits`]),
+//! mode optimization ([`optimize`]), Reed–Solomon error correction ([`ec`]),
+//! and module-grid canvas drawing ([`canvas`]) — plus the shared types
+//! ([`types`]) and checked-cast helpers ([`cast`]), with no external crate
+//! dependencies. The `qrcode-rs` facade crate depends on this and re-exports
+//! its public surface; embedders wanting only the encoder (no rendering or
+//! image dependencies) can depend on `qrcode-core` directly.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(missing_docs)]
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
+
+pub mod bits;
+pub mod canvas;
+pub mod cast;
+pub mod ec;
+pub mod optimize;
+pub mod types;
+
+pub use cast::{As, Truncate};
+pub use types::{Color, EcLevel, Mode, QrError, QrResult, Version};
