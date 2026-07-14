@@ -7,7 +7,7 @@
 
 #[cfg(feature = "image")]
 pub use qrcode_render::image;
-pub use qrcode_render::{Canvas, Pixel, RenderTemplate, Renderer, StyledPixel};
+pub use qrcode_render::{Canvas, Pixel, RenderError, RenderTemplate, Renderer, StyledPixel};
 pub use qrcode_render::{ansi, colors, string, unicode};
 
 pub mod eps;

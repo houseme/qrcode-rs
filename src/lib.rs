@@ -368,6 +368,27 @@ impl QrCode {
         &self.content
     }
 
+    /// Returns a borrowed, read-only module-grid view.
+    ///
+    /// This is the facade-friendly [`ModuleSource`] adapter for APIs that accept
+    /// a borrowed QR module source without needing ownership of the full
+    /// [`QrCode`].
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::{ModuleSource, QrCode};
+    ///
+    /// let code = QrCode::new(b"hi").unwrap();
+    /// let view = code.module_view();
+    /// assert_eq!(view.width(), code.width());
+    /// assert_eq!(view.modules(), code.colors());
+    /// ```
+    #[must_use]
+    pub fn module_view(&self) -> ModuleView<'_> {
+        ModuleView::new(&self.content, self.width).expect("QrCode stores a non-empty square module grid")
+    }
+
     /// Converts the QR code to a vector of colors.
     pub fn to_colors(&self) -> Vec<Color> {
         self.content.clone()
@@ -1485,6 +1506,24 @@ mod api_tests {
         assert_eq!(CoreModuleSource::height(&code), width);
         assert_eq!(CoreModuleSource::modules(&code), code.colors());
         assert_eq!(CoreModuleSource::get(&code, 0, 0), code[(0, 0)]);
+    }
+
+    #[test]
+    fn module_view_exposes_borrowed_source() {
+        let code = QrCode::new(b"hello").unwrap();
+        let view = code.module_view();
+
+        assert_eq!(view.width(), code.width());
+        assert_eq!(view.height(), code.width());
+        assert_eq!(view.modules(), code.colors());
+        assert_eq!(view.get(0, 0), code[(0, 0)]);
+    }
+
+    #[test]
+    fn render_error_is_available_from_facade() {
+        let err = crate::render::RenderError::InvalidModuleSource { width: 3, height: 2, len: 4 };
+
+        assert_eq!(err.to_string(), "invalid module source dimensions: width=3, height=2, len=4");
     }
 
     #[test]
