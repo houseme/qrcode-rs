@@ -8,8 +8,9 @@
 //! total, parity, and the recovered payload bytes.
 //!
 //! This is decoder-agnostic: it works on whatever bytes your decoder hands you.
-//! The [`rqrr`](crate::decode::rqrr) adapter wires it to `rqrr::Grid::get_raw_data`
-//! (behind `decode-rqrr`) for an end-to-end encode→render→decode round-trip.
+//! The `rqrr` adapter (behind the `decode-rqrr` feature, at `crate::decode::rqrr`)
+//! wires it to `rqrr::Grid::get_raw_data` for an end-to-end encode→render→decode
+//! round-trip.
 
 #[cfg(not(feature = "std"))]
 #[allow(unused_imports)]
