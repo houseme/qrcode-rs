@@ -4,10 +4,12 @@
 //! (ISO/IEC 18004 §7.4): every symbol carries the 20-bit sequence header and
 //! the shared parity byte, so a spec-aware scanner can reassemble them in order.
 //!
-//! Note: this crate's bundled decoder (`rqrr`, behind `decode-rqrr`) does not
-//! parse Structured Append symbols — it returns `UnknownDataType` for the
-//! `0011` mode. Read these symbols with an SA-aware scanner, or decode the bit
-//! stream yourself and feed [`reassemble`](qrcode_rs::structured_append::reassemble).
+//! Note: this crate's bundled decoder (`rqrr`, behind `decode-rqrr`) reads these
+//! symbols as valid but returns `UnknownDataType` for the `0011` mode (it cannot
+//! decode Structured Append). To recover the data, use an SA-aware decoder — or
+//! feed its recovered bit stream to
+//! [`parse_sa_datastream`](qrcode_rs::decode::sa_parse::parse_sa_datastream) —
+//! then [`reassemble`](qrcode_rs::structured_append::reassemble) the symbols.
 //!
 //! Run: `cargo run --example structured_append`
 
