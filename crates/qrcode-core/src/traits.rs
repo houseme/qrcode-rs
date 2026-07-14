@@ -212,8 +212,9 @@ impl<T: ModuleStorage + ?Sized> ModuleSource for T {
 
 #[cfg(test)]
 mod tests {
-    use super::{Builder, ModuleSource, ModuleView, QrSymbol};
+    use super::{Builder, Encoder, ModuleSource, ModuleStorage, ModuleView, QrSymbol, Renderer};
     use crate::{Color, EcLevel, Version};
+    use core::convert::Infallible;
 
     struct DummySymbol {
         version: Version,
@@ -261,6 +262,67 @@ mod tests {
         }
     }
 
+    struct DummyEncoder;
+
+    impl Encoder for DummyEncoder {
+        type Output = usize;
+        type Error = Infallible;
+
+        fn encode(&self, input: &[u8]) -> Result<Self::Output, Self::Error> {
+            Ok(input.len())
+        }
+    }
+
+    struct DummyRenderer {
+        dark: char,
+        light: char,
+    }
+
+    impl<C: ModuleSource + ?Sized> Renderer<C> for DummyRenderer {
+        type Output = String;
+        type Error = Infallible;
+
+        fn render(&self, code: &C) -> Result<Self::Output, Self::Error> {
+            let mut out = String::new();
+            for y in 0..code.height() {
+                for x in 0..code.width() {
+                    out.push(match code.get(x, y) {
+                        Color::Dark => self.dark,
+                        Color::Light => self.light,
+                    });
+                }
+            }
+            Ok(out)
+        }
+    }
+
+    struct DummyStorage {
+        modules: [Color; 4],
+        width: usize,
+    }
+
+    impl ModuleStorage for DummyStorage {
+        fn get(&self, x: usize, y: usize) -> Color {
+            self.modules[y * self.width + x]
+        }
+
+        fn set(&mut self, x: usize, y: usize, color: Color) {
+            self.modules[y * self.width + x] = color;
+        }
+
+        fn width(&self) -> usize {
+            self.width
+        }
+
+        fn height(&self) -> usize {
+            self.modules.len() / self.width
+        }
+
+        fn modules(&self) -> &[Color] {
+            &self.modules
+        }
+    }
+
     #[test]
     fn module_view_reads_row_major_modules() {
         let modules = [Color::Dark, Color::Light, Color::Light, Color::Dark];
@@ -300,5 +362,33 @@ mod tests {
         let result = DummyBuilder { value: 7 }.build();
 
         assert_eq!(result, Ok(7));
+    }
+
+    #[test]
+    fn encoder_trait_accepts_third_party_implementations() {
+        let output = DummyEncoder.encode(b"hello").unwrap();
+
+        assert_eq!(output, 5);
+    }
+
+    #[test]
+    fn renderer_trait_accepts_third_party_implementations() {
+        let modules = [Color::Dark, Color::Light, Color::Light, Color::Dark];
+        let view = ModuleView::new(&modules, 2).unwrap();
+        let renderer = DummyRenderer { dark: '#', light: '.' };
+
+        assert_eq!(renderer.render(&view).unwrap(), "#..#");
+    }
+
+    #[test]
+    fn module_storage_blanket_impl_provides_module_source() {
+        let mut storage = DummyStorage { modules: [Color::Light; 4], width: 2 };
+        storage.set(1, 0, Color::Dark);
+        storage.set(0, 1, Color::Dark);
+
+        assert_eq!(ModuleSource::width(&storage), 2);
+        assert_eq!(ModuleSource::height(&storage), 2);
+        assert_eq!(ModuleSource::get(&storage, 1, 0), Color::Dark);
+        assert_eq!(ModuleSource::modules(&storage), &[Color::Light, Color::Dark, Color::Dark, Color::Light]);
     }
 }
