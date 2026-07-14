@@ -45,12 +45,15 @@ fn map_version(v: rqrr::Version) -> Version {
     Version::Normal(v.0 as i16)
 }
 
-/// Maps an `rqrr` ecc level (`u16` 0..=3) to a crate [`EcLevel`].
+/// Maps an `rqrr` ecc level to a crate [`EcLevel`].
+///
+/// `rqrr` stores the raw QR format-information EC bits (`M=00, L=01, H=10,
+/// Q=11`), not the sequential index, so the mapping is non-trivial.
 fn map_ec(level: u16) -> EcLevel {
     match level {
-        0 => EcLevel::L,
-        1 => EcLevel::M,
-        2 => EcLevel::Q,
-        _ => EcLevel::H,
+        0 => EcLevel::M, // format-info 00
+        1 => EcLevel::L, // 01
+        2 => EcLevel::H, // 10
+        _ => EcLevel::Q, // 11
     }
 }

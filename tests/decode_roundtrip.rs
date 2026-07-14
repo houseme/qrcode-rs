@@ -14,6 +14,7 @@ fn decode_roundtrip(original: &[u8]) {
     assert!(!decoded.is_empty(), "at least one code should be found");
     assert_eq!(decoded[0].data(), original, "payload should round-trip exactly");
     assert!(!decoded[0].version().is_micro(), "should be a normal QR version");
+    assert_eq!(decoded[0].ec_level(), code.info().ec_level(), "ec level should round-trip");
 }
 
 #[test]
