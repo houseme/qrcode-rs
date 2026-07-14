@@ -6,6 +6,48 @@
 
 use crate::types::Color;
 
+/// Borrowed row-major view over a read-only QR module grid.
+///
+/// `ModuleView` is useful for adapters and tests that already have a module
+/// slice and need to pass it through the shared [`ModuleSource`] abstraction
+/// without allocating or implementing a bespoke wrapper type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ModuleView<'a> {
+    modules: &'a [Color],
+    width: usize,
+}
+
+impl<'a> ModuleView<'a> {
+    /// Creates a square module view from a row-major module slice.
+    ///
+    /// Returns `None` when `width == 0` or `modules.len() != width * width`.
+    #[must_use]
+    pub const fn new(modules: &'a [Color], width: usize) -> Option<Self> {
+        if width == 0 || modules.len() != width * width {
+            return None;
+        }
+        Some(Self { modules, width })
+    }
+}
+
+impl ModuleSource for ModuleView<'_> {
+    fn get(&self, x: usize, y: usize) -> Color {
+        self.modules[y * self.width + x]
+    }
+
+    fn width(&self) -> usize {
+        self.width
+    }
+
+    fn height(&self) -> usize {
+        self.width
+    }
+
+    fn modules(&self) -> &[Color] {
+        self.modules
+    }
+}
+
 /// Encodes raw input bytes into a concrete output type.
 ///
 /// Implementations can produce a full QR code, an intermediate bit stream, or a
@@ -126,5 +168,31 @@ impl<T: ModuleStorage + ?Sized> ModuleSource for T {
 
     fn is_empty(&self) -> bool {
         ModuleStorage::is_empty(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ModuleSource, ModuleView};
+    use crate::Color;
+
+    #[test]
+    fn module_view_reads_row_major_modules() {
+        let modules = [Color::Dark, Color::Light, Color::Light, Color::Dark];
+        let view = ModuleView::new(&modules, 2).unwrap();
+
+        assert_eq!(view.width(), 2);
+        assert_eq!(view.height(), 2);
+        assert_eq!(view.modules(), modules);
+        assert_eq!(view.get(0, 0), Color::Dark);
+        assert_eq!(view.get(1, 1), Color::Dark);
+    }
+
+    #[test]
+    fn module_view_rejects_non_square_input() {
+        let modules = [Color::Dark, Color::Light, Color::Dark];
+
+        assert!(ModuleView::new(&modules, 2).is_none());
+        assert!(ModuleView::new(&modules, 0).is_none());
     }
 }

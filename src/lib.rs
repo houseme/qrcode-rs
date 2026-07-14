@@ -49,7 +49,7 @@ pub use qrcode_parse as parse;
 // `crate::cast::As` keeps resolving across the facade and render modules.
 pub use crate::types::{Color, EcLevel, Mode, QrError, QrResult, Version};
 use qrcode_core::cast;
-pub use qrcode_core::traits::{Encoder, ModuleSource, ModuleStorage, Renderer as CoreRenderer};
+pub use qrcode_core::traits::{Encoder, ModuleSource, ModuleStorage, ModuleView, Renderer as CoreRenderer};
 
 #[cfg(not(feature = "std"))]
 #[allow(unused_imports)]
@@ -1290,7 +1290,7 @@ mod tests {
 
 #[cfg(test)]
 mod api_tests {
-    use crate::{AutoEncoder, Color, EcLevel, MicroEncoder, Mode, QrCode, Version, VersionEncoder};
+    use crate::{AutoEncoder, Color, EcLevel, MicroEncoder, Mode, ModuleView, QrCode, Version, VersionEncoder};
     use qrcode_core::traits::{
         Encoder as CoreEncoder, ModuleSource as CoreModuleSource, ModuleStorage as CoreModuleStorage,
         Renderer as CoreRenderer,
@@ -1498,35 +1498,12 @@ mod api_tests {
 
     #[test]
     fn renderer_trait_accepts_read_only_module_source() {
-        struct BorrowedModules<'a> {
-            modules: &'a [Color],
-            width: usize,
-        }
-
-        impl CoreModuleSource for BorrowedModules<'_> {
-            fn get(&self, x: usize, y: usize) -> Color {
-                self.modules[y * self.width + x]
-            }
-
-            fn width(&self) -> usize {
-                self.width
-            }
-
-            fn height(&self) -> usize {
-                self.width
-            }
-
-            fn modules(&self) -> &[Color] {
-                self.modules
-            }
-        }
-
         let code = QrCode::new(b"hello").unwrap();
         let mut inverted = code.to_colors();
         for color in &mut inverted {
             *color = !*color;
         }
-        let view = BorrowedModules { modules: &inverted, width: code.width() };
+        let view = ModuleView::new(&inverted, code.width()).unwrap();
         let mut renderer = code.render::<char>();
         renderer.quiet_zone(false).dark_color('X').light_color('.');
 

@@ -8,7 +8,7 @@
 //! its public surface; embedders wanting only the encoder (no rendering or
 //! image dependencies) can depend on `qrcode-core` directly.
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(all(not(feature = "std"), not(test)), no_std)]
 #![deny(missing_docs)]
 
 #[cfg(not(feature = "std"))]
@@ -23,5 +23,5 @@ pub mod traits;
 pub mod types;
 
 pub use cast::{As, Truncate};
-pub use traits::{Encoder, ModuleSource, ModuleStorage, Renderer};
+pub use traits::{Encoder, ModuleSource, ModuleStorage, ModuleView, Renderer};
 pub use types::{Color, EcLevel, Mode, QrError, QrResult, Version};
