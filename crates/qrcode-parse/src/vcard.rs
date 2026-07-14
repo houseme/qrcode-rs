@@ -3,14 +3,14 @@
 //! The encoder emits a minimal vCard 3.0 card; the parser is tolerant of vCard
 //! 2.1 / 3.0 / 4.0, accepts `\n` or `\r\n` line endings, unfolds folded lines,
 //! and ignores property parameters (e.g. the `;TYPE=cell` in `TEL;TYPE=cell:`).
-//! This module owns the format so [`QrCode::for_vcard`](crate::QrCode::for_vcard)
-//! and [`VCard::parse`] stay symmetric.
+//! The `qrcode-rs` facade uses this same module for its convenience
+//! constructor, so [`encode_vcard`] and [`VCard::parse`] stay symmetric.
 
 #[cfg(not(feature = "std"))]
 #[allow(unused_imports)]
 use alloc::{borrow::ToOwned, format, string::String, vec, vec::Vec};
 
-use crate::parse::ParseError;
+use crate::ParseError;
 
 /// A parsed vCard contact recovered from a `BEGIN:VCARD` … `END:VCARD` payload.
 ///
@@ -116,9 +116,11 @@ impl VCard {
     }
 }
 
-/// Encodes a minimal vCard 3.0 card. The single source of truth shared with
-/// [`QrCode::for_vcard`](crate::QrCode::for_vcard).
-pub(crate) fn encode_vcard(name: &str, phone: &str, email: &str) -> String {
+/// Encodes a minimal vCard 3.0 card.
+///
+/// This is the single source of truth shared with the `qrcode-rs` facade's
+/// `QrCode::for_vcard` constructor.
+pub fn encode_vcard(name: &str, phone: &str, email: &str) -> String {
     format!("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:{name}\r\nTEL:{phone}\r\nEMAIL:{email}\r\nEND:VCARD\r\n")
 }
 

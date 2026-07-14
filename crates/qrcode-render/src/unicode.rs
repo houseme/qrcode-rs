@@ -10,7 +10,7 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::render::{Canvas as RenderCanvas, Color, Pixel};
+use crate::{Canvas as RenderCanvas, Color, Pixel};
 
 //{{{ Shared macro for bit-packed canvas
 
@@ -190,11 +190,11 @@ impl_bit_canvas!(Canvas2x2, Dense2x2, 2, 2, encode_2x2 as fn(&[&[u8]], usize) ->
 /// # Example
 ///
 /// ```
-/// use qrcode_rs::QrCode;
-/// use qrcode_rs::render::unicode::Braille;
+/// use qrcode_core::Color as ModuleColor;
+/// use qrcode_render::{Renderer, unicode::Braille};
 ///
-/// let code = QrCode::new(b"Hello").unwrap();
-/// let text = code.render::<Braille>().module_dimensions(1, 1).build();
+/// let modules = [ModuleColor::Dark; 16];
+/// let text = Renderer::<Braille>::new(&modules, 4, 0).module_dimensions(1, 1).build();
 /// println!("{}", text);
 /// ```
 /// Unicode renderer packing a 2×4 block of pixels per character using Braille
@@ -277,11 +277,11 @@ impl_bit_canvas!(CanvasBraille, Braille, 4, 2, encode_braille as fn(&[&[u8]], us
 /// # Example
 ///
 /// ```
-/// use qrcode_rs::QrCode;
-/// use qrcode_rs::render::unicode::Dense3x2;
+/// use qrcode_core::Color as ModuleColor;
+/// use qrcode_render::{Renderer, unicode::Dense3x2};
 ///
-/// let code = QrCode::new(b"Hello").unwrap();
-/// let text = code.render::<Dense3x2>().module_dimensions(1, 1).build();
+/// let modules = [ModuleColor::Dark; 36];
+/// let text = Renderer::<Dense3x2>::new(&modules, 6, 0).module_dimensions(1, 1).build();
 /// println!("{}", text);
 /// ```
 /// Unicode renderer packing a 3×2 block of pixels per character using
@@ -355,7 +355,7 @@ impl_bit_canvas!(Canvas3x2, Dense3x2, 3, 2, encode_3x2 as fn(&[&[u8]], usize) ->
 
 #[test]
 fn test_render_to_utf8_string() {
-    use crate::render::Renderer;
+    use crate::Renderer;
     let colors = &[Color::Dark, Color::Light, Color::Light, Color::Dark];
     let image: String = Renderer::<Dense1x2>::new(colors, 2, 1).build();
 
@@ -368,55 +368,31 @@ fn test_render_to_utf8_string() {
 
 #[test]
 fn integration_render_utf8_1x2() {
-    use crate::render::unicode::Dense1x2;
-    use crate::{EcLevel, QrCode, Version};
+    use crate::Renderer;
+    use crate::unicode::Dense1x2;
 
-    let code = QrCode::with_version(b"09876542", Version::Micro(2), EcLevel::L).unwrap();
-    let image = code.render::<Dense1x2>().module_dimensions(1, 1).build();
-    assert_eq!(
-        image,
-        String::new()
-            + "                 \n"
-            + "  █▀▀▀▀▀█ ▀ █ ▀  \n"
-            + "  █ ███ █  ▀ █   \n"
-            + "  █ ▀▀▀ █  ▀█ █  \n"
-            + "  ▀▀▀▀▀▀▀ ▄▀▀ █  \n"
-            + "  ▀█ ▀▀▀▀▀██▀▀▄  \n"
-            + "  ▀███▄ ▀▀ █ ██  \n"
-            + "  ▀▀▀ ▀ ▀▀ ▀  ▀  \n"
-            + "                 "
-    );
+    let colors = [Color::Dark, Color::Light, Color::Light, Color::Dark];
+    let image = Renderer::<Dense1x2>::new(&colors, 2, 0).module_dimensions(1, 1).build();
+    assert_eq!(image, "▀▄");
 }
 
 #[test]
 fn integration_render_utf8_1x2_inverted() {
-    use crate::render::unicode::Dense1x2;
-    use crate::{EcLevel, QrCode, Version};
+    use crate::Renderer;
+    use crate::unicode::Dense1x2;
 
-    let code = QrCode::with_version(b"12345678", Version::Micro(2), EcLevel::L).unwrap();
-    let image = code
-        .render::<Dense1x2>()
+    let colors = [Color::Dark, Color::Light, Color::Light, Color::Dark];
+    let image = Renderer::<Dense1x2>::new(&colors, 2, 0)
         .dark_color(Dense1x2::Light)
         .light_color(Dense1x2::Dark)
         .module_dimensions(1, 1)
         .build();
-    assert_eq!(
-        image,
-        "█████████████████\n\
-         ██ ▄▄▄▄▄ █▄▀▄█▄██\n\
-         ██ █   █ █   █ ██\n\
-         ██ █▄▄▄█ █▄▄██▀██\n\
-         ██▄▄▄▄▄▄▄█▄▄▄▀ ██\n\
-         ██▄ ▀ ▀ ▀▄▄  ████\n\
-         ██▄▄▀▄█ ▀▀▀ ▀▄▄██\n\
-         ██▄▄▄█▄▄█▄██▄█▄██\n\
-         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀"
-    );
+    assert_eq!(image, "▄▀");
 }
 
 #[test]
 fn test_dense2x2_basic() {
-    use crate::render::Renderer;
+    use crate::Renderer;
     let colors = &[Color::Dark, Color::Light, Color::Light, Color::Dark];
     let image: String = Renderer::<Dense2x2>::new(colors, 2, 0).module_dimensions(1, 1).build();
     assert_eq!(&image, "\u{259A}");
@@ -424,7 +400,7 @@ fn test_dense2x2_basic() {
 
 #[test]
 fn test_dense2x2_with_quiet_zone() {
-    use crate::render::Renderer;
+    use crate::Renderer;
     let colors = &[Color::Dark, Color::Light, Color::Light, Color::Dark];
     let image: String = Renderer::<Dense2x2>::new(colors, 2, 1).build();
     assert!(image.chars().count() >= 1);
@@ -432,7 +408,7 @@ fn test_dense2x2_with_quiet_zone() {
 
 #[test]
 fn test_dense2x2_all_dark() {
-    use crate::render::Renderer;
+    use crate::Renderer;
     let colors = vec![Color::Dark; 4];
     let image: String = Renderer::<Dense2x2>::new(&colors, 2, 0).module_dimensions(1, 1).build();
     assert_eq!(&image, "\u{2588}");
@@ -440,7 +416,7 @@ fn test_dense2x2_all_dark() {
 
 #[test]
 fn test_dense2x2_all_light() {
-    use crate::render::Renderer;
+    use crate::Renderer;
     let colors = vec![Color::Light; 4];
     let image: String = Renderer::<Dense2x2>::new(&colors, 2, 0).module_dimensions(1, 1).build();
     assert_eq!(&image, " ");
@@ -448,19 +424,36 @@ fn test_dense2x2_all_light() {
 
 #[test]
 fn integration_render_utf8_2x2() {
-    use crate::render::unicode::Dense2x2;
-    use crate::{EcLevel, QrCode, Version};
+    use crate::Renderer;
+    use crate::unicode::Dense2x2;
 
-    let code = QrCode::with_version(b"09876542", Version::Micro(2), EcLevel::L).unwrap();
-    let image = code.render::<Dense2x2>().module_dimensions(1, 1).build();
+    let colors = vec![
+        Color::Dark,
+        Color::Light,
+        Color::Light,
+        Color::Dark,
+        Color::Light,
+        Color::Dark,
+        Color::Dark,
+        Color::Light,
+        Color::Dark,
+        Color::Dark,
+        Color::Light,
+        Color::Light,
+        Color::Light,
+        Color::Light,
+        Color::Dark,
+        Color::Dark,
+    ];
+    let image = Renderer::<Dense2x2>::new(&colors, 4, 0).module_dimensions(1, 1).build();
     assert!(!image.is_empty());
-    let dense1x2 = code.render::<Dense1x2>().module_dimensions(1, 1).build();
+    let dense1x2 = Renderer::<Dense1x2>::new(&colors, 4, 0).module_dimensions(1, 1).build();
     assert!(image.len() < dense1x2.len());
 }
 
 #[test]
 fn test_braille_all_dark() {
-    use crate::render::Renderer;
+    use crate::Renderer;
     let colors = vec![Color::Dark; 16];
     let image: String = Renderer::<Braille>::new(&colors, 4, 0).module_dimensions(1, 1).build();
     assert_eq!(&image, "\u{28FF}\u{28FF}");
@@ -468,7 +461,7 @@ fn test_braille_all_dark() {
 
 #[test]
 fn test_braille_all_light() {
-    use crate::render::Renderer;
+    use crate::Renderer;
     let colors = vec![Color::Light; 16];
     let image: String = Renderer::<Braille>::new(&colors, 4, 0).module_dimensions(1, 1).build();
     assert_eq!(&image, "\u{2800}\u{2800}");
@@ -476,7 +469,7 @@ fn test_braille_all_light() {
 
 #[test]
 fn test_braille_top_left_dot() {
-    use crate::render::Renderer;
+    use crate::Renderer;
     let mut colors = vec![Color::Light; 16];
     colors[0] = Color::Dark;
     let image: String = Renderer::<Braille>::new(&colors, 4, 0).module_dimensions(1, 1).build();
@@ -485,18 +478,18 @@ fn test_braille_top_left_dot() {
 
 #[test]
 fn test_braille_density() {
-    use crate::render::unicode::{Braille, Dense1x2};
-    use crate::{EcLevel, QrCode, Version};
+    use crate::Renderer;
+    use crate::unicode::{Braille, Dense1x2};
 
-    let code = QrCode::with_version(b"09876542", Version::Micro(2), EcLevel::L).unwrap();
-    let braille = code.render::<Braille>().module_dimensions(1, 1).build();
-    let dense1x2 = code.render::<Dense1x2>().module_dimensions(1, 1).build();
+    let colors = (0..64).map(|i| if i % 3 == 0 { Color::Dark } else { Color::Light }).collect::<Vec<_>>();
+    let braille = Renderer::<Braille>::new(&colors, 8, 0).module_dimensions(1, 1).build();
+    let dense1x2 = Renderer::<Dense1x2>::new(&colors, 8, 0).module_dimensions(1, 1).build();
     assert!(braille.len() < dense1x2.len());
 }
 
 #[test]
 fn test_dense3x2_all_dark() {
-    use crate::render::Renderer;
+    use crate::Renderer;
     // 6×6 all dark = 2 row groups × 3 cols = 6 full sextant chars (pattern 63 = U+1FB3F)
     let colors = vec![Color::Dark; 36];
     let image: String = Renderer::<Dense3x2>::new(&colors, 6, 0).module_dimensions(1, 1).build();
@@ -505,7 +498,7 @@ fn test_dense3x2_all_dark() {
 
 #[test]
 fn test_dense3x2_all_light() {
-    use crate::render::Renderer;
+    use crate::Renderer;
     let colors = vec![Color::Light; 36];
     let image: String = Renderer::<Dense3x2>::new(&colors, 6, 0).module_dimensions(1, 1).build();
     assert_eq!(&image, "   \n   ");
@@ -513,7 +506,7 @@ fn test_dense3x2_all_light() {
 
 #[test]
 fn test_dense3x2_top_left_cell() {
-    use crate::render::Renderer;
+    use crate::Renderer;
     // 6×6 grid with only (0,0) dark → bit0 set → pattern 1 = U+1FB01
     let mut colors = vec![Color::Light; 36];
     colors[0] = Color::Dark;
@@ -524,12 +517,12 @@ fn test_dense3x2_top_left_cell() {
 
 #[test]
 fn test_dense3x2_density() {
-    use crate::render::unicode::{Dense1x2, Dense3x2};
-    use crate::{EcLevel, QrCode, Version};
+    use crate::Renderer;
+    use crate::unicode::{Dense1x2, Dense3x2};
 
-    let code = QrCode::with_version(b"09876542", Version::Micro(2), EcLevel::L).unwrap();
-    let sextant = code.render::<Dense3x2>().module_dimensions(1, 1).build();
-    let dense1x2 = code.render::<Dense1x2>().module_dimensions(1, 1).build();
+    let colors = (0..36).map(|i| if i % 2 == 0 { Color::Dark } else { Color::Light }).collect::<Vec<_>>();
+    let sextant = Renderer::<Dense3x2>::new(&colors, 6, 0).module_dimensions(1, 1).build();
+    let dense1x2 = Renderer::<Dense1x2>::new(&colors, 6, 0).module_dimensions(1, 1).build();
     // Sextant should be smaller due to higher density (3 rows per char vs 2).
     assert!(sextant.len() < dense1x2.len());
 }

@@ -15,7 +15,7 @@
 //! # Example
 //!
 //! ```
-//! use qrcode_rs::render::colors::hex_to_rgb;
+//! use qrcode_render::colors::hex_to_rgb;
 //!
 //! // Works under any feature combination (no renderer backend required).
 //! assert_eq!(hex_to_rgb("#1a1a2e"), Some((0x1a, 0x1a, 0x2e)));
@@ -39,7 +39,7 @@ use alloc::{
 /// # Example
 ///
 /// ```
-/// use qrcode_rs::render::colors::hex_to_rgb;
+/// use qrcode_render::colors::hex_to_rgb;
 /// assert_eq!(hex_to_rgb("#ff0080"), Some((255, 0, 128)));
 /// assert_eq!(hex_to_rgb("#000"), Some((0, 0, 0)));
 /// assert_eq!(hex_to_rgb("invalid"), None);
@@ -70,7 +70,7 @@ pub fn hex_to_rgb(hex: &str) -> Option<(u8, u8, u8)> {
 /// # Example
 ///
 /// ```
-/// use qrcode_rs::render::colors::hex_to_rgba;
+/// use qrcode_render::colors::hex_to_rgba;
 /// assert_eq!(hex_to_rgba("#ff0080"), Some((255, 0, 128, 255)));
 /// assert_eq!(hex_to_rgba("#ff008080"), Some((255, 0, 128, 128)));
 /// assert_eq!(hex_to_rgba("invalid"), None);
@@ -102,7 +102,7 @@ pub fn hex_to_rgba(hex: &str) -> Option<(u8, u8, u8, u8)> {
 /// # Example
 ///
 /// ```
-/// use qrcode_rs::render::colors::rgb_to_hex;
+/// use qrcode_render::colors::rgb_to_hex;
 /// assert_eq!(rgb_to_hex(255, 0, 128), "#ff0080");
 /// ```
 pub fn rgb_to_hex(r: u8, g: u8, b: u8) -> String {
@@ -114,7 +114,7 @@ pub fn rgb_to_hex(r: u8, g: u8, b: u8) -> String {
 /// # Example
 ///
 /// ```
-/// use qrcode_rs::render::colors::rgba_to_hex;
+/// use qrcode_render::colors::rgba_to_hex;
 /// assert_eq!(rgba_to_hex(255, 0, 128, 192), "#ff0080c0");
 /// ```
 pub fn rgba_to_hex(r: u8, g: u8, b: u8, a: u8) -> String {
@@ -126,7 +126,7 @@ pub fn rgba_to_hex(r: u8, g: u8, b: u8, a: u8) -> String {
 /// # Example
 ///
 /// ```
-/// use qrcode_rs::render::colors::rgb_to_css;
+/// use qrcode_render::colors::rgb_to_css;
 /// assert_eq!(rgb_to_css(255, 0, 128), "rgb(255,0,128)");
 /// ```
 pub fn rgb_to_css(r: u8, g: u8, b: u8) -> String {
@@ -138,7 +138,7 @@ pub fn rgb_to_css(r: u8, g: u8, b: u8) -> String {
 /// # Example
 ///
 /// ```
-/// use qrcode_rs::render::colors::rgba_to_css;
+/// use qrcode_render::colors::rgba_to_css;
 /// assert_eq!(rgba_to_css(255, 0, 128, 128), "rgba(255,0,128,128)");
 /// ```
 pub fn rgba_to_css(r: u8, g: u8, b: u8, a: u8) -> String {
@@ -153,7 +153,7 @@ pub fn rgba_to_css(r: u8, g: u8, b: u8, a: u8) -> String {
 /// # Example
 ///
 /// ```
-/// use qrcode_rs::render::colors::Srgba;
+/// use qrcode_render::colors::Srgba;
 ///
 /// let c = Srgba::from_hex("#ff0080").unwrap();
 /// assert_eq!(c.to_hex(), "#ff0080");

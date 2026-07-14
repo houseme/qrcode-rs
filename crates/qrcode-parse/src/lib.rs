@@ -2,13 +2,17 @@
 //!
 //! Parsers that turn a decoded QR payload (the raw bytes a scanner recovers)
 //! back into structured values. These are the symmetric decode-side counterpart
-//! to the [`QrCode::for_wifi`](crate::QrCode::for_wifi),
-//! [`QrCode::for_vcard`](crate::QrCode::for_vcard), and
-//! [`QrCode::for_gs1`](crate::QrCode::for_gs1) constructors, which encode in
-//! the opposite direction.
+//! to the `qrcode-rs` facade's `QrCode::for_wifi`, `QrCode::for_vcard`, and
+//! `QrCode::for_gs1` constructors, which encode in the opposite direction.
 //!
-//! Encoding is one-way — a [`QrCode`](crate::QrCode) does not retain its input
-//! payload — so these parsers operate on a `&str`/`&[u8]` the caller supplies.
+//! Encoding is one-way: a QR code symbol does not retain its input payload, so
+//! these parsers operate on a `&str`/`&[u8]` the caller supplies.
+
+#![cfg_attr(not(feature = "std"), no_std)]
+#![deny(missing_docs)]
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
 
 pub mod gs1;
 pub mod vcard;

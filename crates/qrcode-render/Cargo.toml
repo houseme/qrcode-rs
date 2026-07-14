@@ -1,0 +1,21 @@
+[package]
+name = "qrcode-render"
+description = "Pure Rust QR rendering traits, builder, text renderers, ANSI renderer, and color helpers for qrcode-rs."
+license = "MIT OR Apache-2.0"
+version = "0.1.0"
+edition = "2024"
+authors = ["houseme <housemecn@gmail.com>"]
+repository = "https://github.com/houseme/qrcode-rs"
+keywords = ["qrcode", "renderer", "unicode", "ansi", "no-std"]
+categories = ["encoding", "multimedia::images", "no-std"]
+
+[dependencies]
+image = { version = "0.25.10", default-features = false, optional = true }
+qrcode-core = { path = "../qrcode-core", version = "0.1.0", default-features = false }
+
+[features]
+default = []
+# Links the `std` crate. Disable for `no_std` + `alloc`.
+std = ["qrcode-core/std"]
+# Enables the image backend and common PNG/JPEG encoding helpers.
+image = ["std", "dep:image", "image/png", "image/jpeg"]

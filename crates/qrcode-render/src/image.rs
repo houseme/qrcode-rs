@@ -3,8 +3,8 @@
 //!
 //! `QrCode::render::<image::Rgba<u8>>()` (or `Luma<u8>`, `Rgb<u8>`, …) produces
 //! an `image::ImageBuffer`, which can be saved or encoded with the `image` API.
-use crate::render::{Canvas, Pixel, StyledPixel};
-use crate::types::Color;
+use crate::{Canvas, Pixel, StyledPixel};
+use qrcode_core::Color;
 
 use image::{DynamicImage, GenericImageView, ImageBuffer, Luma, LumaA, Primitive, Rgb, Rgba};
 
@@ -34,14 +34,14 @@ impl_pixel_for_image_pixel! { Rgba<S>: p => [p, p, p, S::max_value()] }
 
 impl StyledPixel for Rgb<u8> {
     fn from_hex(hex: &str) -> Self {
-        let (r, g, b) = crate::render::colors::hex_to_rgb(hex).unwrap_or((0, 0, 0));
+        let (r, g, b) = crate::colors::hex_to_rgb(hex).unwrap_or((0, 0, 0));
         Rgb([r, g, b])
     }
 }
 
 impl StyledPixel for Rgba<u8> {
     fn from_hex(hex: &str) -> Self {
-        let (r, g, b) = crate::render::colors::hex_to_rgb(hex).unwrap_or((0, 0, 0));
+        let (r, g, b) = crate::colors::hex_to_rgb(hex).unwrap_or((0, 0, 0));
         Rgba([r, g, b, 255])
     }
 }
@@ -82,12 +82,14 @@ impl<P: image::Pixel + 'static> Canvas for (P, ImageBuffer<P, Vec<P::Subpixel>>)
 /// # Example
 ///
 /// ```no_run
-/// use qrcode_rs::QrCode;
-/// use qrcode_rs::render::image::overlay_logo;
+/// use qrcode_core::Color;
+/// use qrcode_render::{Renderer, image::overlay_logo};
 /// use image::{Rgb, DynamicImage, open};
 ///
-/// let code = QrCode::with_error_correction_level(b"https://example.com", qrcode_rs::EcLevel::H).unwrap();
-/// let qr = DynamicImage::ImageRgb8(code.render::<Rgb<u8>>().min_dimensions(300, 300).build());
+/// let modules = [Color::Dark, Color::Light, Color::Light, Color::Dark];
+/// let qr = DynamicImage::ImageRgb8(
+///     Renderer::<Rgb<u8>>::new(&modules, 2, 4).min_dimensions(300, 300).build(),
+/// );
 /// let logo = open("logo.png").unwrap();
 /// let final_image = overlay_logo(&qr, &logo, 0.25);
 /// final_image.save("qr_with_logo.png").unwrap();
@@ -159,12 +161,14 @@ pub use image::ImageFormat;
 /// # Example
 ///
 /// ```no_run
-/// use qrcode_rs::QrCode;
-/// use qrcode_rs::render::image::{encode_to_format, ImageFormat};
+/// use qrcode_core::Color;
+/// use qrcode_render::{Renderer, image::{encode_to_format, ImageFormat}};
 /// use image::{DynamicImage, Rgb};
 ///
-/// let code = QrCode::new(b"Hello").unwrap();
-/// let img = DynamicImage::ImageRgb8(code.render::<Rgb<u8>>().min_dimensions(200, 200).build());
+/// let modules = [Color::Dark, Color::Light, Color::Light, Color::Dark];
+/// let img = DynamicImage::ImageRgb8(
+///     Renderer::<Rgb<u8>>::new(&modules, 2, 4).min_dimensions(200, 200).build(),
+/// );
 /// let jpeg_bytes = encode_to_format(&img, ImageFormat::Jpeg).unwrap();
 /// std::fs::write("qr.jpg", &jpeg_bytes).unwrap();
 /// ```
@@ -204,12 +208,14 @@ pub struct Gradient {
 /// # Example
 ///
 /// ```no_run
-/// use qrcode_rs::QrCode;
-/// use qrcode_rs::render::image::{apply_gradient_background, Gradient, GradientDirection};
+/// use qrcode_core::Color;
+/// use qrcode_render::{Renderer, image::{apply_gradient_background, Gradient, GradientDirection}};
 /// use image::{Rgb, DynamicImage, Rgba};
 ///
-/// let code = QrCode::new(b"Hello").unwrap();
-/// let qr = DynamicImage::ImageRgb8(code.render::<Rgb<u8>>().min_dimensions(200, 200).build());
+/// let modules = [Color::Dark, Color::Light, Color::Light, Color::Dark];
+/// let qr = DynamicImage::ImageRgb8(
+///     Renderer::<Rgb<u8>>::new(&modules, 2, 4).min_dimensions(200, 200).build(),
+/// );
 /// let gradient = Gradient {
 ///     direction: GradientDirection::Vertical,
 ///     start_color: Rgba([255, 200, 200, 255]),
@@ -272,9 +278,9 @@ pub fn apply_gradient_background(image: &DynamicImage, gradient: &Gradient) -> D
 
 #[cfg(test)]
 mod render_tests {
-    use crate::render::Renderer;
-    use crate::types::Color;
+    use crate::Renderer;
     use image::{GenericImageView, ImageBuffer, Luma, Rgba};
+    use qrcode_core::Color;
 
     #[test]
     fn test_render_luma8_unsized() {

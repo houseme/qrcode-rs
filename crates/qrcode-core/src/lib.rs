@@ -19,7 +19,9 @@ pub mod canvas;
 pub mod cast;
 pub mod ec;
 pub mod optimize;
+pub mod traits;
 pub mod types;
 
 pub use cast::{As, Truncate};
+pub use traits::{Encoder, ModuleStorage, Renderer};
 pub use types::{Color, EcLevel, Mode, QrError, QrResult, Version};

@@ -15,7 +15,7 @@ readme = "README.md"
 exclude = ["tests/*", ".gitignore"]
 
 [workspace]
-members = ["crates/qrcode-core"]
+members = ["crates/qrcode-core", "crates/qrcode-decode", "crates/qrcode-parse", "crates/qrcode-render"]
 resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -28,8 +28,10 @@ image = { version = "0.25.10", default-features = false, optional = true }
 clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"], optional = true }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
 log = { version = "0.4", default-features = false, optional = true }
-rqrr = { version = "0.10", default-features = false, optional = true }
 qrcode-core = { path = "crates/qrcode-core", version = "0.1.0", default-features = false }
+qrcode-decode = { path = "crates/qrcode-decode", version = "0.1.0", default-features = false }
+qrcode-parse = { path = "crates/qrcode-parse", version = "0.1.0", default-features = false }
+qrcode-render = { path = "crates/qrcode-render", version = "0.1.0", default-features = false }
 
 [dev-dependencies]
 image = "0.25.10"
@@ -39,8 +41,8 @@ serde_json = "1"
 [features]
 default = ["std", "image", "svg", "pic", "eps", "html", "pdf"]
 # Links the `std` crate (enabled by default). Disable for `no_std` + `alloc`.
-std = ["qrcode-core/std"]
-image = ["dep:image", "image/png", "std"]
+std = ["qrcode-core/std", "qrcode-decode/std", "qrcode-parse/std", "qrcode-render/std"]
+image = ["dep:image", "image/png", "std", "qrcode-decode/image", "qrcode-render/image"]
 svg = []
 pic = []
 eps = []
@@ -55,7 +57,7 @@ log = ["dep:log"]
 cli = ["dep:clap", "image", "svg", "eps", "pic", "html", "pdf"]
 # Enables the `rqrr`-backed `RqrrDecoder` (decoding QR codes back to data).
 # Pulls in `rqrr` + the `image` renderer (used to feed grayscale into the decoder).
-decode-rqrr = ["image", "dep:rqrr"]
+decode-rqrr = ["image", "qrcode-decode/rqrr"]
 
 [[bin]]
 name = "qrencodes"

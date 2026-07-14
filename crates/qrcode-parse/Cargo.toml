@@ -1,0 +1,15 @@
+[package]
+name = "qrcode-parse"
+description = "Zero-dependency QR payload content parsers (WiFi / vCard / GS1) — the decode-side helpers of qrcode-rs."
+license = "MIT OR Apache-2.0"
+version = "0.1.0"
+edition = "2024"
+authors = ["houseme <housemecn@gmail.com>"]
+repository = "https://github.com/houseme/qrcode-rs"
+keywords = ["qrcode", "parser", "wifi", "vcard", "gs1"]
+categories = ["encoding", "no-std"]
+
+[features]
+default = []
+# Links the `std` crate. Disable for `no_std` + `alloc`.
+std = []

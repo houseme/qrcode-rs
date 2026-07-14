@@ -3,14 +3,14 @@
 //! The wire format is `WIFI:T:<auth>;S:<ssid>;P:<password>;;` with optional
 //! `;H:true` for hidden networks, though the parser accepts the fields in any
 //! order. The characters `\\ ; , " :` are backslash-escaped inside the SSID and
-//! password. This module owns the format so [`QrCode::for_wifi`](crate::QrCode::for_wifi)
-//! and [`WifiConfig::parse`] stay symmetric.
+//! password. The `qrcode-rs` facade uses this same module for its convenience
+//! constructor, so [`encode_wifi`] and [`WifiConfig::parse`] stay symmetric.
 
 #[cfg(not(feature = "std"))]
 #[allow(unused_imports)]
 use alloc::{string::String, vec, vec::Vec};
 
-use crate::parse::ParseError;
+use crate::ParseError;
 
 /// WiFi authentication mode for a [`WifiConfig`].
 #[non_exhaustive]
@@ -128,9 +128,11 @@ impl WifiConfig {
 }
 
 /// Encodes a WiFi configuration into the `WIFI:` wire format consumed by phone
-/// cameras. This is the single source of truth shared with
-/// [`QrCode::for_wifi`](crate::QrCode::for_wifi).
-pub(crate) fn encode_wifi(ssid: &str, password: &str, auth: &str) -> String {
+/// cameras.
+///
+/// This is the single source of truth shared with the `qrcode-rs` facade's
+/// `QrCode::for_wifi` constructor.
+pub fn encode_wifi(ssid: &str, password: &str, auth: &str) -> String {
     let mut payload = String::from("WIFI:T:");
     payload.push_str(auth);
     payload.push_str(";S:");

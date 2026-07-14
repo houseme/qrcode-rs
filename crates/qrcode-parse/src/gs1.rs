@@ -14,7 +14,7 @@
 #[allow(unused_imports)]
 use alloc::{borrow::ToOwned, string::String, vec, vec::Vec};
 
-use crate::parse::ParseError;
+use crate::ParseError;
 
 /// The length kind of a GS1 application identifier.
 #[derive(Clone, Copy, Debug)]

@@ -7,15 +7,22 @@
 //! [`QrDecoder`] without pulling in `image`.
 //!
 //! Encoding is the primary mission of this crate; decoding is bridged via an
-//! opt-in adapter (see the `decode-rqrr` feature). Implementing [`QrDecoder`]
+//! opt-in adapter (see the `rqrr` feature). Implementing [`QrDecoder`]
 //! for your own decoder is always available.
+
+#![cfg_attr(not(feature = "std"), no_std)]
+#![deny(missing_docs)]
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
 
 #[cfg(not(feature = "std"))]
 #[allow(unused_imports)]
 use alloc::vec::Vec;
 
-use crate::types::{EcLevel, Version};
+use qrcode_core::{EcLevel, Version};
 
+#[cfg(feature = "rqrr")]
 pub mod rqrr;
 pub mod sa_parse;
 
@@ -117,7 +124,7 @@ impl DecodedQrCode {
 /// A QR code decoder: turns a grayscale image back into data.
 ///
 /// Implement this for your own decoder (e.g. wrapping a native binding); use
-/// the bundled `RqrrDecoder` (behind the `decode-rqrr` feature) for the
+/// the bundled `RqrrDecoder` (behind the `rqrr` feature) for the
 /// `rqrr` crate.
 ///
 /// `decode` returns a [`Vec`] because an image may contain more than one QR

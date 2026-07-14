@@ -10,13 +10,13 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::cast::As;
-use crate::render::{Canvas as RenderCanvas, Pixel};
-use crate::types::Color;
+use crate::{Canvas as RenderCanvas, Pixel};
+use qrcode_core::As;
+use qrcode_core::Color;
 
 /// A renderable character or string fragment used by the plain-text renderer.
 ///
-/// Implemented for `char` and `&'static str` so a [`Renderer`](crate::render::Renderer)
+/// Implemented for `char` and `&'static str` so a [`Renderer`](crate::Renderer)
 /// can be driven with either.
 pub trait Element: Copy {
     /// Returns the default element for a dark or light module.
@@ -116,7 +116,7 @@ impl<P: Element> RenderCanvas for Canvas<P> {
 
 #[test]
 fn test_render_to_string() {
-    use crate::render::Renderer;
+    use crate::Renderer;
 
     let colors = &[Color::Dark, Color::Light, Color::Light, Color::Dark];
     let image: String = Renderer::<char>::new(colors, 2, 1).build();

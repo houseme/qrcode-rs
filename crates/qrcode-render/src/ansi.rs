@@ -7,16 +7,16 @@
 //! # Example
 //!
 //! ```
-//! use qrcode_rs::QrCode;
-//! use qrcode_rs::render::ansi::Color;
+//! use qrcode_core::Color as ModuleColor;
+//! use qrcode_render::{Renderer, ansi::Color};
 //!
-//! let code = QrCode::new(b"Hello").unwrap();
+//! let modules = [ModuleColor::Dark, ModuleColor::Light, ModuleColor::Light, ModuleColor::Dark];
 //! // Dark modules in black, light modules in white.
-//! let text = code.render::<Color>().build();
+//! let text = Renderer::<Color>::new(&modules, 2, 0).build();
 //! println!("{}", text);
 //!
 //! // Custom colors: dark blue on light gray.
-//! let text = code.render::<Color>()
+//! let text = Renderer::<Color>::new(&modules, 2, 0)
 //!     .dark_color(Color::new(0, 51, 102))
 //!     .light_color(Color::new(224, 224, 224))
 //!     .build();
@@ -33,8 +33,8 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::render::{Canvas as RenderCanvas, Pixel, StyledPixel};
-use crate::types::Color as ModuleColor;
+use crate::{Canvas as RenderCanvas, Pixel, StyledPixel};
+use qrcode_core::Color as ModuleColor;
 
 /// An ANSI TrueColor (24-bit) pixel.
 ///
@@ -82,7 +82,7 @@ impl Pixel for Color {
 
 impl StyledPixel for Color {
     fn from_hex(hex: &str) -> Self {
-        let (r, g, b) = crate::render::colors::hex_to_rgb(hex).unwrap_or((0, 0, 0));
+        let (r, g, b) = crate::colors::hex_to_rgb(hex).unwrap_or((0, 0, 0));
         Color::new(r, g, b)
     }
 }
@@ -181,7 +181,7 @@ impl RenderCanvas for CanvasAnsi {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::render::Renderer;
+    use crate::Renderer;
 
     #[test]
     fn test_ansi_all_dark() {
@@ -211,9 +211,8 @@ mod tests {
 
     #[test]
     fn test_ansi_custom_colors() {
-        let code = crate::QrCode::new(b"Hi").unwrap();
-        let image = code
-            .render::<Color>()
+        let colors = vec![ModuleColor::Dark, ModuleColor::Light, ModuleColor::Light, ModuleColor::Dark];
+        let image = Renderer::<Color>::new(&colors, 2, 0)
             .dark_color(Color::new(0, 51, 102))
             .light_color(Color::new(224, 224, 224))
             .module_dimensions(1, 1)

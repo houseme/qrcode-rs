@@ -25,6 +25,9 @@ fn rqrr_recognizes_structured_append_symbols() {
         // rqrr reaches mode `0011` and returns UnknownDataType (not a format /
         // grid / ECC error) — proving the symbol is valid Structured Append.
         let result = RqrrDecoder::new().decode(GrayPixels::from(&img));
-        assert!(matches!(result, Err(rqrr::DeQRError::UnknownDataType)), "expected UnknownDataType, got {result:?}");
+        assert!(
+            matches!(result, Err(qrcode_rs::decode::rqrr::DeQRError::UnknownDataType)),
+            "expected UnknownDataType, got {result:?}"
+        );
     }
 }

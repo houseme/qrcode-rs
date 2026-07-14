@@ -37,18 +37,19 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-pub mod decode;
-pub mod parse;
 pub mod render;
 pub mod structured_append;
 
 // The encoding primitive layer lives in `qrcode-core` and is re-exported here
 // so the public API (`qrcode_rs::bits::Bits`, `qrcode_rs::Version`, …) is unchanged.
-pub use qrcode_core::{bits, canvas, ec, optimize, types};
+pub use qrcode_core::{bits, canvas, ec, optimize, traits, types};
+pub use qrcode_decode as decode;
+pub use qrcode_parse as parse;
 // `cast` stays crate-private (not part of the public API); re-import it so
 // `crate::cast::As` keeps resolving across the facade and render modules.
 pub use crate::types::{Color, EcLevel, Mode, QrError, QrResult, Version};
 use qrcode_core::cast;
+pub use qrcode_core::traits::{Encoder, ModuleStorage, Renderer as CoreRenderer};
 
 #[cfg(not(feature = "std"))]
 #[allow(unused_imports)]
@@ -99,7 +100,7 @@ impl QrCode {
     /// Returns error if the QR code cannot be constructed, e.g. when the data
     /// is too long.
     pub fn new<D: AsRef<[u8]>>(data: D) -> QrResult<Self> {
-        Self::with_error_correction_level(data, EcLevel::M)
+        AutoEncoder::default().encode(data.as_ref())
     }
 
     /// Constructs a new QR code which automatically encodes the given data at a
@@ -116,8 +117,7 @@ impl QrCode {
     /// Returns error if the QR code cannot be constructed, e.g. when the data
     /// is too long.
     pub fn with_error_correction_level<D: AsRef<[u8]>>(data: D, ec_level: EcLevel) -> QrResult<Self> {
-        let bits = bits::encode_auto(data.as_ref(), ec_level)?;
-        Self::with_bits(bits, ec_level)
+        AutoEncoder::new(ec_level).encode(data.as_ref())
     }
 
     /// Constructs a new Micro QR code which automatically encodes the given
@@ -135,7 +135,7 @@ impl QrCode {
     /// Returns error if the data cannot be encoded as a Micro QR code, e.g.
     /// when the data is too long.
     pub fn new_micro<D: AsRef<[u8]>>(data: D) -> QrResult<Self> {
-        Self::micro_with_error_correction_level(data, EcLevel::M)
+        MicroEncoder::default().encode(data.as_ref())
     }
 
     /// Constructs a new Micro QR code which automatically encodes the given
@@ -153,8 +153,7 @@ impl QrCode {
     /// when the data is too long, or when the error correction level is not
     /// supported by any Micro QR version.
     pub fn micro_with_error_correction_level<D: AsRef<[u8]>>(data: D, ec_level: EcLevel) -> QrResult<Self> {
-        let bits = bits::encode_auto_micro(data.as_ref(), ec_level)?;
-        Self::with_bits(bits, ec_level)
+        MicroEncoder::new(ec_level).encode(data.as_ref())
     }
 
     /// Constructs a new QR code for the given version and error correction
@@ -176,8 +175,22 @@ impl QrCode {
     /// is too long, or when the version and error correction level are
     /// incompatible.
     pub fn with_version<D: AsRef<[u8]>>(data: D, version: Version, ec_level: EcLevel) -> QrResult<Self> {
+        VersionEncoder::new(version, ec_level).encode(data.as_ref())
+    }
+
+    fn encode_auto(data: &[u8], ec_level: EcLevel) -> QrResult<Self> {
+        let bits = bits::encode_auto(data, ec_level)?;
+        Self::with_bits(bits, ec_level)
+    }
+
+    fn encode_auto_micro(data: &[u8], ec_level: EcLevel) -> QrResult<Self> {
+        let bits = bits::encode_auto_micro(data, ec_level)?;
+        Self::with_bits(bits, ec_level)
+    }
+
+    fn encode_with_version(data: &[u8], version: Version, ec_level: EcLevel) -> QrResult<Self> {
         let mut bits = bits::Bits::new(version);
-        bits.push_optimal_data(data.as_ref())?;
+        bits.push_optimal_data(data)?;
         bits.push_terminator(ec_level)?;
         Self::with_bits(bits, ec_level)
     }
@@ -670,6 +683,148 @@ impl Index<(usize, usize)> for QrCode {
     }
 }
 
+impl ModuleStorage for QrCode {
+    fn get(&self, x: usize, y: usize) -> Color {
+        self[(x, y)]
+    }
+
+    fn set(&mut self, x: usize, y: usize, color: Color) {
+        let index = y * self.width + x;
+        self.content[index] = color;
+    }
+
+    fn width(&self) -> usize {
+        self.width
+    }
+
+    fn height(&self) -> usize {
+        self.width
+    }
+
+    fn modules(&self) -> &[Color] {
+        self.colors()
+    }
+}
+
+//------------------------------------------------------------------------------
+//{{{ Encoder adapters
+
+/// Encoder adapter for automatically sized normal QR codes.
+///
+/// This is the trait-friendly counterpart to
+/// [`QrCode::with_error_correction_level`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AutoEncoder {
+    ec_level: EcLevel,
+}
+
+impl AutoEncoder {
+    /// Creates an encoder with the given error-correction level.
+    #[must_use]
+    pub const fn new(ec_level: EcLevel) -> Self {
+        Self { ec_level }
+    }
+
+    /// Returns the configured error-correction level.
+    #[must_use]
+    pub const fn ec_level(&self) -> EcLevel {
+        self.ec_level
+    }
+}
+
+impl Default for AutoEncoder {
+    fn default() -> Self {
+        Self { ec_level: EcLevel::M }
+    }
+}
+
+impl Encoder for AutoEncoder {
+    type Output = QrCode;
+    type Error = QrError;
+
+    fn encode(&self, input: &[u8]) -> QrResult<QrCode> {
+        QrCode::encode_auto(input, self.ec_level)
+    }
+}
+
+/// Encoder adapter for automatically sized Micro QR codes.
+///
+/// This is the trait-friendly counterpart to
+/// [`QrCode::micro_with_error_correction_level`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MicroEncoder {
+    ec_level: EcLevel,
+}
+
+impl MicroEncoder {
+    /// Creates a Micro QR encoder with the given error-correction level.
+    #[must_use]
+    pub const fn new(ec_level: EcLevel) -> Self {
+        Self { ec_level }
+    }
+
+    /// Returns the configured error-correction level.
+    #[must_use]
+    pub const fn ec_level(&self) -> EcLevel {
+        self.ec_level
+    }
+}
+
+impl Default for MicroEncoder {
+    fn default() -> Self {
+        Self { ec_level: EcLevel::M }
+    }
+}
+
+impl Encoder for MicroEncoder {
+    type Output = QrCode;
+    type Error = QrError;
+
+    fn encode(&self, input: &[u8]) -> QrResult<QrCode> {
+        QrCode::encode_auto_micro(input, self.ec_level)
+    }
+}
+
+/// Encoder adapter for a pinned [`Version`] and [`EcLevel`].
+///
+/// This is the trait-friendly counterpart to [`QrCode::with_version`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VersionEncoder {
+    version: Version,
+    ec_level: EcLevel,
+}
+
+impl VersionEncoder {
+    /// Creates an encoder for a specific version and error-correction level.
+    #[must_use]
+    pub const fn new(version: Version, ec_level: EcLevel) -> Self {
+        Self { version, ec_level }
+    }
+
+    /// Returns the configured version.
+    #[must_use]
+    pub const fn version(&self) -> Version {
+        self.version
+    }
+
+    /// Returns the configured error-correction level.
+    #[must_use]
+    pub const fn ec_level(&self) -> EcLevel {
+        self.ec_level
+    }
+}
+
+impl Encoder for VersionEncoder {
+    type Output = QrCode;
+    type Error = QrError;
+
+    fn encode(&self, input: &[u8]) -> QrResult<QrCode> {
+        QrCode::encode_with_version(input, self.version, self.ec_level)
+    }
+}
+
+//}}}
+
 //------------------------------------------------------------------------------
 //{{{ QrCodeBuilder
 
@@ -941,6 +1096,24 @@ impl QrTemplate {
     }
 }
 
+impl qrcode_render::RenderTemplate for QrTemplate {
+    fn dark_color(&self) -> &str {
+        &self.dark_color
+    }
+
+    fn light_color(&self) -> &str {
+        &self.light_color
+    }
+
+    fn module_size(&self) -> Option<(u32, u32)> {
+        self.module_size
+    }
+
+    fn quiet_zone(&self) -> bool {
+        self.quiet_zone
+    }
+}
+
 //}}}
 //------------------------------------------------------------------------------
 //{{{ Module iterators
@@ -1117,7 +1290,8 @@ mod tests {
 
 #[cfg(test)]
 mod api_tests {
-    use crate::{Color, EcLevel, Mode, QrCode, Version};
+    use crate::{AutoEncoder, Color, EcLevel, MicroEncoder, Mode, QrCode, Version, VersionEncoder};
+    use qrcode_core::traits::{Encoder as CoreEncoder, ModuleStorage as CoreModuleStorage, Renderer as CoreRenderer};
 
     fn colors(code: &QrCode) -> Vec<Color> {
         code.to_colors()
@@ -1130,6 +1304,27 @@ mod api_tests {
         assert_eq!(colors(&direct), colors(&built));
         assert_eq!(direct.version(), built.version());
         assert_eq!(direct.error_correction_level(), built.error_correction_level());
+    }
+
+    #[test]
+    fn auto_encoder_matches_constructor() {
+        let direct = QrCode::with_error_correction_level(b"Some data", EcLevel::H).unwrap();
+        let encoded = AutoEncoder::new(EcLevel::H).encode(b"Some data").unwrap();
+        assert_eq!(colors(&direct), colors(&encoded));
+    }
+
+    #[test]
+    fn micro_encoder_matches_constructor() {
+        let direct = QrCode::micro_with_error_correction_level(b"123", EcLevel::L).unwrap();
+        let encoded = MicroEncoder::new(EcLevel::L).encode(b"123").unwrap();
+        assert_eq!(colors(&direct), colors(&encoded));
+    }
+
+    #[test]
+    fn version_encoder_matches_constructor() {
+        let direct = QrCode::with_version(b"Some data", Version::Normal(1), EcLevel::M).unwrap();
+        let encoded = VersionEncoder::new(Version::Normal(1), EcLevel::M).encode(b"Some data").unwrap();
+        assert_eq!(colors(&direct), colors(&encoded));
     }
 
     #[test]
@@ -1265,6 +1460,27 @@ mod api_tests {
         assert_eq!(borrowed.len(), code.width() * code.width());
         // matches the cloning accessor
         assert_eq!(borrowed, code.to_colors().as_slice());
+    }
+
+    #[test]
+    fn module_storage_reads_and_writes_grid() {
+        let mut code = QrCode::new(b"hello").unwrap();
+        let width = code.width();
+        let before = CoreModuleStorage::get(&code, 0, 0);
+        CoreModuleStorage::set(&mut code, 0, 0, !before);
+        assert_eq!(CoreModuleStorage::width(&code), width);
+        assert_eq!(CoreModuleStorage::height(&code), width);
+        assert_eq!(CoreModuleStorage::modules(&code).len(), width * width);
+        assert_eq!(CoreModuleStorage::get(&code, 0, 0), !before);
+    }
+
+    #[test]
+    fn renderer_trait_path_matches_builder_output() {
+        let code = QrCode::new(b"hello").unwrap();
+        let builder_output = code.render::<char>().build();
+        let renderer = code.render::<char>();
+        let trait_output = CoreRenderer::render(&renderer, &code).unwrap();
+        assert_eq!(trait_output, builder_output);
     }
 
     #[test]

@@ -890,6 +890,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "qrcode-decode"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "qrcode-core",
+ "rqrr",
+]
+
+[[package]]
+name = "qrcode-parse"
+version = "0.1.0"
+
+[[package]]
+name = "qrcode-render"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "qrcode-core",
+]
+
+[[package]]
 name = "qrcode-rs"
 version = "1.6.0"
 dependencies = [
@@ -898,7 +919,9 @@ dependencies = [
  "image",
  "log",
  "qrcode-core",
- "rqrr",
+ "qrcode-decode",
+ "qrcode-parse",
+ "qrcode-render",
  "serde",
  "serde_json",
 ]

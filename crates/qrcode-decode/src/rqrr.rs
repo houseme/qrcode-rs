@@ -1,12 +1,13 @@
-#![cfg(feature = "decode-rqrr")]
 //! [`rqrr`](https://crates.io/crates/rqrr)-backed [`QrDecoder`] adapter.
 //!
 //! Enables decoding a rendered QR image back to its payload via the `rqrr`
 //! crate. rqrr performs its own adaptive thresholding, so a plain grayscale
 //! [`GrayPixels`] view is all that is required.
 
-use crate::decode::{DecodedQrCode, GrayPixels, QrDecoder};
-use crate::types::{EcLevel, Version};
+pub use rqrr::DeQRError;
+
+use crate::{DecodedQrCode, GrayPixels, QrDecoder};
+use qrcode_core::{EcLevel, Version};
 
 /// A [`QrDecoder`] backed by the [`rqrr`] crate.
 #[derive(Default, Debug, Clone, Copy)]
@@ -21,7 +22,7 @@ impl RqrrDecoder {
 }
 
 impl QrDecoder for RqrrDecoder {
-    type Error = rqrr::DeQRError;
+    type Error = DeQRError;
 
     fn decode(&self, image: GrayPixels<'_>) -> Result<Vec<DecodedQrCode>, Self::Error> {
         let mut prep =
