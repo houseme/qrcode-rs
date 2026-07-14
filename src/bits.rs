@@ -94,7 +94,7 @@ impl Bits {
     }
 
     /// Reserves `n` extra bits of space for pushing.
-    fn reserve(&mut self, n: usize) {
+    pub(crate) fn reserve(&mut self, n: usize) {
         let extra_bytes = (n + (8 - self.bit_offset) % 8) / 8;
         self.data.reserve(extra_bytes);
     }
@@ -1077,7 +1077,7 @@ pub fn encode_auto_micro(data: &[u8], ec_level: EcLevel) -> QrResult<Bits> {
 
 /// Finds the smallest version (QR code only) that can store N bits of data
 /// in the given error correction level.
-fn find_min_version(length: usize, ec_level: EcLevel) -> Version {
+pub(crate) fn find_min_version(length: usize, ec_level: EcLevel) -> Version {
     let mut base = 0_usize;
     let mut size = 39;
     while size > 1 {

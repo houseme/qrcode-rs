@@ -125,29 +125,28 @@ impl<'a> StructuredAppend<'a> {
 /// Append header, picking the smallest version that fits the chunk plus the
 /// 20-bit header overhead.
 ///
-/// Mirrors the `for v in 1..=40` version search used by the other encoders
-/// (e.g. `QrCode::for_gs1`), but adds the constant 20-bit header overhead to
-/// the segment length before comparing against the version's data capacity.
-/// `push_terminator` independently re-checks capacity as a safety net.
+/// Mirrors [`bits::encode_auto`](crate::bits::encode_auto)'s tier-based search:
+/// the segment split is constant within a character-count tier (the per-segment
+/// length is tier-invariant), so we optimize once per tier (V9 / V26 / V40) and
+/// let [`bits::find_min_version`] pick the smallest fitting version. This runs
+/// the optimizer ~3× per chunk instead of ~40×. The constant 20-bit header is
+/// added to the encoded length before the capacity check.
 fn encode_one_symbol(data: &[u8], position: u8, total: u8, parity: u8, ec: EcLevel) -> QrResult<QrCode> {
     let segments = Parser::new(data).collect::<Vec<Segment>>();
-    for v in 1..=40u8 {
-        let version = Version::Normal(i16::from(v));
-        let opt = Optimizer::new(segments.iter().copied(), version).collect::<Vec<_>>();
-        // 20 bits: the Structured Append header (4-bit mode + 8-bit sequence
+    for &checkpoint in &[Version::Normal(9), Version::Normal(26), Version::Normal(40)] {
+        let opt = Optimizer::new(segments.iter().copied(), checkpoint).collect::<Vec<_>>();
+        // +20 bits: the Structured Append header (4-bit mode + 8-bit sequence
         // indicator + 8-bit parity) prepended before the data mode indicator.
-        let total_len = total_encoded_len(&opt, version) + 20;
-        let Some(capacity) = bits::data_capacity_bits(version, ec).ok() else {
-            continue;
-        };
-        if total_len > capacity {
-            continue;
+        let total_len = total_encoded_len(&opt, checkpoint) + 20;
+        if total_len <= bits::data_capacity_bits(checkpoint, ec)? {
+            let version = bits::find_min_version(total_len, ec);
+            let mut bits = Bits::new(version);
+            bits.reserve(total_len);
+            bits.push_structured_append_header(position, total, parity)?;
+            bits.push_segments(data, opt.into_iter())?;
+            bits.push_terminator(ec)?;
+            return QrCode::with_bits(bits, ec);
         }
-        let mut bits = Bits::new(version);
-        bits.push_structured_append_header(position, total, parity)?;
-        bits.push_segments(data, opt.into_iter())?;
-        bits.push_terminator(ec)?;
-        return QrCode::with_bits(bits, ec);
     }
     Err(QrError::DataTooLong)
 }
