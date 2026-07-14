@@ -28,9 +28,9 @@ pub trait Encoder {
 
 /// Renders a module-grid source into a concrete output type.
 ///
-/// The `Code` parameter is usually a type implementing [`ModuleStorage`], such
+/// The `Code` parameter is usually a type implementing [`ModuleSource`], such
 /// as the facade crate's `QrCode`, but may also be a third-party borrowed view.
-pub trait Renderer<Code: ModuleStorage + ?Sized> {
+pub trait Renderer<Code: ModuleSource + ?Sized> {
     /// The rendered output.
     type Output;
 
@@ -45,10 +45,38 @@ pub trait Renderer<Code: ModuleStorage + ?Sized> {
     fn render(&self, code: &Code) -> Result<Self::Output, Self::Error>;
 }
 
-/// Read/write access to a QR module grid.
+/// Read-only access to a QR module grid.
 ///
 /// Coordinates are zero-based and exclude any quiet zone. Implementations should
 /// store modules in row-major order when exposing [`modules`](Self::modules).
+pub trait ModuleSource {
+    /// Returns the color at `(x, y)`.
+    ///
+    /// # Panics
+    ///
+    /// Implementations may panic when `x >= width()` or `y >= height()`.
+    fn get(&self, x: usize, y: usize) -> Color;
+
+    /// Returns the number of modules per row.
+    fn width(&self) -> usize;
+
+    /// Returns the number of module rows.
+    fn height(&self) -> usize;
+
+    /// Returns all modules in row-major order.
+    fn modules(&self) -> &[Color];
+
+    /// Returns whether this storage has no modules.
+    fn is_empty(&self) -> bool {
+        self.width() == 0 || self.height() == 0
+    }
+}
+
+/// Read/write access to a QR module grid.
+///
+/// Rendering and inspection APIs should prefer [`ModuleSource`] when they only
+/// need read access. This trait remains available for in-place mutation and
+/// testing utilities.
 pub trait ModuleStorage {
     /// Returns the color at `(x, y)`.
     ///
@@ -76,5 +104,27 @@ pub trait ModuleStorage {
     /// Returns whether this storage has no modules.
     fn is_empty(&self) -> bool {
         self.width() == 0 || self.height() == 0
+    }
+}
+
+impl<T: ModuleStorage + ?Sized> ModuleSource for T {
+    fn get(&self, x: usize, y: usize) -> Color {
+        ModuleStorage::get(self, x, y)
+    }
+
+    fn width(&self) -> usize {
+        ModuleStorage::width(self)
+    }
+
+    fn height(&self) -> usize {
+        ModuleStorage::height(self)
+    }
+
+    fn modules(&self) -> &[Color] {
+        ModuleStorage::modules(self)
+    }
+
+    fn is_empty(&self) -> bool {
+        ModuleStorage::is_empty(self)
     }
 }

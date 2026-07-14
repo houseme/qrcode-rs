@@ -294,7 +294,7 @@ impl<'a, P: Pixel> Renderer<'a, P> {
 
 impl<C, P> qrcode_core::Renderer<C> for Renderer<'_, P>
 where
-    C: qrcode_core::ModuleStorage + ?Sized,
+    C: qrcode_core::ModuleSource + ?Sized,
     P: Pixel,
 {
     type Output = P::Image;

@@ -49,7 +49,7 @@ pub use qrcode_parse as parse;
 // `crate::cast::As` keeps resolving across the facade and render modules.
 pub use crate::types::{Color, EcLevel, Mode, QrError, QrResult, Version};
 use qrcode_core::cast;
-pub use qrcode_core::traits::{Encoder, ModuleStorage, Renderer as CoreRenderer};
+pub use qrcode_core::traits::{Encoder, ModuleSource, ModuleStorage, Renderer as CoreRenderer};
 
 #[cfg(not(feature = "std"))]
 #[allow(unused_imports)]
@@ -1291,7 +1291,10 @@ mod tests {
 #[cfg(test)]
 mod api_tests {
     use crate::{AutoEncoder, Color, EcLevel, MicroEncoder, Mode, QrCode, Version, VersionEncoder};
-    use qrcode_core::traits::{Encoder as CoreEncoder, ModuleStorage as CoreModuleStorage, Renderer as CoreRenderer};
+    use qrcode_core::traits::{
+        Encoder as CoreEncoder, ModuleSource as CoreModuleSource, ModuleStorage as CoreModuleStorage,
+        Renderer as CoreRenderer,
+    };
 
     fn colors(code: &QrCode) -> Vec<Color> {
         code.to_colors()
@@ -1475,12 +1478,54 @@ mod api_tests {
     }
 
     #[test]
+    fn module_source_exposes_read_only_grid() {
+        let code = QrCode::new(b"hello").unwrap();
+        let width = code.width();
+        assert_eq!(CoreModuleSource::width(&code), width);
+        assert_eq!(CoreModuleSource::height(&code), width);
+        assert_eq!(CoreModuleSource::modules(&code), code.colors());
+        assert_eq!(CoreModuleSource::get(&code, 0, 0), code[(0, 0)]);
+    }
+
+    #[test]
     fn renderer_trait_path_matches_builder_output() {
         let code = QrCode::new(b"hello").unwrap();
         let builder_output = code.render::<char>().build();
         let renderer = code.render::<char>();
         let trait_output = CoreRenderer::render(&renderer, &code).unwrap();
         assert_eq!(trait_output, builder_output);
+    }
+
+    #[test]
+    fn renderer_trait_accepts_read_only_module_source() {
+        struct BorrowedModules<'a> {
+            modules: &'a [Color],
+            width: usize,
+        }
+
+        impl CoreModuleSource for BorrowedModules<'_> {
+            fn get(&self, x: usize, y: usize) -> Color {
+                self.modules[y * self.width + x]
+            }
+
+            fn width(&self) -> usize {
+                self.width
+            }
+
+            fn height(&self) -> usize {
+                self.width
+            }
+
+            fn modules(&self) -> &[Color] {
+                self.modules
+            }
+        }
+
+        let code = QrCode::new(b"hello").unwrap();
+        let view = BorrowedModules { modules: code.colors(), width: code.width() };
+        let renderer = code.render::<char>();
+        let trait_output = CoreRenderer::render(&renderer, &view).unwrap();
+        assert_eq!(trait_output, code.render::<char>().build());
     }
 
     #[test]
