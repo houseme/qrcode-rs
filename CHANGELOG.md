@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **1.x → 2.0 migration guide** (`MIGRATION-1.x-to-2.0.md`) with API mapping,
+  recommended migration order, and compatibility-test commands.
+- **`compat-1x` feature** — a transitional compatibility contract that keeps
+  the 1.x facade constructors, render chain, indexing, and payload helpers
+  covered while 2.0 internals move into split workspace crates.
+
+### Notes / deferred
+
+- `compat-1x` is intended as a migration bridge, not the long-term 2.0 style.
+  New code should prefer `QrCode::builder`, `module_view`, streaming APIs, and
+  direct split-crate dependencies where narrower layering is useful.
+
 ## [1.6.0] - 2026-07-14
 
 ### Added
