@@ -131,6 +131,38 @@ jobs:
           cargo test --test compat_1x --no-default-features --features compat-1x
           cargo test -p qrcode-compat
           cargo test -p qrcode-compat --no-default-features
+  example_check:
+    name: Check examples
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-examples-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - name: Check all feature-gated examples
+        run: cargo check --examples --all-features
+      - name: Check focused v2 API examples
+        run: |
+          cargo check --example async_render --no-default-features --features async
+          cargo check --example stream_codes --no-default-features --features std
+          cargo check --example plugin_plain_text --no-default-features --features std
+          cargo check --example plugin_invert_modules --no-default-features --features std
+          cargo check --example cmyk_print --no-default-features --features eps,pdf
+          cargo check --example color_spaces --no-default-features
+          cargo check --example typed_encoding_mode --no-default-features
+      - name: Check compat crate examples
+        run: |
+          cargo test -p qrcode-compat --doc --all-features
+          cargo test -p qrcode-compat --doc --no-default-features
   fuzz_smoke:
     name: Fuzz smoke
     runs-on: ubuntu-latest
@@ -169,6 +201,7 @@ jobs:
       - clippy_check
       - test
       - compat_test
+      - example_check
       - fuzz_smoke
     steps:
       - name: Checkout code
