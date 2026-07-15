@@ -289,7 +289,45 @@ impl QrCode {
         I: IntoIterator<Item = D>,
         D: AsRef<[u8]>,
     {
-        inputs.into_iter().map(|d| Self::with_error_correction_level(d, ec_level)).collect()
+        Self::stream_with_error_correction_level(inputs, ec_level).collect()
+    }
+
+    /// Lazily encodes inputs into QR codes with the default error-correction level.
+    ///
+    /// Unlike [`batch`](Self::batch), this returns an iterator and does not
+    /// collect every generated code into memory.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::{EcLevel, QrCode};
+    ///
+    /// let widths = QrCode::stream(["alpha", "beta"])
+    ///     .map(|code| code.map(|code| (code.error_correction_level(), code.width())))
+    ///     .collect::<Result<Vec<_>, _>>()
+    ///     .unwrap();
+    ///
+    /// assert_eq!(widths, vec![(EcLevel::M, 21), (EcLevel::M, 21)]);
+    /// ```
+    pub fn stream<I, D>(inputs: I) -> QrCodeStream<I::IntoIter>
+    where
+        I: IntoIterator<Item = D>,
+        D: AsRef<[u8]>,
+    {
+        Self::stream_with_error_correction_level(inputs, EcLevel::M)
+    }
+
+    /// Lazily encodes inputs into QR codes at `ec_level`.
+    ///
+    /// The iterator yields one [`QrResult<QrCode>`] per input, so callers can
+    /// stop at the first error with `collect::<Result<Vec<_>, _>>()` or handle
+    /// errors per item while keeping memory usage bounded by the active item.
+    pub fn stream_with_error_correction_level<I, D>(inputs: I, ec_level: EcLevel) -> QrCodeStream<I::IntoIter>
+    where
+        I: IntoIterator<Item = D>,
+        D: AsRef<[u8]>,
+    {
+        QrCodeStream { inputs: inputs.into_iter(), ec_level }
     }
 
     /// Gets the version of this QR code.
@@ -1158,6 +1196,41 @@ impl<D: AsRef<[u8]>> Builder for QrCodeBuilder<D> {
 
 //}}}
 //------------------------------------------------------------------------------
+//{{{ QrCodeStream
+
+/// Lazy iterator returned by [`QrCode::stream`] and
+/// [`QrCode::stream_with_error_correction_level`].
+#[derive(Clone, Debug)]
+pub struct QrCodeStream<I> {
+    inputs: I,
+    ec_level: EcLevel,
+}
+
+impl<I> Iterator for QrCodeStream<I>
+where
+    I: Iterator,
+    I::Item: AsRef<[u8]>,
+{
+    type Item = QrResult<QrCode>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inputs.next().map(|input| QrCode::with_error_correction_level(input, self.ec_level))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inputs.size_hint()
+    }
+}
+
+impl<I> FusedIterator for QrCodeStream<I>
+where
+    I: FusedIterator,
+    I::Item: AsRef<[u8]>,
+{
+}
+
+//}}}
+//------------------------------------------------------------------------------
 //{{{ Info
 
 /// Metadata about a constructed [`QrCode`], returned by [`QrCode::info`].
@@ -1597,6 +1670,23 @@ mod api_tests {
         assert_eq!(colors(&direct), colors(&built));
         assert_eq!(direct.version(), built.version());
         assert_eq!(direct.error_correction_level(), built.error_correction_level());
+    }
+
+    #[test]
+    fn stream_lazily_encodes_with_default_error_correction_level() {
+        let codes = QrCode::stream(["alpha", "beta"]).collect::<Result<Vec<_>, _>>().unwrap();
+
+        assert_eq!(codes.iter().map(QrCode::error_correction_level).collect::<Vec<_>>(), [EcLevel::M, EcLevel::M]);
+    }
+
+    #[test]
+    fn stream_with_error_correction_level_matches_batch() {
+        let inputs = ["alpha", "beta", "gamma"];
+        let streamed =
+            QrCode::stream_with_error_correction_level(inputs, EcLevel::H).collect::<Result<Vec<_>, _>>().unwrap();
+        let batched = QrCode::batch(inputs, EcLevel::H).unwrap();
+
+        assert_eq!(streamed.iter().map(colors).collect::<Vec<_>>(), batched.iter().map(colors).collect::<Vec<_>>());
     }
 
     #[test]
