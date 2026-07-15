@@ -162,6 +162,10 @@ name = "structured_append"
 name = "decode_roundtrip"
 required-features = ["decode-rqrr"]
 
+[[example]]
+name = "async_render"
+required-features = ["async"]
+
 [[bench]]
 name = "encoding"
 harness = false
