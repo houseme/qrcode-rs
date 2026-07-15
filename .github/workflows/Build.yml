@@ -86,6 +86,12 @@ jobs:
         run: |
           cargo test --test core_abstraction --all-features
           cargo test --test core_abstraction --no-default-features
+      - name: Run property and differential tests
+        run: |
+          cargo test --test proptest --all-features
+          cargo test --test proptest --no-default-features
+          cargo test --test differential --all-features
+          cargo test --test differential --no-default-features
   compat_test:
     name: Run compat-1x tests
     runs-on: ubuntu-latest
