@@ -474,6 +474,25 @@ impl QrCode {
         Renderer::from_symbol(self)
     }
 
+    /// Encodes raw input through a named plugin encoder.
+    ///
+    /// This is the encoder-side counterpart to [`QrCode::render_with`]: it
+    /// looks up `encoder_name` in `registry`, builds the dynamic encoder with
+    /// `config`, and returns the encoder's type-erased output.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError::EncoderNotFound`] when no encoder is registered
+    /// with `encoder_name`, or another [`PluginError`] returned by the encoder.
+    pub fn encode_with(
+        registry: &PluginRegistry,
+        encoder_name: &str,
+        input: &[u8],
+        config: &EncodeConfig,
+    ) -> Result<EncodedOutput, PluginError> {
+        registry.build_encoder(encoder_name, config)?.encode(input)
+    }
+
     /// Renders the QR code through a named plugin renderer.
     ///
     /// The method looks up `renderer_name` in `registry`, copies this QR code's
@@ -1474,9 +1493,10 @@ mod tests {
 #[cfg(test)]
 mod api_tests {
     use crate::{
-        AutoEncoder, Builder as CoreBuilder, Color, ConstVersion, ConstVersionEncoder, DynRenderer, EcLevel,
-        MicroEncoder, Mode, ModuleView, NumericMode, PluginRegistry, PostProcessor, QrCode, QrError, QrSymbol,
-        RenderConfig, RenderOutput, RendererFactory, Version, VersionEncoder,
+        AutoEncoder, Builder as CoreBuilder, Color, ConstVersion, ConstVersionEncoder, DynEncoder, DynRenderer,
+        EcLevel, EncodeConfig, EncodedOutput, EncoderFactory, MicroEncoder, Mode, ModuleView, NumericMode,
+        PluginRegistry, PostProcessor, QrCode, QrError, QrSymbol, RenderConfig, RenderOutput, RendererFactory, Version,
+        VersionEncoder,
     };
     use qrcode_core::traits::{
         Encoder as CoreEncoder, ModuleSource as CoreModuleSource, ModuleStorage as CoreModuleStorage,
@@ -1506,6 +1526,22 @@ mod api_tests {
     impl RendererFactory for TextPluginFactory {
         fn build(&self, _config: &RenderConfig) -> Box<dyn DynRenderer> {
             Box::new(TextPluginRenderer)
+        }
+    }
+
+    struct LengthPluginEncoder;
+
+    impl DynEncoder for LengthPluginEncoder {
+        fn encode(&self, input: &[u8]) -> Result<EncodedOutput, crate::PluginError> {
+            Ok(EncodedOutput::Bytes(input.len().to_string().into_bytes()))
+        }
+    }
+
+    struct LengthPluginFactory;
+
+    impl EncoderFactory for LengthPluginFactory {
+        fn build(&self, _config: &EncodeConfig) -> Box<dyn DynEncoder> {
+            Box::new(LengthPluginEncoder)
         }
     }
 
@@ -1626,6 +1662,26 @@ mod api_tests {
             code.render::<char>().dark_color('X').light_color('.').quiet_zone(false).module_dimensions(1, 1).build();
 
         assert_eq!(output, RenderOutput::Text(expected));
+    }
+
+    #[test]
+    fn encode_with_uses_registered_encoder() {
+        let mut registry = PluginRegistry::new();
+        registry.register_encoder("length", Box::new(LengthPluginFactory));
+
+        let output = QrCode::encode_with(&registry, "length", b"abcd", &EncodeConfig::new()).unwrap();
+
+        assert_eq!(output, EncodedOutput::Bytes(b"4".to_vec()));
+    }
+
+    #[test]
+    fn encode_with_reports_missing_encoder() {
+        let registry = PluginRegistry::new();
+
+        assert!(matches!(
+            QrCode::encode_with(&registry, "missing", b"abcd", &EncodeConfig::new()),
+            Err(crate::PluginError::EncoderNotFound(name)) if name == "missing"
+        ));
     }
 
     #[test]
