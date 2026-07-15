@@ -1867,21 +1867,7 @@ impl PenaltyGrid {
     }
 
     fn compute_block_penalty_score(&self) -> u16 {
-        let mut total_score = 0;
-
-        for i in 0..self.width - 1 {
-            for j in 0..self.width - 1 {
-                let this = self.get(i, j);
-                let right = self.get(i + 1, j);
-                let bottom = self.get(i, j + 1);
-                let bottom_right = self.get(i + 1, j + 1);
-                if this == right && right == bottom && bottom == bottom_right {
-                    total_score += 3;
-                }
-            }
-        }
-
-        total_score
+        compute_block_penalty_score(self.width.as_usize(), &self.modules)
     }
 
     fn compute_finder_penalty_score(&self, is_horizontal: bool) -> u16 {
@@ -1939,6 +1925,37 @@ fn count_dark_modules_scalar(modules: &[u8]) -> usize {
     modules.iter().filter(|&&module| module != 0).count()
 }
 
+fn compute_block_penalty_score(width: usize, modules: &[u8]) -> u16 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        // Every x86_64 target supports SSE2, and the helper only performs
+        // guarded unaligned vector loads within each row pair.
+        return unsafe { compute_block_penalty_score_sse2(width, modules) };
+    }
+
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        compute_block_penalty_score_scalar(width, modules)
+    }
+}
+
+fn compute_block_penalty_score_scalar(width: usize, modules: &[u8]) -> u16 {
+    let mut total_score = 0;
+
+    for y in 0..width.saturating_sub(1) {
+        let row = &modules[y * width..][..width];
+        let next_row = &modules[(y + 1) * width..][..width];
+        for x in 0..width.saturating_sub(1) {
+            let this = row[x];
+            if this == row[x + 1] && this == next_row[x] && this == next_row[x + 1] {
+                total_score += 3;
+            }
+        }
+    }
+
+    total_score
+}
+
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "sse2")]
 unsafe fn count_dark_modules_sse2(modules: &[u8]) -> usize {
@@ -1961,6 +1978,50 @@ unsafe fn count_dark_modules_sse2(modules: &[u8]) -> usize {
     count + count_dark_modules_scalar(&modules[offset..])
 }
 
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "sse2")]
+unsafe fn compute_block_penalty_score_sse2(width: usize, modules: &[u8]) -> u16 {
+    use core::arch::x86_64::{__m128i, _mm_and_si128, _mm_cmpeq_epi8, _mm_loadu_si128, _mm_movemask_epi8};
+
+    let mut total_score = 0;
+    for y in 0..width.saturating_sub(1) {
+        let row = &modules[y * width..][..width];
+        let next_row = &modules[(y + 1) * width..][..width];
+        let mut x = 0;
+
+        while x + 16 < width {
+            let row_ptr = row.as_ptr().wrapping_add(x).cast::<__m128i>();
+            let row_right_ptr = row.as_ptr().wrapping_add(x + 1).cast::<__m128i>();
+            let next_ptr = next_row.as_ptr().wrapping_add(x).cast::<__m128i>();
+            let next_right_ptr = next_row.as_ptr().wrapping_add(x + 1).cast::<__m128i>();
+
+            // `_mm_loadu_si128` accepts unaligned input; the loop guard ensures
+            // all four 16-byte windows stay inside their row slices.
+            let row_chunk = unsafe { _mm_loadu_si128(row_ptr) };
+            let row_right_chunk = unsafe { _mm_loadu_si128(row_right_ptr) };
+            let next_chunk = unsafe { _mm_loadu_si128(next_ptr) };
+            let next_right_chunk = unsafe { _mm_loadu_si128(next_right_ptr) };
+
+            let horizontal = _mm_cmpeq_epi8(row_chunk, row_right_chunk);
+            let vertical = _mm_cmpeq_epi8(row_chunk, next_chunk);
+            let diagonal = _mm_cmpeq_epi8(row_chunk, next_right_chunk);
+            let blocks = _mm_and_si128(_mm_and_si128(horizontal, vertical), diagonal);
+            total_score += (_mm_movemask_epi8(blocks) as u32).count_ones() as u16 * 3;
+            x += 16;
+        }
+
+        while x + 1 < width {
+            let this = row[x];
+            if this == row[x + 1] && this == next_row[x] && this == next_row[x + 1] {
+                total_score += 3;
+            }
+            x += 1;
+        }
+    }
+
+    total_score
+}
+
 fn compute_total_penalty_score_scalar(version: Version, width: i16, modules: &[Module]) -> u16 {
     let grid = PenaltyGrid::new(width, modules);
     match version {
@@ -1980,7 +2041,8 @@ fn compute_total_penalty_score_scalar(version: Version, width: i16, modules: &[M
 #[cfg(test)]
 mod penalty_tests {
     use crate::canvas::{
-        Canvas, MaskPattern, compute_total_penalty_score_scalar, count_dark_modules, count_dark_modules_scalar,
+        Canvas, MaskPattern, compute_block_penalty_score, compute_block_penalty_score_scalar,
+        compute_total_penalty_score_scalar, count_dark_modules, count_dark_modules_scalar,
     };
     use crate::cast::As;
     use crate::types::{Color, EcLevel, Version};
@@ -2037,6 +2099,17 @@ mod penalty_tests {
     fn test_penalty_score_block() {
         let c = create_test_canvas();
         assert_eq!(c.compute_block_penalty_score(), 90);
+    }
+
+    #[test]
+    fn block_penalty_score_matches_scalar_for_varied_widths() {
+        for width in [1_usize, 2, 7, 21, 45] {
+            let modules = (0..width * width).map(|i| u8::from((i + i / width) % 5 < 2)).collect::<Vec<_>>();
+            assert_eq!(
+                compute_block_penalty_score(width, &modules),
+                compute_block_penalty_score_scalar(width, &modules)
+            );
+        }
     }
 
     #[test]
