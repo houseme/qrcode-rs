@@ -1601,7 +1601,7 @@ impl Canvas {
 
 #[cfg(test)]
 mod mask_tests {
-    use crate::canvas::{Canvas, MaskPattern};
+    use crate::canvas::{Canvas, FORMAT_INFOS_MICRO_QR, FORMAT_INFOS_QR, MaskPattern};
     use crate::types::{EcLevel, Version};
 
     #[test]
@@ -1690,19 +1690,44 @@ mod mask_tests {
              ?????????????"
         );
     }
+
+    #[test]
+    fn generated_format_info_tables_match_known_values() {
+        assert_eq!(FORMAT_INFOS_QR[0], 0x5412);
+        assert_eq!(FORMAT_INFOS_QR[31], 0x2bed);
+        assert_eq!(FORMAT_INFOS_MICRO_QR[0], 0x4445);
+        assert_eq!(FORMAT_INFOS_MICRO_QR[31], 0x3bba);
+    }
 }
 
-static FORMAT_INFOS_QR: [u16; 32] = [
-    0x5412, 0x5125, 0x5e7c, 0x5b4b, 0x45f9, 0x40ce, 0x4f97, 0x4aa0, 0x77c4, 0x72f3, 0x7daa, 0x789d, 0x662f, 0x6318,
-    0x6c41, 0x6976, 0x1689, 0x13be, 0x1ce7, 0x19d0, 0x0762, 0x0255, 0x0d0c, 0x083b, 0x355f, 0x3068, 0x3f31, 0x3a06,
-    0x24b4, 0x2183, 0x2eda, 0x2bed,
-];
+const FORMAT_INFOS_QR: [u16; 32] = generate_format_infos(0x5412);
+const FORMAT_INFOS_MICRO_QR: [u16; 32] = generate_format_infos(0x4445);
+const FORMAT_INFO_GENERATOR: u16 = 0x537;
 
-static FORMAT_INFOS_MICRO_QR: [u16; 32] = [
-    0x4445, 0x4172, 0x4e2b, 0x4b1c, 0x55ae, 0x5099, 0x5fc0, 0x5af7, 0x6793, 0x62a4, 0x6dfd, 0x68ca, 0x7678, 0x734f,
-    0x7c16, 0x7921, 0x06de, 0x03e9, 0x0cb0, 0x0987, 0x1735, 0x1202, 0x1d5b, 0x186c, 0x2508, 0x203f, 0x2f66, 0x2a51,
-    0x34e3, 0x31d4, 0x3e8d, 0x3bba,
-];
+const fn generate_format_infos(mask: u16) -> [u16; 32] {
+    let mut table = [0; 32];
+    let mut data = 0;
+    while data < table.len() {
+        table[data] = format_info(data as u16, mask);
+        data += 1;
+    }
+    table
+}
+
+const fn format_info(data: u16, mask: u16) -> u16 {
+    let mut remainder = data << 10;
+    let mut bit = 14;
+    while bit >= 10 {
+        if remainder & (1 << bit) != 0 {
+            remainder ^= FORMAT_INFO_GENERATOR << (bit - 10);
+        }
+        if bit == 10 {
+            break;
+        }
+        bit -= 1;
+    }
+    ((data << 10) | remainder) ^ mask
+}
 
 //}}}
 //------------------------------------------------------------------------------
