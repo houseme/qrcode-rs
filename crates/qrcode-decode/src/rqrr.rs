@@ -7,6 +7,7 @@
 pub use rqrr::DeQRError;
 
 use crate::{DecodedQrCode, GrayPixels, QrDecoder};
+use alloc::vec::Vec;
 use qrcode_core::{EcLevel, Version};
 
 /// A [`QrDecoder`] backed by the [`rqrr`] crate.

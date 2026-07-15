@@ -94,6 +94,7 @@ jobs:
           cargo test -p qrcode-render --features std
           cargo test -p qrcode-parse --no-default-features
           cargo test -p qrcode-decode --no-default-features
+          cargo test -p qrcode-decode --features image,rqrr
           cargo test -p qrcode-svg
           cargo test -p qrcode-eps
           cargo test -p qrcode-pic
