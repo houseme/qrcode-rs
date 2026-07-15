@@ -24,10 +24,7 @@ impl<'a> ModuleView<'a> {
     /// Returns `None` when `width == 0` or `modules.len() != width * width`.
     #[must_use]
     pub const fn new(modules: &'a [Color], width: usize) -> Option<Self> {
-        if width == 0 || modules.len() != width * width {
-            return None;
-        }
-        Some(Self { modules, width, height: width })
+        Self::new_rect(modules, width, width)
     }
 
     /// Creates a rectangular module view from a row-major module slice.
@@ -39,7 +36,7 @@ impl<'a> ModuleView<'a> {
     /// `modules.len() != width * height`.
     #[must_use]
     pub const fn new_rect(modules: &'a [Color], width: usize, height: usize) -> Option<Self> {
-        if width == 0 || height == 0 || modules.len() != width * height {
+        if !has_valid_module_geometry(modules.len(), width, height) {
             return None;
         }
         Some(Self { modules, width, height })
@@ -55,9 +52,19 @@ impl<'a> ModuleView<'a> {
             return None;
         }
         let height = end - start;
-        let start = start * self.width;
-        let end = end * self.width;
-        Some(Self { modules: &self.modules[start..end], width: self.width, height })
+        let start = start.checked_mul(self.width)?;
+        let end = end.checked_mul(self.width)?;
+        Some(Self { modules: self.modules.get(start..end)?, width: self.width, height })
+    }
+}
+
+const fn has_valid_module_geometry(len: usize, width: usize, height: usize) -> bool {
+    if width == 0 || height == 0 {
+        return false;
+    }
+    match width.checked_mul(height) {
+        Some(expected) => len == expected,
+        None => false,
     }
 }
 
@@ -98,7 +105,7 @@ impl<'a> QrCodeRef<'a> {
     /// Returns `None` when `width == 0` or `modules.len() != width * width`.
     #[must_use]
     pub const fn new(modules: &'a [Color], width: usize, version: Version, ec_level: EcLevel) -> Option<Self> {
-        if width == 0 || modules.len() != width * width {
+        if !has_valid_module_geometry(modules.len(), width, width) {
             return None;
         }
         Some(Self { modules, version, ec_level, width })
@@ -487,6 +494,12 @@ mod tests {
         assert!(ModuleView::new_rect(&modules, 2, 2).is_none());
         assert!(ModuleView::new_rect(&modules, 0, 2).is_none());
         assert!(ModuleView::new_rect(&modules, 2, 0).is_none());
+    }
+
+    #[test]
+    fn module_views_reject_overflowing_geometry() {
+        assert!(ModuleView::new_rect(&[], usize::MAX, 2).is_none());
+        assert!(QrCodeRef::new(&[], usize::MAX, Version::Normal(1), EcLevel::L).is_none());
     }
 
     #[test]
