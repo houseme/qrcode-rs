@@ -59,6 +59,8 @@ Every PR must pass:
 ```bash
 cargo test --all-features
 cargo test --no-default-features          # the lib must still build without default features
+cargo test --test proptest --all-features
+cargo test --test differential --all-features
 cargo clippy --all-features --all-targets -- -D warnings
 cargo fmt -- --check
 cargo doc --all-features --no-deps        # warning/error-free (#![deny(missing_docs)] is enforced)
@@ -67,6 +69,34 @@ cargo doc --all-features --no-deps        # warning/error-free (#![deny(missing_
 All public API must be documented (`#![deny(missing_docs)]` is set in
 `src/lib.rs`). New features should include unit tests and/or doctests, and an
 example where useful.
+
+## Property, differential, and fuzz testing
+
+The v2 test architecture includes three layers beyond ordinary integration
+tests:
+
+```bash
+cargo test --test proptest --all-features
+cargo test --test proptest --no-default-features
+cargo test --test differential --all-features
+cargo test --test differential --no-default-features
+```
+
+The `fuzz/` workspace is a `cargo-fuzz` project with targets for core encoding,
+fixed-version encoding, SVG rendering, structured payload parsing, and
+structured append. Use a compile check for quick local validation:
+
+```bash
+cargo check --manifest-path fuzz/Cargo.toml --bins
+```
+
+For a short local fuzz smoke run, install `cargo-fuzz` and run a bounded target:
+
+```bash
+cargo install cargo-fuzz --locked
+cargo fuzz run encode -- -runs=100
+cargo fuzz run render_svg -- -runs=100
+```
 
 ## Commit conventions
 
