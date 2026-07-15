@@ -60,6 +60,7 @@ qrcode-rs = { version = "1.4", default-features = false, features = ["std", "svg
 | `log` | Emits encoder diagnostics through the `log` crate. |
 | `cli` | Builds the `qrencodes` command-line tool. |
 | `decode-rqrr` | Enables decoding through `rqrr`. |
+| `compat-1x` | Keeps the 1.x facade API available during the 2.0 migration. |
 
 ## Quick Start
 
@@ -265,6 +266,10 @@ The [`examples/`](examples) directory covers the main workflows in this crate:
 - Accessibility and styling: `accessible_svg`, `custom_colors`, `batch_template`, `alt_text`
 - Decoding and errors: `decode_roundtrip`, `error_handling`
 - CLI patterns: `cli_tool`
+
+## Migration
+
+For the 1.x to 2.0 upgrade path, see [MIGRATION-1.x-to-2.0.md](MIGRATION-1.x-to-2.0.md). The `compat-1x` feature keeps the legacy facade available while call sites move to the builder, module-view, streaming, and split-crate APIs.
 
 ## License
 

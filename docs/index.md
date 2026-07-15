@@ -38,6 +38,7 @@ println!("{}", string);
 | `svg`   | Yes | SVG vector rendering |
 | `eps`   | Yes | Encapsulated PostScript rendering |
 | `pic`   | Yes | PIC (troff) rendering |
+| `compat-1x` | No | 1.x facade API during the 2.0 migration |
 
 ## Modules
 
@@ -47,6 +48,10 @@ println!("{}", string);
 - [`qrcode_rs::ec`](https://docs.rs/qrcode-rs/latest/qrcode_rs/ec/index.html) — Reed-Solomon error correction
 - [`qrcode_rs::optimize`](https://docs.rs/qrcode-rs/latest/qrcode_rs/optimize/index.html) — Data mode segmentation optimizer
 - [`qrcode_rs::render`](https://docs.rs/qrcode-rs/latest/qrcode_rs/render/index.html) — Rendering pipeline and Pixel trait
+
+## Migration
+
+- [Migrating from qrcode-rs 1.x to 2.0](../MIGRATION-1.x-to-2.0.md)
 
 ## License
 
