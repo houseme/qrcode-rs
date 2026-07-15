@@ -1859,6 +1859,12 @@ fn write_module_bytes(modules: &[Module], output: &mut Vec<u8>) {
 fn count_dark_modules(modules: &[u8]) -> usize {
     #[cfg(target_arch = "x86_64")]
     {
+        if avx2_available() {
+            // The helper only reads inside the slice bounds with unaligned
+            // 32-byte loads.
+            return unsafe { count_dark_modules_avx2(modules) };
+        }
+
         if sse2_available() {
             // The helper only reads inside the slice bounds with unaligned
             // 16-byte loads.
@@ -2027,6 +2033,12 @@ fn line_range_has_dark(line: &[u8], start: usize, end: usize) -> bool {
 fn compute_block_penalty_score(width: usize, modules: &[u8]) -> u16 {
     #[cfg(target_arch = "x86_64")]
     {
+        if avx2_available() {
+            // The helper only performs guarded unaligned vector loads within
+            // each row pair.
+            return unsafe { compute_block_penalty_score_avx2(width, modules) };
+        }
+
         if sse2_available() {
             // The helper only performs guarded unaligned vector loads within
             // each row pair.
@@ -2064,9 +2076,49 @@ fn sse2_available() -> bool {
     true
 }
 
+#[cfg(all(target_arch = "x86_64", feature = "std"))]
+fn avx2_available() -> bool {
+    std::is_x86_feature_detected!("avx2")
+}
+
+#[cfg(all(target_arch = "x86_64", not(feature = "std")))]
+fn avx2_available() -> bool {
+    false
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+unsafe fn count_dark_modules_avx2(modules: &[u8]) -> usize {
+    use core::arch::x86_64::{
+        __m256i, _mm256_cmpeq_epi8, _mm256_loadu_si256, _mm256_movemask_epi8, _mm256_setzero_si256,
+    };
+
+    let mut count = 0;
+    let mut offset = 0;
+    let zero = _mm256_setzero_si256();
+
+    while offset + 32 <= modules.len() {
+        let ptr = modules.as_ptr().wrapping_add(offset).cast::<__m256i>();
+        // `_mm256_loadu_si256` accepts unaligned input; the loop guard ensures
+        // the full 32-byte vector is in bounds for this slice.
+        let chunk = unsafe { _mm256_loadu_si256(ptr) };
+        let zero_lanes = _mm256_movemask_epi8(_mm256_cmpeq_epi8(chunk, zero)) as u32;
+        count += 32 - zero_lanes.count_ones() as usize;
+        offset += 32;
+    }
+
+    count + count_dark_modules_sse2_remainder(&modules[offset..])
+}
+
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "sse2")]
 unsafe fn count_dark_modules_sse2(modules: &[u8]) -> usize {
+    count_dark_modules_sse2_remainder(modules)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "sse2")]
+fn count_dark_modules_sse2_remainder(modules: &[u8]) -> usize {
     use core::arch::x86_64::{__m128i, _mm_cmpeq_epi8, _mm_loadu_si128, _mm_movemask_epi8, _mm_setzero_si128};
 
     let mut count = 0;
@@ -2084,6 +2136,44 @@ unsafe fn count_dark_modules_sse2(modules: &[u8]) -> usize {
     }
 
     count + count_dark_modules_scalar(&modules[offset..])
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+unsafe fn compute_block_penalty_score_avx2(width: usize, modules: &[u8]) -> u16 {
+    use core::arch::x86_64::{__m256i, _mm256_and_si256, _mm256_cmpeq_epi8, _mm256_loadu_si256, _mm256_movemask_epi8};
+
+    let mut total_score = 0;
+    for y in 0..width.saturating_sub(1) {
+        let row = &modules[y * width..][..width];
+        let next_row = &modules[(y + 1) * width..][..width];
+        let mut x = 0;
+
+        while x + 32 < width {
+            let row_ptr = row.as_ptr().wrapping_add(x).cast::<__m256i>();
+            let row_right_ptr = row.as_ptr().wrapping_add(x + 1).cast::<__m256i>();
+            let next_ptr = next_row.as_ptr().wrapping_add(x).cast::<__m256i>();
+            let next_right_ptr = next_row.as_ptr().wrapping_add(x + 1).cast::<__m256i>();
+
+            // `_mm256_loadu_si256` accepts unaligned input; the loop guard
+            // ensures all four 32-byte windows stay inside their row slices.
+            let row_chunk = unsafe { _mm256_loadu_si256(row_ptr) };
+            let row_right_chunk = unsafe { _mm256_loadu_si256(row_right_ptr) };
+            let next_chunk = unsafe { _mm256_loadu_si256(next_ptr) };
+            let next_right_chunk = unsafe { _mm256_loadu_si256(next_right_ptr) };
+
+            let horizontal = _mm256_cmpeq_epi8(row_chunk, row_right_chunk);
+            let vertical = _mm256_cmpeq_epi8(row_chunk, next_chunk);
+            let diagonal = _mm256_cmpeq_epi8(row_chunk, next_right_chunk);
+            let blocks = _mm256_and_si256(_mm256_and_si256(horizontal, vertical), diagonal);
+            total_score += (_mm256_movemask_epi8(blocks) as u32).count_ones() as u16 * 3;
+            x += 32;
+        }
+
+        total_score += compute_block_penalty_score_scalar_tail(row, next_row, x);
+    }
+
+    total_score
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -2118,13 +2208,23 @@ unsafe fn compute_block_penalty_score_sse2(width: usize, modules: &[u8]) -> u16 
             x += 16;
         }
 
-        while x + 1 < width {
-            let this = row[x];
-            if this == row[x + 1] && this == next_row[x] && this == next_row[x + 1] {
-                total_score += 3;
-            }
-            x += 1;
+        total_score += compute_block_penalty_score_scalar_tail(row, next_row, x);
+    }
+
+    total_score
+}
+
+#[cfg(target_arch = "x86_64")]
+fn compute_block_penalty_score_scalar_tail(row: &[u8], next_row: &[u8], start: usize) -> u16 {
+    let mut total_score = 0;
+    let mut x = start;
+
+    while x + 1 < row.len() {
+        let this = row[x];
+        if this == row[x + 1] && this == next_row[x] && this == next_row[x + 1] {
+            total_score += 3;
         }
+        x += 1;
     }
 
     total_score
