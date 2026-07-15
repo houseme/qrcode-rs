@@ -1907,7 +1907,7 @@ impl PenaltyGrid {
     }
 
     fn compute_balance_penalty_score(&self) -> u16 {
-        let dark_modules = self.modules.iter().filter(|&&module| module != 0).count();
+        let dark_modules = count_dark_modules(&self.modules);
         let total_modules = self.modules.len();
         let ratio = dark_modules * 200 / total_modules;
         ratio.abs_diff(100).as_u16()
@@ -1919,6 +1919,46 @@ impl PenaltyGrid {
 
         (h + v + 15 * max(h, v)).as_u16()
     }
+}
+
+fn count_dark_modules(modules: &[u8]) -> usize {
+    #[cfg(target_arch = "x86_64")]
+    {
+        // Every x86_64 target supports SSE2, and the helper only reads inside
+        // the slice bounds with unaligned 16-byte loads.
+        return unsafe { count_dark_modules_sse2(modules) };
+    }
+
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        count_dark_modules_scalar(modules)
+    }
+}
+
+fn count_dark_modules_scalar(modules: &[u8]) -> usize {
+    modules.iter().filter(|&&module| module != 0).count()
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "sse2")]
+unsafe fn count_dark_modules_sse2(modules: &[u8]) -> usize {
+    use core::arch::x86_64::{__m128i, _mm_cmpeq_epi8, _mm_loadu_si128, _mm_movemask_epi8, _mm_setzero_si128};
+
+    let mut count = 0;
+    let mut offset = 0;
+    let zero = _mm_setzero_si128();
+
+    while offset + 16 <= modules.len() {
+        let ptr = modules.as_ptr().wrapping_add(offset).cast::<__m128i>();
+        // `_mm_loadu_si128` accepts unaligned input; the loop guard ensures the
+        // full 16-byte vector is in bounds for this slice.
+        let chunk = unsafe { _mm_loadu_si128(ptr) };
+        let zero_lanes = _mm_movemask_epi8(_mm_cmpeq_epi8(chunk, zero)) as u32;
+        count += 16 - zero_lanes.count_ones() as usize;
+        offset += 16;
+    }
+
+    count + count_dark_modules_scalar(&modules[offset..])
 }
 
 fn compute_total_penalty_score_scalar(version: Version, width: i16, modules: &[Module]) -> u16 {
@@ -1939,7 +1979,9 @@ fn compute_total_penalty_score_scalar(version: Version, width: i16, modules: &[M
 
 #[cfg(test)]
 mod penalty_tests {
-    use crate::canvas::{Canvas, MaskPattern, compute_total_penalty_score_scalar};
+    use crate::canvas::{
+        Canvas, MaskPattern, compute_total_penalty_score_scalar, count_dark_modules, count_dark_modules_scalar,
+    };
     use crate::cast::As;
     use crate::types::{Color, EcLevel, Version};
 
@@ -2008,6 +2050,14 @@ mod penalty_tests {
     fn test_penalty_score_balance() {
         let c = create_test_canvas();
         assert_eq!(c.compute_balance_penalty_score(), 2);
+    }
+
+    #[test]
+    fn dark_module_count_matches_scalar_for_varied_lengths() {
+        for len in 0..65 {
+            let modules = (0..len).map(|i| u8::from(i % 3 == 0 || i % 7 == 0)).collect::<Vec<_>>();
+            assert_eq!(count_dark_modules(&modules), count_dark_modules_scalar(&modules));
+        }
     }
 
     #[test]
