@@ -53,6 +53,7 @@ qrcode-svg = { path = "crates/qrcode-svg", version = "0.1.0", default-features =
 image = "0.25.10"
 criterion = { version = "0.8", default-features = false }
 serde_json = "1"
+proptest = "1"
 
 [features]
 default = ["std", "image", "svg", "pic", "eps", "html", "pdf"]
