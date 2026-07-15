@@ -555,6 +555,17 @@ impl QrCode {
     ///
     /// Returns [`tokio::task::JoinError`] if the blocking task is cancelled or
     /// panics.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::QrCode;
+    ///
+    /// let code = QrCode::new(b"hello").unwrap();
+    /// let runtime = tokio::runtime::Builder::new_current_thread().build().unwrap();
+    /// let text = runtime.block_on(code.render_async::<char>()).unwrap();
+    /// assert!(!text.is_empty());
+    /// ```
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     pub async fn render_async<P>(&self) -> Result<P::Image, tokio::task::JoinError>
