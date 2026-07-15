@@ -103,6 +103,8 @@ jobs:
         run: |
           cargo test --test compat_1x --features compat-1x
           cargo test --test compat_1x --no-default-features --features compat-1x
+          cargo test -p qrcode-compat
+          cargo test -p qrcode-compat --no-default-features
   fuzz_smoke:
     name: Fuzz smoke
     runs-on: ubuntu-latest
