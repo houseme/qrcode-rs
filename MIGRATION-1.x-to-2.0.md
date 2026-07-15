@@ -19,11 +19,11 @@ it keeps 1.x-shaped constructors, render chains, indexing, and payload helpers
 available while new code can use the builder, trait-based module views, and
 split render/parse/decode crates.
 
-During 2.0 development, the workspace also contains a thin `qrcode-compat`
-crate for local migration testing. It re-exports the facade with `compat-1x`
-enabled, but it is intentionally not published until the facade crate itself is
-bumped and published as 2.0.0. Use a workspace path dependency when testing it
-inside this repository:
+The workspace also contains a thin `qrcode-compat` crate for local migration
+testing. It re-exports the facade with `compat-1x` enabled, but it remains
+`publish = false` because the published migration path is the facade crate plus
+the `compat-1x` feature. Use a workspace path dependency when testing it inside
+this repository:
 
 ```toml
 [dependencies]

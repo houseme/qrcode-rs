@@ -22,7 +22,8 @@ It is designed to cover the common cases well out of the box while still exposin
 - Generate structured payloads for URLs, plain text, WiFi credentials, vCards, and GS1 data.
 - Parse WiFi, vCard, and GS1 QR payloads back into typed data structures.
 - Add accessible alt text and ARIA labels for SVG and HTML output.
-- Opt into `serde`, CLI support, lightweight logging, and `rqrr`-based decoding via feature flags.
+- Opt into `serde`, CLI support, async rendering, streaming, lightweight logging, and `rqrr`-based decoding via feature flags.
+- Use the 2.0 split crates directly when a library needs only core, render, parse, decode, or one backend layer.
 - Run without default features for lean `no_std + alloc` usage.
 
 ## Installation
@@ -31,21 +32,21 @@ Use the default feature set if you want the most common renderers enabled:
 
 ```toml
 [dependencies]
-qrcode-rs = "1.4"
+qrcode-rs = "2.0"
 ```
 
 If you only need the core encoder and want to avoid the default rendering stack:
 
 ```toml
 [dependencies]
-qrcode-rs = { version = "1.4", default-features = false }
+qrcode-rs = { version = "2.0", default-features = false }
 ```
 
 Enable only the pieces you need:
 
 ```toml
 [dependencies]
-qrcode-rs = { version = "1.4", default-features = false, features = ["std", "svg", "serde"] }
+qrcode-rs = { version = "2.0", default-features = false, features = ["std", "svg", "serde"] }
 ```
 
 ### Feature Flags
@@ -58,9 +59,34 @@ qrcode-rs = { version = "1.4", default-features = false, features = ["std", "svg
 | `svg`, `pic`, `eps`, `html`, `pdf` | Individual renderer backends. |
 | `serde` | `Serialize` / `Deserialize` support for core QR data types. |
 | `log` | Emits encoder diagnostics through the `log` crate. |
+| `async` | Enables Tokio-backed async rendering helpers. |
 | `cli` | Builds the `qrencodes` command-line tool. |
 | `decode-rqrr` | Enables decoding through `rqrr`. |
 | `compat-1x` | Keeps the 1.x facade API available during the 2.0 migration. |
+
+## Workspace Crates
+
+`qrcode-rs` remains the recommended facade for applications. The 2.0 release
+also publishes smaller crates for libraries that need a narrower dependency
+surface:
+
+| Crate | Use it when you need |
+| --- | --- |
+| `qrcode-core` | Core encoding types, module views, traits, and plugin contracts. |
+| `qrcode-render` | Shared render traits, text/Unicode/ANSI/image helpers, and color utilities. |
+| `qrcode-parse` | WiFi, vCard, and GS1 payload parsing without the facade. |
+| `qrcode-decode` | Decoder traits, grayscale views, Structured Append parsing, and the optional `rqrr` adapter. |
+| `qrcode-svg`, `qrcode-eps`, `qrcode-pic`, `qrcode-html`, `qrcode-pdf` | Individual renderer backends. |
+
+For example:
+
+```toml
+[dependencies]
+qrcode-core = "2.0"
+qrcode-svg = "2.0"
+```
+
+`qrcode-compat` is a workspace-local migration harness and is not published.
 
 ## Quick Start
 
@@ -201,7 +227,7 @@ Enable `decode-rqrr` to bridge generated or external grayscale QR images back in
 
 ```toml
 [dependencies]
-qrcode-rs = { version = "1.4", features = ["decode-rqrr"] }
+qrcode-rs = { version = "2.0", features = ["decode-rqrr"] }
 ```
 
 ```rust
@@ -261,9 +287,10 @@ cargo run --features cli -- --help
 The [`examples/`](examples) directory covers the main workflows in this crate:
 
 - Rendering: `encode_image`, `encode_svg`, `encode_html`, `encode_eps`, `encode_pic`, `encode_string`
-- Advanced encoding: `encode_eci`, `encode_kanji`, `encode_fnc1`, `structured_append`
-- Structured payloads: `parse_wifi`, `parse_vcard`, `parse_gs1`
-- Accessibility and styling: `accessible_svg`, `custom_colors`, `batch_template`, `alt_text`
+- Advanced encoding: `encode_eci`, `encode_kanji`, `encode_fnc1`, `const_version`, `typed_encoding_mode`, `structured_append`
+- Structured payloads: `parse_wifi`, `parse_vcard`, `parse_gs1`, `stream_codes`
+- Plugins and async: `plugin_plain_text`, `plugin_invert_modules`, `async_render`
+- Accessibility and styling: `accessible_svg`, `custom_colors`, `color_spaces`, `cmyk_print`, `batch_template`, `alt_text`
 - Decoding and errors: `decode_roundtrip`, `error_handling`
 - CLI patterns: `cli_tool`
 

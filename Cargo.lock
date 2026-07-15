@@ -961,21 +961,21 @@ dependencies = [
 
 [[package]]
 name = "qrcode-compat"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "qrcode-rs",
 ]
 
 [[package]]
 name = "qrcode-core"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "qrcode-decode"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "image",
  "qrcode-core",
@@ -984,7 +984,7 @@ dependencies = [
 
 [[package]]
 name = "qrcode-eps"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "qrcode-core",
  "qrcode-render",
@@ -992,7 +992,7 @@ dependencies = [
 
 [[package]]
 name = "qrcode-html"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "qrcode-core",
  "qrcode-render",
@@ -1000,11 +1000,11 @@ dependencies = [
 
 [[package]]
 name = "qrcode-parse"
-version = "0.1.0"
+version = "2.0.0"
 
 [[package]]
 name = "qrcode-pdf"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "qrcode-core",
  "qrcode-render",
@@ -1012,7 +1012,7 @@ dependencies = [
 
 [[package]]
 name = "qrcode-pic"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "qrcode-core",
  "qrcode-render",
@@ -1020,7 +1020,7 @@ dependencies = [
 
 [[package]]
 name = "qrcode-render"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "image",
  "qrcode-core",
@@ -1028,7 +1028,7 @@ dependencies = [
 
 [[package]]
 name = "qrcode-rs"
-version = "1.6.0"
+version = "2.0.0"
 dependencies = [
  "clap",
  "criterion",
@@ -1052,7 +1052,7 @@ dependencies = [
 
 [[package]]
 name = "qrcode-svg"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "qrcode-core",
  "qrcode-render",

@@ -2,7 +2,7 @@
 name = "qrcode-rs"
 description = "QR code encoder in Rust，Generate QR Code matrices and images in RAW, PNG and SVG formats."
 license = "MIT OR Apache-2.0"
-version = "1.6.0"
+version = "2.0.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["houseme <housemecn@gmail.com>"]
@@ -41,15 +41,15 @@ clap = { version = "4.6", default-features = false, features = ["std", "derive",
 serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
 log = { version = "0.4", default-features = false, optional = true }
 tokio = { version = "1", default-features = false, features = ["rt"], optional = true }
-qrcode-core = { path = "crates/qrcode-core", version = "0.1.0", default-features = false }
-qrcode-decode = { path = "crates/qrcode-decode", version = "0.1.0", default-features = false }
-qrcode-eps = { path = "crates/qrcode-eps", version = "0.1.0", default-features = false, optional = true }
-qrcode-html = { path = "crates/qrcode-html", version = "0.1.0", default-features = false, optional = true }
-qrcode-pdf = { path = "crates/qrcode-pdf", version = "0.1.0", default-features = false, optional = true }
-qrcode-pic = { path = "crates/qrcode-pic", version = "0.1.0", default-features = false, optional = true }
-qrcode-parse = { path = "crates/qrcode-parse", version = "0.1.0", default-features = false }
-qrcode-render = { path = "crates/qrcode-render", version = "0.1.0", default-features = false }
-qrcode-svg = { path = "crates/qrcode-svg", version = "0.1.0", default-features = false, optional = true }
+qrcode-core = { path = "crates/qrcode-core", version = "2.0.0", default-features = false }
+qrcode-decode = { path = "crates/qrcode-decode", version = "2.0.0", default-features = false }
+qrcode-eps = { path = "crates/qrcode-eps", version = "2.0.0", default-features = false, optional = true }
+qrcode-html = { path = "crates/qrcode-html", version = "2.0.0", default-features = false, optional = true }
+qrcode-pdf = { path = "crates/qrcode-pdf", version = "2.0.0", default-features = false, optional = true }
+qrcode-pic = { path = "crates/qrcode-pic", version = "2.0.0", default-features = false, optional = true }
+qrcode-parse = { path = "crates/qrcode-parse", version = "2.0.0", default-features = false }
+qrcode-render = { path = "crates/qrcode-render", version = "2.0.0", default-features = false }
+qrcode-svg = { path = "crates/qrcode-svg", version = "2.0.0", default-features = false, optional = true }
 
 [dev-dependencies]
 image = "0.25.10"

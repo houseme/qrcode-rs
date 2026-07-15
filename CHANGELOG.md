@@ -2,22 +2,62 @@
 
 ## [Unreleased]
 
+### Notes
+
+- No unreleased changes yet.
+
+## [2.0.0] - 2026-07-15
+
 ### Added
 
+- **Workspace split for the 2.0 API** — the facade now builds on publishable
+  crates for core encoding (`qrcode-core`), shared rendering (`qrcode-render`),
+  payload parsing (`qrcode-parse`), decoding contracts (`qrcode-decode`), and
+  individual renderer backends (`qrcode-svg`, `qrcode-eps`, `qrcode-pic`,
+  `qrcode-html`, `qrcode-pdf`).
+- **Core abstraction layer** — `Encoder`, `Renderer`, `ModuleSource`,
+  `ModuleStorage`, `ModuleView`, `QrCodeRef`, and `QrSymbol` provide stable
+  extension points for renderers, plugins, and allocation-conscious code.
+- **Plugin system** — `QrPlugin`, `PluginRegistry`, dynamic encoder/renderer
+  factories, render post-processors, and facade helpers for applying registered
+  plugins.
+- **Typed 2.0 primitives** — const version helpers, typed encoding-mode
+  wrappers, color-space conversion helpers, CMYK-oriented print output, and
+  stricter cast/error plumbing.
+- **Zero-copy and accelerated internals** — borrowed module views and
+  benchmark-gated mask-scoring hooks reduce renderer coupling and keep
+  performance-sensitive paths reusable across crates.
+- **Builder, async, and streaming APIs** — the facade exposes the explicit
+  builder path, Tokio-backed async rendering helpers, and bounded streaming
+  generation for large input sets.
+- **Release hardening** — CI now checks workspace feature combinations,
+  release examples, package file lists, fuzz-target compilation, and
+  publish-order packaging for the split crates.
 - **1.x → 2.0 migration guide** (`MIGRATION-1.x-to-2.0.md`) with API mapping,
   recommended migration order, and compatibility-test commands.
 - **`compat-1x` feature** — a transitional compatibility contract that keeps
   the 1.x facade constructors, render chain, indexing, and payload helpers
   covered while 2.0 internals move into split workspace crates.
 - **`qrcode-compat` workspace crate** — local-only migration harness for the
-  dedicated dependency-name path; publishing is deferred until the facade crate
-  itself is bumped to 2.0.0.
+  dedicated dependency-name path. The published migration path is
+  `qrcode-rs = { version = "2.0", features = ["compat-1x"] }`.
+
+### Changed
+
+- The facade crate version is now `2.0.0`, and every publishable split crate is
+  versioned `2.0.0` for the first workspace release so dependency constraints
+  are simple and consistent.
+- Renderer, parser, decoder, and backend internals are now explicit crate
+  boundaries while the application-facing `qrcode-rs` facade remains the
+  recommended default dependency.
 
 ### Notes / deferred
 
 - `compat-1x` is intended as a migration bridge, not the long-term 2.0 style.
   New code should prefer `QrCode::builder`, `module_view`, streaming APIs, and
   direct split-crate dependencies where narrower layering is useful.
+- `qrcode-compat` remains `publish = false`; publish the facade plus split
+  crates, and use `compat-1x` on `qrcode-rs` for crates.io migrations.
 
 ## [1.6.0] - 2026-07-14
 

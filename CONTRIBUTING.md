@@ -19,14 +19,14 @@ conventions used in this repository.
 
 ```
 src/
-  lib.rs        # QrCode, builder, iterators, Info, convenience methods
-  bits.rs       # bit-level encoding (Numeric/Alphanumeric/Byte/Kanji, ECI, FNC1)
-  canvas.rs     # module matrix construction + masking
-  ec.rs         # Reed-Solomon error correction
-  optimize.rs   # optimal mode segmentation
-  types.rs      # Color, EcLevel, Version, Mode, QrError
-  render/       # backends: string, unicode, ansi, svg, image, eps, pic, html, pdf
+  lib.rs        # qrcode-rs facade: QrCode, builder, streams, re-exports
   bin/          # qrencodes CLI (behind the `cli` feature)
+crates/
+  qrcode-core/  # encoding core, traits, module views, plugin contracts
+  qrcode-render/# shared render traits, text/unicode/ansi/image helpers
+  qrcode-parse/ # WiFi/vCard/GS1 payload parsers
+  qrcode-decode/# decoder traits, grayscale views, rqrr adapter, SA parser
+  qrcode-*/     # individual backend crates: svg, eps, pic, html, pdf
 benches/        # criterion benchmarks (encoding, rendering)
 examples/       # runnable examples
 tests/          # integration tests
@@ -46,23 +46,26 @@ external crates. Optional capabilities are feature-gated:
 | `pic`     | troff PIC renderer                       |
 | `html`    | HTML table / CSS Grid renderer           |
 | `pdf`     | vector PDF renderer (no external dep)    |
+| `async`   | Tokio-backed async rendering helpers     |
+| `decode-rqrr` | decoder adapter through `rqrr`        |
+| `compat-1x` | transitional 1.x facade compatibility  |
 | `cli`     | the `qrencodes` binary (`clap`-based)    |
 
-`default = ["image", "svg", "pic", "eps", "html", "pdf"]`. When adding a new
-dependency, prefer a feature gate or a hand-written implementation to honor the
-zero-dependency principle.
+`default = ["std", "image", "svg", "pic", "eps", "html", "pdf"]`. When adding
+a new dependency, prefer a feature gate or a hand-written implementation to
+honor the zero-dependency principle.
 
 ## Quality bar
 
 Every PR must pass:
 
 ```bash
-cargo test --all-features
-cargo test --no-default-features          # the lib must still build without default features
+cargo test --workspace --all-features
+cargo test --workspace --no-default-features
 cargo test --test proptest --all-features
 cargo test --test differential --all-features
-cargo clippy --all-features --all-targets -- -D warnings
-cargo fmt -- --check
+cargo clippy --workspace --all-features --all-targets -- -D warnings
+cargo fmt --all --check
 cargo doc --all-features --no-deps        # warning/error-free (#![deny(missing_docs)] is enforced)
 ```
 
@@ -124,12 +127,43 @@ cargo fuzz run render_svg -- -runs=100
 Releases follow [SemVer](https://semver.org). The flow:
 
 1. Update `version` in `Cargo.toml`.
+   For a major workspace release, keep `qrcode-rs` and all publishable split
+   crates on the same version and update every path dependency version
+   constraint.
 2. Add a `## [X.Y.Z]` section to `CHANGELOG.md` (group by Added / Changed /
    Fixed / Notes, list deferrals explicitly).
-3. Tick the relevant roadmap checklist (`docs/roadmap/v*.md`) and update
+3. Update crate READMEs and the root README when a published crate boundary,
+   feature flag, or install snippet changes.
+4. Tick the relevant roadmap checklist (`docs/roadmap/v*.md`) and update
    `docs/roadmap.md` (current version + status).
-4. Verify the quality bar, then `cargo package` (and `cargo publish` from a
-   machine with crates.io credentials).
+5. Verify the quality bar, then check package file lists:
+
+   ```bash
+   cargo package --workspace --allow-dirty --no-verify --list
+   ```
+
+   A full `cargo package --workspace` before anything has been published will
+   fail for crates that depend on newly split workspace crates, because Cargo
+   resolves publishable path dependencies through the registry. Use the file-list
+   check before publishing, then publish in dependency order.
+
+6. Publish split crates before the facade, skip workspace-local crates such as
+   `qrcode-compat`, and wait for each version to appear in the crates.io index
+   before publishing crates that depend on it:
+
+   ```bash
+   version=2.0.0
+   for crate in \
+     qrcode-core qrcode-render qrcode-parse qrcode-decode \
+     qrcode-svg qrcode-eps qrcode-pic qrcode-html qrcode-pdf qrcode-rs
+   do
+     cargo publish --registry crates-io --package "$crate"
+     until cargo info "${crate}@${version}" --registry crates-io >/dev/null 2>&1
+     do
+       sleep 10
+     done
+   done
+   ```
 
 ## Roadmap & local docs
 

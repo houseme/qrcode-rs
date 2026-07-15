@@ -232,15 +232,39 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Publish workspace crates
         run: |
-          cargo publish --registry crates-io --package qrcode-core --allow-dirty
-          cargo publish --registry crates-io --package qrcode-render --allow-dirty
-          cargo publish --registry crates-io --package qrcode-parse --allow-dirty
-          cargo publish --registry crates-io --package qrcode-decode --allow-dirty
-          cargo publish --registry crates-io --package qrcode-svg --allow-dirty
-          cargo publish --registry crates-io --package qrcode-eps --allow-dirty
-          cargo publish --registry crates-io --package qrcode-pic --allow-dirty
-          cargo publish --registry crates-io --package qrcode-html --allow-dirty
-          cargo publish --registry crates-io --package qrcode-pdf --allow-dirty
-          cargo publish --registry crates-io --package qrcode-rs --allow-dirty
+          set -euo pipefail
+
+          wait_for_crate() {
+            crate="$1"
+            version="$2"
+            for attempt in $(seq 1 30); do
+              if cargo info "${crate}@${version}" --registry crates-io >/dev/null 2>&1; then
+                return 0
+              fi
+              echo "waiting for ${crate} ${version} to reach the crates.io index (${attempt}/30)"
+              sleep 10
+            done
+            echo "${crate} ${version} did not appear in the crates.io index in time" >&2
+            return 1
+          }
+
+          publish_crate() {
+            crate="$1"
+            version="$2"
+            cargo publish --registry crates-io --package "${crate}" --allow-dirty
+            wait_for_crate "${crate}" "${version}"
+          }
+
+          version="2.0.0"
+          publish_crate qrcode-core "${version}"
+          publish_crate qrcode-render "${version}"
+          publish_crate qrcode-parse "${version}"
+          publish_crate qrcode-decode "${version}"
+          publish_crate qrcode-svg "${version}"
+          publish_crate qrcode-eps "${version}"
+          publish_crate qrcode-pic "${version}"
+          publish_crate qrcode-html "${version}"
+          publish_crate qrcode-pdf "${version}"
+          publish_crate qrcode-rs "${version}"
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}

@@ -6,9 +6,11 @@ A QR code and Micro QR code encoder library for Rust.
 
 - **Standard QR Code** (Version 1-40) with all error correction levels (L, M, Q, H)
 - **Micro QR Code** (Version M1-M4) for compact encoding
-- **Multiple output formats**: PNG/JPEG (via `image` crate), SVG, EPS, PIC, Unicode, plain text
+- **Multiple output formats**: PNG/JPEG (via `image` crate), SVG, EPS, PIC, HTML, PDF, Unicode, plain text
 - **Automatic optimization**: selects the smallest version and optimal data mode segmentation
 - **Customizable rendering**: colors, module dimensions, quiet zone, minimum/maximum size
+- **2.0 workspace crates**: core, render, parse, decode, and individual renderer backends
+- **Migration bridge**: `compat-1x` keeps the 1.x facade available while call sites move to 2.0 APIs
 
 ## Quick Start
 
@@ -38,6 +40,10 @@ println!("{}", string);
 | `svg`   | Yes | SVG vector rendering |
 | `eps`   | Yes | Encapsulated PostScript rendering |
 | `pic`   | Yes | PIC (troff) rendering |
+| `html`  | Yes | HTML table / CSS Grid rendering |
+| `pdf`   | Yes | vector PDF rendering |
+| `async` | No  | Tokio-backed async rendering helpers |
+| `decode-rqrr` | No | decoder adapter through `rqrr` |
 | `compat-1x` | No | 1.x facade API during the 2.0 migration |
 
 ## Modules
@@ -48,6 +54,7 @@ println!("{}", string);
 - [`qrcode_rs::ec`](https://docs.rs/qrcode-rs/latest/qrcode_rs/ec/index.html) — Reed-Solomon error correction
 - [`qrcode_rs::optimize`](https://docs.rs/qrcode-rs/latest/qrcode_rs/optimize/index.html) — Data mode segmentation optimizer
 - [`qrcode_rs::render`](https://docs.rs/qrcode-rs/latest/qrcode_rs/render/index.html) — Rendering pipeline and Pixel trait
+- Split crates: `qrcode-core`, `qrcode-render`, `qrcode-parse`, `qrcode-decode`, `qrcode-svg`, `qrcode-eps`, `qrcode-pic`, `qrcode-html`, `qrcode-pdf`
 
 ## Migration
 

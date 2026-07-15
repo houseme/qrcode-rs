@@ -5,9 +5,9 @@
 //! name for the transitional API while gradually moving call sites to the 2.0
 //! builder, module-view, streaming, and split-crate APIs.
 //!
-//! During the 2.0 development cycle this crate is workspace-local. It becomes
-//! publishable only when the facade crate version is bumped to 2.0.0, so the
-//! dependency cannot accidentally resolve to a 1.x facade on crates.io.
+//! This crate stays workspace-local. Published migrations should depend on
+//! `qrcode-rs` with the `compat-1x` feature enabled instead of publishing a
+//! second facade package.
 //!
 //! ```rust
 //! use qrcode_compat::{EcLevel, QrCode, Version};
