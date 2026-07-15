@@ -1768,6 +1768,78 @@ impl Canvas {
     ///
     /// Every 5+N adjacent modules in the same column/row having the same color
     /// will contribute 3+N points.
+    #[cfg(test)]
+    fn compute_adjacent_penalty_score(&self, is_horizontal: bool) -> u16 {
+        PenaltyGrid::new(self.width, &self.modules).compute_adjacent_penalty_score(is_horizontal)
+    }
+
+    /// Compute the penalty score for having too many rectangles with the same
+    /// color.
+    ///
+    /// Every 2×2 blocks (with overlapping counted) having the same color will
+    /// contribute 3 points.
+    #[cfg(test)]
+    fn compute_block_penalty_score(&self) -> u16 {
+        PenaltyGrid::new(self.width, &self.modules).compute_block_penalty_score()
+    }
+
+    /// Compute the penalty score for having a pattern similar to the finder
+    /// pattern in the wrong place.
+    ///
+    /// Every pattern that looks like `#.###.#....` in any orientation will add
+    /// 40 points.
+    #[cfg(test)]
+    fn compute_finder_penalty_score(&self, is_horizontal: bool) -> u16 {
+        PenaltyGrid::new(self.width, &self.modules).compute_finder_penalty_score(is_horizontal)
+    }
+
+    /// Compute the penalty score for having an unbalanced dark/light ratio.
+    ///
+    /// The score is given linearly by the deviation from a 50% ratio of dark
+    /// modules. The highest possible score is 100.
+    ///
+    /// Note that this algorithm differs slightly from the standard we do not
+    /// round the result every 5%, but the difference should be negligible and
+    /// should not affect which mask is chosen.
+    #[cfg(test)]
+    fn compute_balance_penalty_score(&self) -> u16 {
+        PenaltyGrid::new(self.width, &self.modules).compute_balance_penalty_score()
+    }
+
+    /// Compute the penalty score for having too many light modules on the sides.
+    ///
+    /// This penalty score is exclusive to Micro QR code.
+    ///
+    /// Note that the standard gives the formula for *efficiency* score, which
+    /// has the inverse meaning of this method, but it is very easy to convert
+    /// between the two (this score is (16×width − standard-score)).
+    #[cfg(test)]
+    fn compute_light_side_penalty_score(&self) -> u16 {
+        PenaltyGrid::new(self.width, &self.modules).compute_light_side_penalty_score()
+    }
+
+    /// Compute the total penalty scores. A QR code having higher points is less
+    /// desirable.
+    fn compute_total_penalty_scores(&self) -> u16 {
+        compute_total_penalty_score_scalar(self.version, self.width, &self.modules)
+    }
+}
+
+struct PenaltyGrid<'a> {
+    width: i16,
+    modules: &'a [Module],
+}
+
+impl<'a> PenaltyGrid<'a> {
+    fn new(width: i16, modules: &'a [Module]) -> Self {
+        debug_assert_eq!((width * width).as_usize(), modules.len());
+        Self { width, modules }
+    }
+
+    fn get(&self, x: i16, y: i16) -> Module {
+        self.modules[y.as_usize() * self.width.as_usize() + x.as_usize()]
+    }
+
     fn compute_adjacent_penalty_score(&self, is_horizontal: bool) -> u16 {
         let mut total_score = 0;
 
@@ -1794,11 +1866,6 @@ impl Canvas {
         total_score
     }
 
-    /// Compute the penalty score for having too many rectangles with the same
-    /// color.
-    ///
-    /// Every 2×2 blocks (with overlapping counted) having the same color will
-    /// contribute 3 points.
     fn compute_block_penalty_score(&self) -> u16 {
         let mut total_score = 0;
 
@@ -1817,11 +1884,6 @@ impl Canvas {
         total_score
     }
 
-    /// Compute the penalty score for having a pattern similar to the finder
-    /// pattern in the wrong place.
-    ///
-    /// Every pattern that looks like `#.###.#....` in any orientation will add
-    /// 40 points.
     fn compute_finder_penalty_score(&self, is_horizontal: bool) -> u16 {
         static PATTERN: [Color; 7] =
             [Color::Dark, Color::Light, Color::Dark, Color::Dark, Color::Dark, Color::Light, Color::Dark];
@@ -1845,14 +1907,6 @@ impl Canvas {
         total_score - 360
     }
 
-    /// Compute the penalty score for having an unbalanced dark/light ratio.
-    ///
-    /// The score is given linearly by the deviation from a 50% ratio of dark
-    /// modules. The highest possible score is 100.
-    ///
-    /// Note that this algorithm differs slightly from the standard we do not
-    /// round the result every 5%, but the difference should be negligible and
-    /// should not affect which mask is chosen.
     fn compute_balance_penalty_score(&self) -> u16 {
         let dark_modules = self.modules.iter().filter(|m| m.is_dark()).count();
         let total_modules = self.modules.len();
@@ -1860,41 +1914,33 @@ impl Canvas {
         ratio.abs_diff(100).as_u16()
     }
 
-    /// Compute the penalty score for having too many light modules on the sides.
-    ///
-    /// This penalty score is exclusive to Micro QR code.
-    ///
-    /// Note that the standard gives the formula for *efficiency* score, which
-    /// has the inverse meaning of this method, but it is very easy to convert
-    /// between the two (this score is (16×width − standard-score)).
     fn compute_light_side_penalty_score(&self) -> u16 {
-        let h = (1..self.width).filter(|j| !self.get(*j, -1).is_dark()).count();
-        let v = (1..self.width).filter(|j| !self.get(-1, *j).is_dark()).count();
+        let h = (1..self.width).filter(|j| !self.get(*j, self.width - 1).is_dark()).count();
+        let v = (1..self.width).filter(|j| !self.get(self.width - 1, *j).is_dark()).count();
 
         (h + v + 15 * max(h, v)).as_u16()
     }
+}
 
-    /// Compute the total penalty scores. A QR code having higher points is less
-    /// desirable.
-    fn compute_total_penalty_scores(&self) -> u16 {
-        match self.version {
-            Version::Normal(_) => {
-                let s1_a = self.compute_adjacent_penalty_score(true);
-                let s1_b = self.compute_adjacent_penalty_score(false);
-                let s2 = self.compute_block_penalty_score();
-                let s3_a = self.compute_finder_penalty_score(true);
-                let s3_b = self.compute_finder_penalty_score(false);
-                let s4 = self.compute_balance_penalty_score();
-                s1_a + s1_b + s2 + s3_a + s3_b + s4
-            }
-            Version::Micro(_) => self.compute_light_side_penalty_score(),
+fn compute_total_penalty_score_scalar(version: Version, width: i16, modules: &[Module]) -> u16 {
+    let grid = PenaltyGrid::new(width, modules);
+    match version {
+        Version::Normal(_) => {
+            let s1_a = grid.compute_adjacent_penalty_score(true);
+            let s1_b = grid.compute_adjacent_penalty_score(false);
+            let s2 = grid.compute_block_penalty_score();
+            let s3_a = grid.compute_finder_penalty_score(true);
+            let s3_b = grid.compute_finder_penalty_score(false);
+            let s4 = grid.compute_balance_penalty_score();
+            s1_a + s1_b + s2 + s3_a + s3_b + s4
         }
+        Version::Micro(_) => grid.compute_light_side_penalty_score(),
     }
 }
 
 #[cfg(test)]
 mod penalty_tests {
-    use crate::canvas::{Canvas, MaskPattern};
+    use crate::canvas::{Canvas, MaskPattern, compute_total_penalty_score_scalar};
     use crate::cast::As;
     use crate::types::{Color, EcLevel, Version};
 
@@ -1963,6 +2009,15 @@ mod penalty_tests {
     fn test_penalty_score_balance() {
         let c = create_test_canvas();
         assert_eq!(c.compute_balance_penalty_score(), 2);
+    }
+
+    #[test]
+    fn scalar_penalty_score_matches_canvas_wrapper() {
+        let c = create_test_canvas();
+        assert_eq!(
+            compute_total_penalty_score_scalar(c.version, c.width, &c.modules),
+            c.compute_total_penalty_scores()
+        );
     }
 
     #[test]
