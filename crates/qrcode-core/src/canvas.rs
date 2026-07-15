@@ -369,22 +369,22 @@ impl Canvas {
     fn draw_alignment_patterns(&mut self) {
         match self.version {
             Version::Micro(_) | Version::Normal(1) => {}
-            Version::Normal(2..=6) => self.draw_alignment_pattern_at(-7, -7),
-            Version::Normal(a) => {
-                let positions = ALIGNMENT_PATTERN_POSITIONS[(a - 7).as_usize()];
+            Version::Normal(a @ 2..=40) => {
+                let positions = alignment_pattern_positions(a);
                 for x in positions {
                     for y in positions {
                         self.draw_alignment_pattern_at(*x, *y);
                     }
                 }
             }
+            Version::Normal(_) => {}
         }
     }
 }
 
 #[cfg(test)]
 mod alignment_pattern_tests {
-    use crate::canvas::Canvas;
+    use crate::canvas::{Canvas, alignment_pattern_positions};
     use crate::types::{EcLevel, Version};
 
     #[test]
@@ -511,50 +511,79 @@ mod alignment_pattern_tests {
              #.###.#.?????????????????????????????????????\n\
              #.###.#.?????????????????????????????????????\n\
              #.....#.?????????????????????????????????????\n\
-             #######.?????????????????????????????????????"
+            #######.?????????????????????????????????????"
         );
+    }
+
+    #[test]
+    fn generated_alignment_pattern_positions_match_known_versions() {
+        assert_eq!(alignment_pattern_positions(1), &[]);
+        assert_eq!(alignment_pattern_positions(2), &[6, 18]);
+        assert_eq!(alignment_pattern_positions(7), &[6, 22, 38]);
+        assert_eq!(alignment_pattern_positions(14), &[6, 26, 46, 66]);
+        assert_eq!(alignment_pattern_positions(32), &[6, 34, 60, 86, 112, 138]);
+        assert_eq!(alignment_pattern_positions(40), &[6, 30, 58, 86, 114, 142, 170]);
     }
 }
 
 /// `ALIGNMENT_PATTERN_POSITIONS` describes the x- and y-coordinates of the
 /// center of the alignment patterns. Since the QR code is symmetric, only one
 /// coordinate is needed.
-static ALIGNMENT_PATTERN_POSITIONS: [&[i16]; 34] = [
-    &[6, 22, 38],
-    &[6, 24, 42],
-    &[6, 26, 46],
-    &[6, 28, 50],
-    &[6, 30, 54],
-    &[6, 32, 58],
-    &[6, 34, 62],
-    &[6, 26, 46, 66],
-    &[6, 26, 48, 70],
-    &[6, 26, 50, 74],
-    &[6, 30, 54, 78],
-    &[6, 30, 56, 82],
-    &[6, 30, 58, 86],
-    &[6, 34, 62, 90],
-    &[6, 28, 50, 72, 94],
-    &[6, 26, 50, 74, 98],
-    &[6, 30, 54, 78, 102],
-    &[6, 28, 54, 80, 106],
-    &[6, 32, 58, 84, 110],
-    &[6, 30, 58, 86, 114],
-    &[6, 34, 62, 90, 118],
-    &[6, 26, 50, 74, 98, 122],
-    &[6, 30, 54, 78, 102, 126],
-    &[6, 26, 52, 78, 104, 130],
-    &[6, 30, 56, 82, 108, 134],
-    &[6, 34, 60, 86, 112, 138],
-    &[6, 30, 58, 86, 114, 142],
-    &[6, 34, 62, 90, 118, 146],
-    &[6, 30, 54, 78, 102, 126, 150],
-    &[6, 24, 50, 76, 102, 128, 154],
-    &[6, 28, 54, 80, 106, 132, 158],
-    &[6, 32, 58, 84, 110, 136, 162],
-    &[6, 26, 54, 82, 110, 138, 166],
-    &[6, 30, 58, 86, 114, 142, 170],
-];
+static ALIGNMENT_PATTERN_POSITIONS: [AlignmentPatternPositions; 40] = generate_alignment_pattern_positions();
+const MAX_ALIGNMENT_PATTERNS: usize = 7;
+
+#[derive(Clone, Copy)]
+struct AlignmentPatternPositions {
+    positions: [i16; MAX_ALIGNMENT_PATTERNS],
+    len: usize,
+}
+
+impl AlignmentPatternPositions {
+    fn as_slice(&self) -> &[i16] {
+        &self.positions[..self.len]
+    }
+}
+
+fn alignment_pattern_positions(version: i16) -> &'static [i16] {
+    match version {
+        1..=40 => ALIGNMENT_PATTERN_POSITIONS[(version - 1) as usize].as_slice(),
+        _ => &[],
+    }
+}
+
+const fn generate_alignment_pattern_positions() -> [AlignmentPatternPositions; 40] {
+    let mut table = [AlignmentPatternPositions { positions: [0; MAX_ALIGNMENT_PATTERNS], len: 0 }; 40];
+    let mut version = 1;
+    while version <= 40 {
+        table[(version - 1) as usize] = compute_alignment_pattern_positions(version);
+        version += 1;
+    }
+    table
+}
+
+const fn compute_alignment_pattern_positions(version: i16) -> AlignmentPatternPositions {
+    let count = if version == 1 { 0 } else { version / 7 + 2 };
+    let mut result = AlignmentPatternPositions { positions: [0; MAX_ALIGNMENT_PATTERNS], len: count as usize };
+    if count == 0 {
+        return result;
+    }
+
+    let width = version * 4 + 17;
+    let step = alignment_pattern_step(version, count);
+    let mut index = count - 1;
+    let mut position = width - 7;
+    while index > 0 {
+        result.positions[index as usize] = position;
+        position -= step;
+        index -= 1;
+    }
+    result.positions[0] = 6;
+    result
+}
+
+const fn alignment_pattern_step(version: i16, count: i16) -> i16 {
+    if version == 32 { 26 } else { ((version * 4 + count * 2 + 1) / (count * 2 - 2)) * 2 }
+}
 
 //}}}
 //------------------------------------------------------------------------------
@@ -1020,9 +1049,8 @@ pub fn is_functional(version: Version, width: i16, x: i16, y: i16) -> bool {
             match a {
                 _ if non_alignment_test => true,
                 1 => false,
-                2..=6 => (width - 7 - x).abs() <= 2 && (width - 7 - y).abs() <= 2,
-                _ => {
-                    let positions = ALIGNMENT_PATTERN_POSITIONS[(a - 7).as_usize()];
+                2..=40 => {
+                    let positions = alignment_pattern_positions(a);
                     let last = positions.len() - 1;
                     for (i, align_x) in positions.iter().enumerate() {
                         for (j, align_y) in positions.iter().enumerate() {
@@ -1036,6 +1064,7 @@ pub fn is_functional(version: Version, width: i16, x: i16, y: i16) -> bool {
                     }
                     false
                 }
+                _ => false,
             }
         }
     }
