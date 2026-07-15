@@ -496,9 +496,7 @@ impl QrCode {
         for postprocessor in registry.postprocessors() {
             postprocessor.process(&mut modules)?;
         }
-        let factory =
-            registry.renderer(renderer_name).ok_or_else(|| PluginError::RendererNotFound(renderer_name.to_owned()))?;
-        factory.build(config).render(&modules)
+        registry.build_renderer(renderer_name, config)?.render(&modules)
     }
 }
 

@@ -299,10 +299,32 @@ impl PluginRegistry {
         self.renderers.get(name).map(Box::as_ref)
     }
 
+    /// Builds a renderer by name.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError::RendererNotFound`] when no renderer factory is
+    /// registered with `name`.
+    pub fn build_renderer(&self, name: &str, config: &RenderConfig) -> Result<Box<dyn DynRenderer>, PluginError> {
+        let factory = self.renderer(name).ok_or_else(|| PluginError::RendererNotFound(String::from(name)))?;
+        Ok(factory.build(config))
+    }
+
     /// Returns an encoder factory by name.
     #[must_use]
     pub fn encoder(&self, name: &str) -> Option<&dyn EncoderFactory> {
         self.encoders.get(name).map(Box::as_ref)
+    }
+
+    /// Builds an encoder by name.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError::EncoderNotFound`] when no encoder factory is
+    /// registered with `name`.
+    pub fn build_encoder(&self, name: &str, config: &EncodeConfig) -> Result<Box<dyn DynEncoder>, PluginError> {
+        let factory = self.encoder(name).ok_or_else(|| PluginError::EncoderNotFound(String::from(name)))?;
+        Ok(factory.build(config))
     }
 
     /// Returns all postprocessors in registration order.
@@ -407,11 +429,31 @@ mod tests {
 
         let grid = ModuleGrid::new(alloc::vec![Color::Dark, Color::Light, Color::Light, Color::Dark], 2, 2).unwrap();
         let config = RenderConfig::new().with_option("dark", "X");
-        let renderer = registry.renderer("text").unwrap().build(&config);
+        let renderer = registry.build_renderer("text", &config).unwrap();
         assert_eq!(renderer.render(&grid).unwrap(), RenderOutput::Text("X..X".into()));
 
-        let encoder = registry.encoder("length").unwrap().build(&EncodeConfig::new());
+        let encoder = registry.build_encoder("length", &EncodeConfig::new()).unwrap();
         assert_eq!(encoder.encode(b"abcd").unwrap(), EncodedOutput::Bytes(b"4".to_vec()));
+    }
+
+    #[test]
+    fn build_renderer_reports_missing_renderer_name() {
+        let registry = PluginRegistry::new();
+
+        assert!(matches!(
+            registry.build_renderer("missing", &RenderConfig::new()),
+            Err(super::PluginError::RendererNotFound(name)) if name == "missing"
+        ));
+    }
+
+    #[test]
+    fn build_encoder_reports_missing_encoder_name() {
+        let registry = PluginRegistry::new();
+
+        assert!(matches!(
+            registry.build_encoder("missing", &EncodeConfig::new()),
+            Err(super::PluginError::EncoderNotFound(name)) if name == "missing"
+        ));
     }
 
     #[test]
