@@ -54,6 +54,7 @@ image = "0.25.10"
 criterion = { version = "0.8", default-features = false }
 serde_json = "1"
 proptest = "1"
+reference-qrcode = { package = "qrcode", version = "0.14" }
 
 [features]
 default = ["std", "image", "svg", "pic", "eps", "html", "pdf"]
