@@ -85,12 +85,27 @@ pub struct PlainTextRenderer {
 
 impl DynRenderer for PlainTextRenderer {
     fn render(&self, code: &dyn ModuleSource) -> Result<RenderOutput, PluginError> {
-        validate_module_source(code)?;
-        Ok(RenderOutput::Text(render_plain_text(code, self.dark, self.light, self.quiet_zone)))
+        qrcode_core::Renderer::render(self, code).map(RenderOutput::Text)
     }
 }
 
-fn validate_module_source(code: &dyn ModuleSource) -> Result<(), PluginError> {
+impl<Code> qrcode_core::Renderer<Code> for PlainTextRenderer
+where
+    Code: ModuleSource + ?Sized,
+{
+    type Output = String;
+    type Error = PluginError;
+
+    fn render(&self, code: &Code) -> Result<Self::Output, Self::Error> {
+        validate_module_source(code)?;
+        Ok(render_plain_text(code, self.dark, self.light, self.quiet_zone))
+    }
+}
+
+fn validate_module_source<Code>(code: &Code) -> Result<(), PluginError>
+where
+    Code: ModuleSource + ?Sized,
+{
     let width = code.width();
     let height = code.height();
     match width.checked_mul(height) {
@@ -99,7 +114,10 @@ fn validate_module_source(code: &dyn ModuleSource) -> Result<(), PluginError> {
     }
 }
 
-fn render_plain_text(code: &dyn ModuleSource, dark: char, light: char, quiet_zone: u32) -> String {
+fn render_plain_text<Code>(code: &Code, dark: char, light: char, quiet_zone: u32) -> String
+where
+    Code: ModuleSource + ?Sized,
+{
     let width = code.width();
     let quiet_zone = quiet_zone as usize;
     let total_width = width + 2 * quiet_zone;
@@ -135,7 +153,7 @@ mod tests {
     use super::{InvertModulesPlugin, InvertModulesPostProcessor, PlainTextRendererFactory, PlainTextRendererPlugin};
     use qrcode_core::{
         Color, ModuleGrid, ModuleSource, PluginError, PluginRegistry, PostProcessor, QrPlugin, RenderConfig,
-        RenderOutput, RendererFactory,
+        RenderOutput, Renderer as CoreRenderer, RendererFactory,
     };
 
     struct BadSource {
@@ -194,6 +212,18 @@ mod tests {
         );
 
         assert_eq!(renderer.render(&modules).unwrap(), RenderOutput::Text("X.\n.X".into()));
+    }
+
+    #[test]
+    fn plain_text_core_renderer_matches_dyn_renderer() {
+        let modules = ModuleGrid::new(alloc::vec![Color::Dark, Color::Light, Color::Light, Color::Dark], 2, 2).unwrap();
+        let renderer = super::PlainTextRenderer { dark: 'X', light: '.', quiet_zone: 0 };
+
+        let core_output = CoreRenderer::render(&renderer, &modules).unwrap();
+        let dyn_output = qrcode_core::DynRenderer::render(&renderer, &modules).unwrap();
+
+        assert_eq!(core_output, "X.\n.X");
+        assert_eq!(dyn_output, RenderOutput::Text(core_output));
     }
 
     #[test]
