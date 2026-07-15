@@ -520,6 +520,30 @@ impl QrCode {
         Renderer::from_symbol(self)
     }
 
+    /// Returns the render builder for this QR code.
+    ///
+    /// This is an explicit builder-style alias for [`render`](Self::render),
+    /// useful when code wants the construction and rendering paths to read the
+    /// same way (`QrCode::builder(...).build()?.render_builder::<P>()...`).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::QrCode;
+    ///
+    /// let text = QrCode::new(b"hello").unwrap()
+    ///     .render_builder::<char>()
+    ///     .dark_color('#')
+    ///     .quiet_zone(false)
+    ///     .module_dimensions(1, 1)
+    ///     .build();
+    ///
+    /// assert!(text.contains('#'));
+    /// ```
+    pub fn render_builder<P: Pixel>(&self) -> Renderer<'_, P> {
+        self.render()
+    }
+
     /// Encodes raw input through a named plugin encoder.
     ///
     /// This is the encoder-side counterpart to [`QrCode::render_with`]: it
@@ -2046,6 +2070,13 @@ mod api_tests {
         let renderer = code.render::<char>();
         let trait_output = CoreRenderer::render(&renderer, &code).unwrap();
         assert_eq!(trait_output, builder_output);
+    }
+
+    #[test]
+    fn render_builder_matches_render_output() {
+        let code = QrCode::new(b"render builder").unwrap();
+
+        assert_eq!(code.render_builder::<char>().build(), code.render::<char>().build());
     }
 
     #[test]
