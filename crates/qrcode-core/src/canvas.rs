@@ -1910,15 +1910,14 @@ impl PenaltyGrid {
 fn count_dark_modules(modules: &[u8]) -> usize {
     #[cfg(target_arch = "x86_64")]
     {
-        // Every x86_64 target supports SSE2, and the helper only reads inside
-        // the slice bounds with unaligned 16-byte loads.
-        return unsafe { count_dark_modules_sse2(modules) };
+        if sse2_available() {
+            // The helper only reads inside the slice bounds with unaligned
+            // 16-byte loads.
+            return unsafe { count_dark_modules_sse2(modules) };
+        }
     }
 
-    #[cfg(not(target_arch = "x86_64"))]
-    {
-        count_dark_modules_scalar(modules)
-    }
+    count_dark_modules_scalar(modules)
 }
 
 fn count_dark_modules_scalar(modules: &[u8]) -> usize {
@@ -1928,15 +1927,14 @@ fn count_dark_modules_scalar(modules: &[u8]) -> usize {
 fn compute_block_penalty_score(width: usize, modules: &[u8]) -> u16 {
     #[cfg(target_arch = "x86_64")]
     {
-        // Every x86_64 target supports SSE2, and the helper only performs
-        // guarded unaligned vector loads within each row pair.
-        return unsafe { compute_block_penalty_score_sse2(width, modules) };
+        if sse2_available() {
+            // The helper only performs guarded unaligned vector loads within
+            // each row pair.
+            return unsafe { compute_block_penalty_score_sse2(width, modules) };
+        }
     }
 
-    #[cfg(not(target_arch = "x86_64"))]
-    {
-        compute_block_penalty_score_scalar(width, modules)
-    }
+    compute_block_penalty_score_scalar(width, modules)
 }
 
 fn compute_block_penalty_score_scalar(width: usize, modules: &[u8]) -> u16 {
@@ -1954,6 +1952,16 @@ fn compute_block_penalty_score_scalar(width: usize, modules: &[u8]) -> u16 {
     }
 
     total_score
+}
+
+#[cfg(all(target_arch = "x86_64", feature = "std"))]
+fn sse2_available() -> bool {
+    std::is_x86_feature_detected!("sse2")
+}
+
+#[cfg(all(target_arch = "x86_64", not(feature = "std")))]
+fn sse2_available() -> bool {
+    true
 }
 
 #[cfg(target_arch = "x86_64")]
