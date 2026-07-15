@@ -165,6 +165,25 @@ jobs:
         run: |
           cargo test -p qrcode-compat --doc --all-features
           cargo test -p qrcode-compat --doc --no-default-features
+  package_check:
+    name: Check package contents
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-package-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - name: Check packaged file lists
+        run: cargo package --workspace --no-verify --list
   fuzz_smoke:
     name: Fuzz smoke
     runs-on: ubuntu-latest
@@ -204,6 +223,7 @@ jobs:
       - test
       - compat_test
       - example_check
+      - package_check
       - fuzz_smoke
     steps:
       - name: Checkout code

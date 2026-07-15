@@ -13,7 +13,7 @@ keywords = ["qrcode", "generate", "encoder", "image", "barcode"]
 categories = ["encoding", "multimedia::images", "multimedia::encoding"]
 readme = "README.md"
 # Crate build related
-exclude = ["tests/*", ".gitignore"]
+exclude = ["tests/*", ".gitignore", ".github/*", "rust-toolchain.toml", "rustfmt.toml", "tea.yaml"]
 
 [workspace]
 members = [
