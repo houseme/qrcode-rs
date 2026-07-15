@@ -1820,13 +1820,26 @@ impl Canvas {
 
     /// Compute the total penalty scores. A QR code having higher points is less
     /// desirable.
+    #[cfg(test)]
     fn compute_total_penalty_scores(&self) -> u16 {
         compute_total_penalty_score_scalar(self.version, self.width, &self.modules)
     }
+
+    fn compute_total_penalty_scores_with_scratch(&self, scratch: &mut Vec<u8>) -> u16 {
+        debug_assert_eq!((self.width * self.width).as_usize(), self.modules.len());
+        write_module_bytes(&self.modules, scratch);
+        compute_total_penalty_score_from_bytes(self.version, self.width.as_usize(), scratch)
+    }
 }
 
+#[cfg(test)]
 fn module_bytes(modules: &[Module]) -> Vec<u8> {
     modules.iter().map(|module| u8::from(module.is_dark())).collect()
+}
+
+fn write_module_bytes(modules: &[Module], output: &mut Vec<u8>) {
+    output.clear();
+    output.extend(modules.iter().map(|module| u8::from(module.is_dark())));
 }
 
 fn count_dark_modules(modules: &[u8]) -> usize {
@@ -2095,23 +2108,26 @@ unsafe fn compute_block_penalty_score_sse2(width: usize, modules: &[u8]) -> u16 
     total_score
 }
 
-fn compute_total_penalty_score_scalar(version: Version, width: i16, modules: &[Module]) -> u16 {
-    debug_assert_eq!((width * width).as_usize(), modules.len());
-    let width = width.as_usize();
-    let modules = module_bytes(modules);
-
+fn compute_total_penalty_score_from_bytes(version: Version, width: usize, modules: &[u8]) -> u16 {
     match version {
         Version::Normal(_) => {
-            let s1_a = compute_adjacent_penalty_score(width, &modules, true);
-            let s1_b = compute_adjacent_penalty_score(width, &modules, false);
-            let s2 = compute_block_penalty_score(width, &modules);
-            let s3_a = compute_finder_penalty_score(width, &modules, true);
-            let s3_b = compute_finder_penalty_score(width, &modules, false);
-            let s4 = compute_balance_penalty_score(&modules);
+            let s1_a = compute_adjacent_penalty_score(width, modules, true);
+            let s1_b = compute_adjacent_penalty_score(width, modules, false);
+            let s2 = compute_block_penalty_score(width, modules);
+            let s3_a = compute_finder_penalty_score(width, modules, true);
+            let s3_b = compute_finder_penalty_score(width, modules, false);
+            let s4 = compute_balance_penalty_score(modules);
             s1_a + s1_b + s2 + s3_a + s3_b + s4
         }
-        Version::Micro(_) => compute_light_side_penalty_score(width, &modules),
+        Version::Micro(_) => compute_light_side_penalty_score(width, modules),
     }
+}
+
+#[cfg(test)]
+fn compute_total_penalty_score_scalar(version: Version, width: i16, modules: &[Module]) -> u16 {
+    debug_assert_eq!((width * width).as_usize(), modules.len());
+    let modules = modules.iter().map(|module| u8::from(module.is_dark())).collect::<Vec<_>>();
+    compute_total_penalty_score_from_bytes(version, width.as_usize(), &modules)
 }
 
 #[cfg(test)]
@@ -2256,6 +2272,15 @@ mod penalty_tests {
     }
 
     #[test]
+    fn scratch_penalty_score_matches_canvas_wrapper() {
+        let c = create_test_canvas();
+        let mut scratch = Vec::new();
+
+        assert_eq!(c.compute_total_penalty_scores_with_scratch(&mut scratch), c.compute_total_penalty_scores());
+        assert_eq!(scratch.len(), c.modules.len());
+    }
+
+    #[test]
     fn test_penalty_score_light_sides() {
         static HORIZONTAL_SIDE: [Color; 17] = [
             Color::Dark,
@@ -2341,17 +2366,25 @@ impl Canvas {
     /// penalty score.
     #[must_use]
     pub fn apply_best_mask(&self) -> Self {
-        match self.version {
-            Version::Normal(_) => ALL_PATTERNS_QR.iter(),
-            Version::Micro(_) => ALL_PATTERNS_MICRO_QR.iter(),
-        }
-        .map(|ptn| {
+        let patterns: &[MaskPattern] = match self.version {
+            Version::Normal(_) => &ALL_PATTERNS_QR,
+            Version::Micro(_) => &ALL_PATTERNS_MICRO_QR,
+        };
+        let mut scratch = Vec::with_capacity(self.modules.len());
+        let mut best_canvas = None;
+        let mut best_score = u16::MAX;
+
+        for &pattern in patterns {
             let mut c = self.clone();
-            c.apply_mask(*ptn);
-            c
-        })
-        .min_by_key(Self::compute_total_penalty_scores)
-        .expect("at least one pattern")
+            c.apply_mask(pattern);
+            let score = c.compute_total_penalty_scores_with_scratch(&mut scratch);
+            if score < best_score {
+                best_score = score;
+                best_canvas = Some(c);
+            }
+        }
+
+        best_canvas.expect("at least one pattern")
     }
 
     /// Convert the modules into a vector of colors.
