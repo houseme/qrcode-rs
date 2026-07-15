@@ -37,7 +37,7 @@ use alloc::{
     vec::Vec,
 };
 
-use core::cmp::max;
+use core::cmp::{max, min};
 
 use crate::cast::As;
 use crate::types::{Color, EcLevel, Version};
@@ -1849,25 +1849,7 @@ impl PenaltyGrid {
     }
 
     fn compute_finder_penalty_score(&self, is_horizontal: bool) -> u16 {
-        static PATTERN: [u8; 7] = [1, 0, 1, 1, 1, 0, 1];
-
-        let mut total_score = 0;
-        let get = |a, b| -> u8 { if is_horizontal { self.get(a, b) } else { self.get(b, a) } };
-
-        for i in 0..self.width {
-            for j in 0..self.width - 6 {
-                if (j..(j + 7)).map(|k| get(k, i)).ne(PATTERN.iter().copied()) {
-                    continue;
-                }
-
-                let check = |k: i16| 0 <= k && k < self.width && get(k, i) != 0;
-                if !((j - 4)..j).any(&check) || !((j + 7)..(j + 11)).any(&check) {
-                    total_score += 40;
-                }
-            }
-        }
-
-        total_score - 360
+        compute_finder_penalty_score(self.width.as_usize(), &self.modules, is_horizontal)
     }
 
     fn compute_balance_penalty_score(&self) -> u16 {
@@ -1962,6 +1944,72 @@ fn compute_line_adjacent_penalty_score(line: &[u8]) -> u16 {
 
 fn adjacent_run_score(consecutive_len: u16) -> u16 {
     if consecutive_len >= 5 { consecutive_len - 2 } else { 0 }
+}
+
+const FINDER_LIKE_PATTERN: [u8; 7] = [1, 0, 1, 1, 1, 0, 1];
+
+fn compute_finder_penalty_score(width: usize, modules: &[u8], is_horizontal: bool) -> u16 {
+    let total_score = if is_horizontal {
+        compute_horizontal_finder_penalty_score(width, modules)
+    } else {
+        compute_vertical_finder_penalty_score(width, modules)
+    };
+
+    total_score - 360
+}
+
+fn compute_horizontal_finder_penalty_score(width: usize, modules: &[u8]) -> u16 {
+    modules.chunks_exact(width).map(compute_line_finder_penalty_score).sum()
+}
+
+fn compute_vertical_finder_penalty_score(width: usize, modules: &[u8]) -> u16 {
+    let mut total_score = 0;
+
+    for x in 0..width {
+        for y in 0..width.saturating_sub(6) {
+            if !vertical_finder_pattern_matches(width, modules, x, y) {
+                continue;
+            }
+
+            if !vertical_range_has_dark(width, modules, x, y.saturating_sub(4), y)
+                || !vertical_range_has_dark(width, modules, x, y + 7, min(y + 11, width))
+            {
+                total_score += 40;
+            }
+        }
+    }
+
+    total_score
+}
+
+fn compute_line_finder_penalty_score(line: &[u8]) -> u16 {
+    let mut total_score = 0;
+
+    for offset in 0..line.len().saturating_sub(6) {
+        if line[offset..][..7] != FINDER_LIKE_PATTERN {
+            continue;
+        }
+
+        if !line_range_has_dark(line, offset.saturating_sub(4), offset)
+            || !line_range_has_dark(line, offset + 7, min(offset + 11, line.len()))
+        {
+            total_score += 40;
+        }
+    }
+
+    total_score
+}
+
+fn vertical_finder_pattern_matches(width: usize, modules: &[u8], x: usize, y: usize) -> bool {
+    (0..7).all(|offset| modules[(y + offset) * width + x] == FINDER_LIKE_PATTERN[offset])
+}
+
+fn vertical_range_has_dark(width: usize, modules: &[u8], x: usize, start: usize, end: usize) -> bool {
+    (start..end).any(|y| modules[y * width + x] != 0)
+}
+
+fn line_range_has_dark(line: &[u8], start: usize, end: usize) -> bool {
+    line[start..end].iter().any(|&module| module != 0)
 }
 
 fn compute_block_penalty_score(width: usize, modules: &[u8]) -> u16 {
@@ -2090,8 +2138,8 @@ fn compute_total_penalty_score_scalar(version: Version, width: i16, modules: &[M
 mod penalty_tests {
     use crate::canvas::{
         Canvas, MaskPattern, compute_adjacent_penalty_score, compute_block_penalty_score,
-        compute_block_penalty_score_scalar, compute_total_penalty_score_scalar, count_dark_modules,
-        count_dark_modules_scalar,
+        compute_block_penalty_score_scalar, compute_finder_penalty_score, compute_total_penalty_score_scalar,
+        count_dark_modules, count_dark_modules_scalar,
     };
     use crate::cast::As;
     use crate::types::{Color, EcLevel, Version};
@@ -2180,6 +2228,20 @@ mod penalty_tests {
         let c = create_test_canvas();
         assert_eq!(c.compute_finder_penalty_score(true), 0);
         assert_eq!(c.compute_finder_penalty_score(false), 40);
+    }
+
+    #[test]
+    fn finder_penalty_score_matches_canvas_wrapper() {
+        let c = create_test_canvas();
+        let modules = c.modules.iter().map(|module| u8::from(module.is_dark())).collect::<Vec<_>>();
+        assert_eq!(
+            compute_finder_penalty_score(c.width.as_usize(), &modules, true),
+            c.compute_finder_penalty_score(true)
+        );
+        assert_eq!(
+            compute_finder_penalty_score(c.width.as_usize(), &modules, false),
+            c.compute_finder_penalty_score(false)
+        );
     }
 
     #[test]
