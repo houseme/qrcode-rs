@@ -30,6 +30,6 @@ pub use plugin::{
     DynEncoder, DynRenderer, EncodeConfig, EncodedOutput, EncoderFactory, ModuleGrid, PluginError, PluginRegistry,
     PostProcessor, QrPlugin, RenderConfig, RenderOutput, RendererFactory,
 };
-pub use traits::{Builder, Encoder, ModuleSource, ModuleStorage, ModuleView, QrSymbol, Renderer};
+pub use traits::{Builder, Encoder, ModuleSource, ModuleStorage, ModuleView, QrCodeRef, QrSymbol, Renderer};
 pub use types::{Color, EcLevel, Mode, QrError, QrResult, Version};
 pub use version::{ConstVersion, StaticVersion};

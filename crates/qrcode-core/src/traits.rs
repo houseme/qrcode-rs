@@ -48,6 +48,66 @@ impl ModuleSource for ModuleView<'_> {
     }
 }
 
+/// Borrowed QR symbol with module-grid data and QR metadata.
+///
+/// This is the zero-copy counterpart to an owned QR code. It carries the same
+/// metadata expected by [`QrSymbol`] while borrowing the row-major module slice
+/// from an existing symbol.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct QrCodeRef<'a> {
+    modules: &'a [Color],
+    version: Version,
+    ec_level: EcLevel,
+    width: usize,
+}
+
+impl<'a> QrCodeRef<'a> {
+    /// Creates a borrowed QR symbol from row-major module data.
+    ///
+    /// Returns `None` when `width == 0` or `modules.len() != width * width`.
+    #[must_use]
+    pub const fn new(modules: &'a [Color], width: usize, version: Version, ec_level: EcLevel) -> Option<Self> {
+        if width == 0 || modules.len() != width * width {
+            return None;
+        }
+        Some(Self { modules, version, ec_level, width })
+    }
+
+    /// Returns a read-only module view over the same borrowed modules.
+    #[must_use]
+    pub const fn module_view(self) -> ModuleView<'a> {
+        ModuleView { modules: self.modules, width: self.width }
+    }
+}
+
+impl ModuleSource for QrCodeRef<'_> {
+    fn get(&self, x: usize, y: usize) -> Color {
+        self.modules[y * self.width + x]
+    }
+
+    fn width(&self) -> usize {
+        self.width
+    }
+
+    fn height(&self) -> usize {
+        self.width
+    }
+
+    fn modules(&self) -> &[Color] {
+        self.modules
+    }
+}
+
+impl QrSymbol for QrCodeRef<'_> {
+    fn version(&self) -> Version {
+        self.version
+    }
+
+    fn error_correction_level(&self) -> EcLevel {
+        self.ec_level
+    }
+}
+
 /// Encodes raw input bytes into a concrete output type.
 ///
 /// Implementations can produce a full QR code, an intermediate bit stream, or a
@@ -212,7 +272,7 @@ impl<T: ModuleStorage + ?Sized> ModuleSource for T {
 
 #[cfg(test)]
 mod tests {
-    use super::{Builder, Encoder, ModuleSource, ModuleStorage, ModuleView, QrSymbol, Renderer};
+    use super::{Builder, Encoder, ModuleSource, ModuleStorage, ModuleView, QrCodeRef, QrSymbol, Renderer};
     use crate::{Color, EcLevel, Version};
     use core::convert::Infallible;
 
@@ -341,6 +401,39 @@ mod tests {
 
         assert!(ModuleView::new(&modules, 2).is_none());
         assert!(ModuleView::new(&modules, 0).is_none());
+    }
+
+    #[test]
+    fn qr_code_ref_exposes_borrowed_symbol_metadata() {
+        let modules = [Color::Dark, Color::Light, Color::Light, Color::Dark];
+        let symbol = QrCodeRef::new(&modules, 2, Version::Normal(3), EcLevel::Q).unwrap();
+
+        assert_eq!(symbol.width(), 2);
+        assert_eq!(symbol.height(), 2);
+        assert_eq!(symbol.modules(), modules);
+        assert_eq!(symbol.get(0, 0), Color::Dark);
+        assert_eq!(symbol.version(), Version::Normal(3));
+        assert_eq!(symbol.error_correction_level(), EcLevel::Q);
+        assert_eq!(symbol.quiet_zone(), 4);
+    }
+
+    #[test]
+    fn qr_code_ref_rejects_invalid_module_geometry() {
+        let modules = [Color::Dark, Color::Light, Color::Dark];
+
+        assert!(QrCodeRef::new(&modules, 2, Version::Normal(1), EcLevel::M).is_none());
+        assert!(QrCodeRef::new(&modules, 0, Version::Normal(1), EcLevel::M).is_none());
+    }
+
+    #[test]
+    fn qr_code_ref_module_view_reuses_borrowed_modules() {
+        let modules = [Color::Dark, Color::Light, Color::Light, Color::Dark];
+        let symbol = QrCodeRef::new(&modules, 2, Version::Micro(1), EcLevel::L).unwrap();
+        let view = symbol.module_view();
+
+        assert_eq!(view.modules(), modules);
+        assert_eq!(view.get(1, 1), Color::Dark);
+        assert_eq!(symbol.quiet_zone(), 2);
     }
 
     #[test]

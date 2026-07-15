@@ -54,6 +54,7 @@ pub use qrcode_parse as parse;
 // `cast` stays crate-private (not part of the public API); re-import it so
 // `crate::cast::As` keeps resolving across the facade and render modules.
 pub use crate::types::{Color, EcLevel, Mode, QrError, QrResult, Version};
+pub use qrcode_core::QrCodeRef;
 use qrcode_core::cast;
 pub use qrcode_core::traits::{
     Builder, Encoder, ModuleSource, ModuleStorage, ModuleView, QrSymbol, Renderer as CoreRenderer,
@@ -413,6 +414,29 @@ impl QrCode {
     #[must_use]
     pub fn module_view(&self) -> ModuleView<'_> {
         ModuleView::new(&self.content, self.width).expect("QrCode stores a non-empty square module grid")
+    }
+
+    /// Returns a borrowed QR symbol view with module data and metadata.
+    ///
+    /// Unlike [`to_colors`](Self::to_colors), this does not allocate or clone
+    /// the module grid. It is useful for renderers and analyzers that accept a
+    /// [`QrSymbol`] and need version/error-correction metadata in addition to
+    /// read-only module access.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::{ModuleSource, QrCode, QrSymbol};
+    ///
+    /// let code = QrCode::new(b"hi").unwrap();
+    /// let borrowed = code.as_ref();
+    /// assert_eq!(borrowed.version(), code.version());
+    /// assert_eq!(borrowed.modules(), code.colors());
+    /// ```
+    #[must_use]
+    pub fn as_ref(&self) -> QrCodeRef<'_> {
+        QrCodeRef::new(&self.content, self.width, self.version, self.ec_level)
+            .expect("QrCode stores a non-empty square module grid")
     }
 
     /// Converts the QR code to a vector of colors.
@@ -1797,6 +1821,20 @@ mod api_tests {
     }
 
     #[test]
+    fn qr_code_ref_exposes_borrowed_symbol() {
+        let code = QrCode::with_version(b"hello", Version::Normal(1), EcLevel::H).unwrap();
+        let borrowed = code.as_ref();
+
+        assert_eq!(borrowed.width(), code.width());
+        assert_eq!(borrowed.height(), code.width());
+        assert_eq!(borrowed.modules(), code.colors());
+        assert_eq!(borrowed.get(0, 0), code[(0, 0)]);
+        assert_eq!(borrowed.version(), code.version());
+        assert_eq!(borrowed.error_correction_level(), code.error_correction_level());
+        assert_eq!(borrowed.quiet_zone(), 4);
+    }
+
+    #[test]
     fn render_error_is_available_from_facade() {
         let err = crate::render::RenderError::InvalidModuleSource { width: 3, height: 2, len: 4 };
 
@@ -1823,6 +1861,19 @@ mod api_tests {
             .build();
         let from_qrcode = code.render::<char>().quiet_zone(false).dark_color('X').light_color('.').build();
         assert_eq!(from_symbol, from_qrcode);
+    }
+
+    #[test]
+    fn renderer_from_borrowed_symbol_matches_owned_symbol() {
+        let code = QrCode::with_version(b"123", Version::Micro(1), EcLevel::L).unwrap();
+        let borrowed = code.as_ref();
+
+        let from_borrowed =
+            crate::render::Renderer::<char>::from_symbol(&borrowed).dark_color('X').light_color('.').build();
+        let from_owned = crate::render::Renderer::<char>::from_symbol(&code).dark_color('X').light_color('.').build();
+
+        assert_eq!(borrowed.quiet_zone(), 2);
+        assert_eq!(from_borrowed, from_owned);
     }
 
     #[test]
