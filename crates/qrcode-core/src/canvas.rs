@@ -1976,7 +1976,9 @@ fn adjacent_run_score(consecutive_len: u16) -> u16 {
     if consecutive_len >= 5 { consecutive_len - 2 } else { 0 }
 }
 
-const FINDER_LIKE_PATTERN: [u8; 7] = [1, 0, 1, 1, 1, 0, 1];
+const FINDER_LIKE_PATTERN_BITS: u8 = 0b1011101;
+const FINDER_LIKE_PATTERN_WIDTH: usize = 7;
+const FINDER_LIKE_PATTERN_MASK: u8 = (1 << FINDER_LIKE_PATTERN_WIDTH) - 1;
 
 fn compute_finder_penalty_score(width: usize, modules: &[u8], is_horizontal: bool) -> u16 {
     let total_score = if is_horizontal {
@@ -1996,13 +1998,25 @@ fn compute_vertical_finder_penalty_score(width: usize, modules: &[u8]) -> u16 {
     let mut total_score = 0;
 
     for x in 0..width {
-        for y in 0..width.saturating_sub(6) {
-            if !vertical_finder_pattern_matches(width, modules, x, y) {
+        let mut window = initial_vertical_finder_window(width, modules, x);
+
+        for y in 0..width.saturating_sub(FINDER_LIKE_PATTERN_WIDTH - 1) {
+            if y > 0 {
+                window = roll_finder_window(window, modules[(y + FINDER_LIKE_PATTERN_WIDTH - 1) * width + x]);
+            }
+
+            if window != FINDER_LIKE_PATTERN_BITS {
                 continue;
             }
 
             if !vertical_range_has_dark(width, modules, x, y.saturating_sub(4), y)
-                || !vertical_range_has_dark(width, modules, x, y + 7, min(y + 11, width))
+                || !vertical_range_has_dark(
+                    width,
+                    modules,
+                    x,
+                    y + FINDER_LIKE_PATTERN_WIDTH,
+                    min(y + FINDER_LIKE_PATTERN_WIDTH + 4, width),
+                )
             {
                 total_score += 40;
             }
@@ -2014,14 +2028,23 @@ fn compute_vertical_finder_penalty_score(width: usize, modules: &[u8]) -> u16 {
 
 fn compute_line_finder_penalty_score(line: &[u8]) -> u16 {
     let mut total_score = 0;
+    let mut window = initial_finder_window(line);
 
-    for offset in 0..line.len().saturating_sub(6) {
-        if line[offset..][..7] != FINDER_LIKE_PATTERN {
+    for offset in 0..line.len().saturating_sub(FINDER_LIKE_PATTERN_WIDTH - 1) {
+        if offset > 0 {
+            window = roll_finder_window(window, line[offset + FINDER_LIKE_PATTERN_WIDTH - 1]);
+        }
+
+        if window != FINDER_LIKE_PATTERN_BITS {
             continue;
         }
 
         if !line_range_has_dark(line, offset.saturating_sub(4), offset)
-            || !line_range_has_dark(line, offset + 7, min(offset + 11, line.len()))
+            || !line_range_has_dark(
+                line,
+                offset + FINDER_LIKE_PATTERN_WIDTH,
+                min(offset + FINDER_LIKE_PATTERN_WIDTH + 4, line.len()),
+            )
         {
             total_score += 40;
         }
@@ -2030,8 +2053,16 @@ fn compute_line_finder_penalty_score(line: &[u8]) -> u16 {
     total_score
 }
 
-fn vertical_finder_pattern_matches(width: usize, modules: &[u8], x: usize, y: usize) -> bool {
-    (0..7).all(|offset| modules[(y + offset) * width + x] == FINDER_LIKE_PATTERN[offset])
+fn initial_finder_window(line: &[u8]) -> u8 {
+    line.iter().take(FINDER_LIKE_PATTERN_WIDTH).fold(0, |window, &module| roll_finder_window(window, module))
+}
+
+fn initial_vertical_finder_window(width: usize, modules: &[u8], x: usize) -> u8 {
+    (0..min(FINDER_LIKE_PATTERN_WIDTH, width)).fold(0, |window, y| roll_finder_window(window, modules[y * width + x]))
+}
+
+fn roll_finder_window(window: u8, module: u8) -> u8 {
+    ((window << 1) | (module & 1)) & FINDER_LIKE_PATTERN_MASK
 }
 
 fn vertical_range_has_dark(width: usize, modules: &[u8], x: usize, start: usize, end: usize) -> bool {
