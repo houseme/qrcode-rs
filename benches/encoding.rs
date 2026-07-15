@@ -3,8 +3,24 @@
 //! Run with: `cargo bench --bench encoding`
 
 use criterion::{Criterion, criterion_group, criterion_main};
+use qrcode_rs::bits::Bits;
+use qrcode_rs::canvas::Canvas;
+use qrcode_rs::ec;
 use qrcode_rs::structured_append::StructuredAppend;
 use qrcode_rs::{EcLevel, QrCode, Version};
+
+fn prepared_canvas(version: Version, ec_level: EcLevel, payload: &[u8]) -> Canvas {
+    let mut bits = Bits::new(version);
+    bits.push_byte_data(payload).unwrap();
+    bits.push_terminator(ec_level).unwrap();
+    let data = bits.into_bytes();
+    let (encoded_data, ec_data) = ec::construct_codewords(&data, version, ec_level).unwrap();
+
+    let mut canvas = Canvas::new(version, ec_level);
+    canvas.draw_all_functional_patterns();
+    canvas.draw_data(&encoded_data, &ec_data);
+    canvas
+}
 
 fn bench_encode(c: &mut Criterion) {
     let medium: Vec<u8> = (0..200).map(|i| (i % 256) as u8).collect();
@@ -38,6 +54,13 @@ fn bench_encode(c: &mut Criterion) {
         b.iter(|| QrCode::with_const_version::<5, _>(std::hint::black_box(fixed_payload), EcLevel::M).unwrap())
     });
     fixed.finish();
+
+    let mut mask = c.benchmark_group("mask_selection");
+    for v in [1_i16, 10, 20, 30, 40] {
+        let canvas = prepared_canvas(Version::Normal(v), EcLevel::L, b"mask");
+        mask.bench_function(format!("v{v}_apply_best_mask"), |b| b.iter(|| canvas.apply_best_mask()));
+    }
+    mask.finish();
 
     // Structured Append: split a payload across N symbols (per-symbol version
     // search via the tier-based path).
