@@ -15,6 +15,7 @@ use crate::types::{Color, EcLevel, Version};
 pub struct ModuleView<'a> {
     modules: &'a [Color],
     width: usize,
+    height: usize,
 }
 
 impl<'a> ModuleView<'a> {
@@ -26,7 +27,37 @@ impl<'a> ModuleView<'a> {
         if width == 0 || modules.len() != width * width {
             return None;
         }
-        Some(Self { modules, width })
+        Some(Self { modules, width, height: width })
+    }
+
+    /// Creates a rectangular module view from a row-major module slice.
+    ///
+    /// This keeps the same zero-copy storage contract as [`ModuleView::new`],
+    /// but allows callers to borrow a contiguous range of full rows.
+    ///
+    /// Returns `None` when either dimension is zero or when
+    /// `modules.len() != width * height`.
+    #[must_use]
+    pub const fn new_rect(modules: &'a [Color], width: usize, height: usize) -> Option<Self> {
+        if width == 0 || height == 0 || modules.len() != width * height {
+            return None;
+        }
+        Some(Self { modules, width, height })
+    }
+
+    /// Returns a zero-copy view over a contiguous range of full rows.
+    ///
+    /// The returned view keeps the same width and borrows a sub-slice of the
+    /// original row-major module slice.
+    #[must_use]
+    pub fn row_range(&self, start: usize, end: usize) -> Option<Self> {
+        if start >= end || end > self.height {
+            return None;
+        }
+        let height = end - start;
+        let start = start * self.width;
+        let end = end * self.width;
+        Some(Self { modules: &self.modules[start..end], width: self.width, height })
     }
 }
 
@@ -40,7 +71,7 @@ impl ModuleSource for ModuleView<'_> {
     }
 
     fn height(&self) -> usize {
-        self.width
+        self.height
     }
 
     fn modules(&self) -> &[Color] {
@@ -76,7 +107,7 @@ impl<'a> QrCodeRef<'a> {
     /// Returns a read-only module view over the same borrowed modules.
     #[must_use]
     pub const fn module_view(self) -> ModuleView<'a> {
-        ModuleView { modules: self.modules, width: self.width }
+        ModuleView { modules: self.modules, width: self.width, height: self.width }
     }
 }
 
@@ -409,11 +440,53 @@ mod tests {
     }
 
     #[test]
+    fn module_view_reads_rectangular_row_major_modules() {
+        let modules = [Color::Dark, Color::Light, Color::Light, Color::Dark, Color::Dark, Color::Light];
+        let view = ModuleView::new_rect(&modules, 3, 2).unwrap();
+
+        assert_eq!(view.width(), 3);
+        assert_eq!(view.height(), 2);
+        assert_eq!(view.row(1), &[Color::Dark, Color::Dark, Color::Light]);
+    }
+
+    #[test]
+    fn module_view_row_range_borrows_contiguous_rows() {
+        let modules = [
+            Color::Dark,
+            Color::Light,
+            Color::Light,
+            Color::Dark,
+            Color::Dark,
+            Color::Light,
+            Color::Light,
+            Color::Dark,
+            Color::Dark,
+        ];
+        let view = ModuleView::new(&modules, 3).unwrap();
+        let rows = view.row_range(1, 3).unwrap();
+
+        assert_eq!(rows.width(), 3);
+        assert_eq!(rows.height(), 2);
+        assert_eq!(rows.modules(), &modules[3..9]);
+        assert!(view.row_range(2, 2).is_none());
+        assert!(view.row_range(2, 4).is_none());
+    }
+
+    #[test]
     fn module_view_rejects_non_square_input() {
         let modules = [Color::Dark, Color::Light, Color::Dark];
 
         assert!(ModuleView::new(&modules, 2).is_none());
         assert!(ModuleView::new(&modules, 0).is_none());
+    }
+
+    #[test]
+    fn module_view_rejects_invalid_rectangular_input() {
+        let modules = [Color::Dark, Color::Light, Color::Dark];
+
+        assert!(ModuleView::new_rect(&modules, 2, 2).is_none());
+        assert!(ModuleView::new_rect(&modules, 0, 2).is_none());
+        assert!(ModuleView::new_rect(&modules, 2, 0).is_none());
     }
 
     #[test]
