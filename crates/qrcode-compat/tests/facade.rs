@@ -19,3 +19,21 @@ fn compat_crate_reexports_payload_helpers() {
 
     assert!(code.width() >= 21);
 }
+
+#[test]
+fn compat_crate_reexports_batch_api() {
+    let codes = QrCode::batch(["alpha", "beta", "gamma"], EcLevel::Q).unwrap();
+
+    assert_eq!(codes.len(), 3);
+    assert!(codes.iter().all(|code| code.error_correction_level() == EcLevel::Q));
+}
+
+#[cfg(feature = "eps")]
+#[test]
+fn compat_crate_reexports_render_template_api() {
+    let code = QrCode::new(b"template").unwrap();
+    let eps =
+        code.render::<qrcode_compat::render::eps::Color>().template(&qrcode_compat::QrTemplate::corporate()).build();
+
+    assert!(eps.contains("0 0.2 0.4 setrgbcolor"));
+}

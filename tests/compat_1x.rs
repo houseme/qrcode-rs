@@ -29,3 +29,20 @@ fn one_x_payload_helpers_stay_available() {
         assert!(code.unwrap().width() >= 21);
     }
 }
+
+#[test]
+fn one_x_batch_api_stays_available() {
+    let codes = QrCode::batch(["alpha", "beta", "gamma"], EcLevel::Q).unwrap();
+
+    assert_eq!(codes.len(), 3);
+    assert!(codes.iter().all(|code| code.error_correction_level() == EcLevel::Q));
+}
+
+#[cfg(feature = "eps")]
+#[test]
+fn one_x_render_template_stays_available() {
+    let code = QrCode::new(b"template").unwrap();
+    let eps = code.render::<qrcode_rs::render::eps::Color>().template(&qrcode_rs::QrTemplate::corporate()).build();
+
+    assert!(eps.contains("0 0.2 0.4 setrgbcolor"));
+}
