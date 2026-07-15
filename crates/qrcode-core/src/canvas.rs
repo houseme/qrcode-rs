@@ -1825,18 +1825,18 @@ impl Canvas {
     }
 }
 
-struct PenaltyGrid<'a> {
+struct PenaltyGrid {
     width: i16,
-    modules: &'a [Module],
+    modules: Vec<u8>,
 }
 
-impl<'a> PenaltyGrid<'a> {
-    fn new(width: i16, modules: &'a [Module]) -> Self {
+impl PenaltyGrid {
+    fn new(width: i16, modules: &[Module]) -> Self {
         debug_assert_eq!((width * width).as_usize(), modules.len());
-        Self { width, modules }
+        Self { width, modules: modules.iter().map(|module| u8::from(module.is_dark())).collect() }
     }
 
-    fn get(&self, x: i16, y: i16) -> Module {
+    fn get(&self, x: i16, y: i16) -> u8 {
         self.modules[y.as_usize() * self.width.as_usize() + x.as_usize()]
     }
 
@@ -1846,8 +1846,8 @@ impl<'a> PenaltyGrid<'a> {
         for i in 0..self.width {
             let map_fn = |j| if is_horizontal { self.get(j, i) } else { self.get(i, j) };
 
-            let colors = (0..self.width).map(map_fn).chain(Some(Module::Empty));
-            let mut last_color = Module::Empty;
+            let colors = (0..self.width).map(map_fn).chain(Some(2));
+            let mut last_color = 2;
             let mut consecutive_len = 1_u16;
 
             for color in colors {
@@ -1885,11 +1885,10 @@ impl<'a> PenaltyGrid<'a> {
     }
 
     fn compute_finder_penalty_score(&self, is_horizontal: bool) -> u16 {
-        static PATTERN: [Color; 7] =
-            [Color::Dark, Color::Light, Color::Dark, Color::Dark, Color::Dark, Color::Light, Color::Dark];
+        static PATTERN: [u8; 7] = [1, 0, 1, 1, 1, 0, 1];
 
         let mut total_score = 0;
-        let get = |a, b| -> Color { if is_horizontal { self.get(a, b).into() } else { self.get(b, a).into() } };
+        let get = |a, b| -> u8 { if is_horizontal { self.get(a, b) } else { self.get(b, a) } };
 
         for i in 0..self.width {
             for j in 0..self.width - 6 {
@@ -1897,7 +1896,7 @@ impl<'a> PenaltyGrid<'a> {
                     continue;
                 }
 
-                let check = |k: i16| 0 <= k && k < self.width && get(k, i) != Color::Light;
+                let check = |k: i16| 0 <= k && k < self.width && get(k, i) != 0;
                 if !((j - 4)..j).any(&check) || !((j + 7)..(j + 11)).any(&check) {
                     total_score += 40;
                 }
@@ -1908,15 +1907,15 @@ impl<'a> PenaltyGrid<'a> {
     }
 
     fn compute_balance_penalty_score(&self) -> u16 {
-        let dark_modules = self.modules.iter().filter(|m| m.is_dark()).count();
+        let dark_modules = self.modules.iter().filter(|&&module| module != 0).count();
         let total_modules = self.modules.len();
         let ratio = dark_modules * 200 / total_modules;
         ratio.abs_diff(100).as_u16()
     }
 
     fn compute_light_side_penalty_score(&self) -> u16 {
-        let h = (1..self.width).filter(|j| !self.get(*j, self.width - 1).is_dark()).count();
-        let v = (1..self.width).filter(|j| !self.get(self.width - 1, *j).is_dark()).count();
+        let h = (1..self.width).filter(|j| self.get(*j, self.width - 1) == 0).count();
+        let v = (1..self.width).filter(|j| self.get(self.width - 1, *j) == 0).count();
 
         (h + v + 15 * max(h, v)).as_u16()
     }
