@@ -1841,29 +1841,7 @@ impl PenaltyGrid {
     }
 
     fn compute_adjacent_penalty_score(&self, is_horizontal: bool) -> u16 {
-        let mut total_score = 0;
-
-        for i in 0..self.width {
-            let map_fn = |j| if is_horizontal { self.get(j, i) } else { self.get(i, j) };
-
-            let colors = (0..self.width).map(map_fn).chain(Some(2));
-            let mut last_color = 2;
-            let mut consecutive_len = 1_u16;
-
-            for color in colors {
-                if color == last_color {
-                    consecutive_len += 1;
-                } else {
-                    last_color = color;
-                    if consecutive_len >= 5 {
-                        total_score += consecutive_len - 2;
-                    }
-                    consecutive_len = 1;
-                }
-            }
-        }
-
-        total_score
+        compute_adjacent_penalty_score(self.width.as_usize(), &self.modules, is_horizontal)
     }
 
     fn compute_block_penalty_score(&self) -> u16 {
@@ -1922,6 +1900,68 @@ fn count_dark_modules(modules: &[u8]) -> usize {
 
 fn count_dark_modules_scalar(modules: &[u8]) -> usize {
     modules.iter().filter(|&&module| module != 0).count()
+}
+
+fn compute_adjacent_penalty_score(width: usize, modules: &[u8], is_horizontal: bool) -> u16 {
+    if is_horizontal {
+        compute_horizontal_adjacent_penalty_score(width, modules)
+    } else {
+        compute_vertical_adjacent_penalty_score(width, modules)
+    }
+}
+
+fn compute_horizontal_adjacent_penalty_score(width: usize, modules: &[u8]) -> u16 {
+    modules.chunks_exact(width).map(compute_line_adjacent_penalty_score).sum()
+}
+
+fn compute_vertical_adjacent_penalty_score(width: usize, modules: &[u8]) -> u16 {
+    let mut total_score = 0;
+
+    for x in 0..width {
+        let mut last_color = 2;
+        let mut consecutive_len = 1_u16;
+
+        for y in 0..width {
+            let color = modules[y * width + x];
+            if color == last_color {
+                consecutive_len += 1;
+            } else {
+                last_color = color;
+                if consecutive_len >= 5 {
+                    total_score += consecutive_len - 2;
+                }
+                consecutive_len = 1;
+            }
+        }
+
+        total_score += adjacent_run_score(consecutive_len);
+    }
+
+    total_score
+}
+
+fn compute_line_adjacent_penalty_score(line: &[u8]) -> u16 {
+    let mut total_score = 0;
+    let mut last_color = 2;
+    let mut consecutive_len = 1_u16;
+
+    for &color in line {
+        if color == last_color {
+            consecutive_len += 1;
+        } else {
+            last_color = color;
+            if consecutive_len >= 5 {
+                total_score += consecutive_len - 2;
+            }
+            consecutive_len = 1;
+        }
+    }
+
+    total_score + adjacent_run_score(consecutive_len)
+}
+
+fn adjacent_run_score(consecutive_len: u16) -> u16 {
+    if consecutive_len >= 5 { consecutive_len - 2 } else { 0 }
 }
 
 fn compute_block_penalty_score(width: usize, modules: &[u8]) -> u16 {
@@ -2049,8 +2089,9 @@ fn compute_total_penalty_score_scalar(version: Version, width: i16, modules: &[M
 #[cfg(test)]
 mod penalty_tests {
     use crate::canvas::{
-        Canvas, MaskPattern, compute_block_penalty_score, compute_block_penalty_score_scalar,
-        compute_total_penalty_score_scalar, count_dark_modules, count_dark_modules_scalar,
+        Canvas, MaskPattern, compute_adjacent_penalty_score, compute_block_penalty_score,
+        compute_block_penalty_score_scalar, compute_total_penalty_score_scalar, count_dark_modules,
+        count_dark_modules_scalar,
     };
     use crate::cast::As;
     use crate::types::{Color, EcLevel, Version};
@@ -2101,6 +2142,20 @@ mod penalty_tests {
         let c = create_test_canvas();
         assert_eq!(c.compute_adjacent_penalty_score(true), 88);
         assert_eq!(c.compute_adjacent_penalty_score(false), 92);
+    }
+
+    #[test]
+    fn adjacent_penalty_score_matches_canvas_wrapper() {
+        let c = create_test_canvas();
+        let modules = c.modules.iter().map(|module| u8::from(module.is_dark())).collect::<Vec<_>>();
+        assert_eq!(
+            compute_adjacent_penalty_score(c.width.as_usize(), &modules, true),
+            c.compute_adjacent_penalty_score(true)
+        );
+        assert_eq!(
+            compute_adjacent_penalty_score(c.width.as_usize(), &modules, false),
+            c.compute_adjacent_penalty_score(false)
+        );
     }
 
     #[test]
