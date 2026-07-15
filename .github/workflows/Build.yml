@@ -255,8 +255,42 @@ jobs:
           publish_crate() {
             crate="$1"
             version="$2"
-            cargo publish --registry crates-io --package "${crate}" --allow-dirty
+            cooldown="${3:-true}"
+            publish_log="$(mktemp)"
+
+            if cargo info "${crate}@${version}" --registry crates-io >/dev/null 2>&1; then
+              echo "${crate} ${version} is already visible in the crates.io index"
+              return 0
+            fi
+
+            for attempt in $(seq 1 "${PUBLISH_MAX_ATTEMPTS}"); do
+              if cargo publish --registry crates-io --package "${crate}" --allow-dirty 2>&1 | tee "${publish_log}"; then
+                break
+              fi
+
+              if cargo info "${crate}@${version}" --registry crates-io >/dev/null 2>&1; then
+                echo "${crate} ${version} was published and is visible in the crates.io index"
+                break
+              fi
+
+              if ! grep -Eq "Too Many Requests|status 429" "${publish_log}"; then
+                return 1
+              fi
+
+              if [ "${attempt}" -eq "${PUBLISH_MAX_ATTEMPTS}" ]; then
+                echo "crates.io rate limit still active after ${attempt} attempts for ${crate}" >&2
+                return 1
+              fi
+
+              echo "crates.io rate limit hit while publishing ${crate}; sleeping ${PUBLISH_RATE_LIMIT_SLEEP_SECONDS}s before retry"
+              sleep "${PUBLISH_RATE_LIMIT_SLEEP_SECONDS}"
+            done
+
             wait_for_crate "${crate}" "${version}"
+            if [ "${cooldown}" = "true" ]; then
+              echo "sleeping ${PUBLISH_COOLDOWN_SECONDS}s before the next publish to avoid crates.io new-crate rate limits"
+              sleep "${PUBLISH_COOLDOWN_SECONDS}"
+            fi
           }
 
           version="2.0.0"
@@ -269,6 +303,9 @@ jobs:
           publish_crate qrcode-pic "${version}"
           publish_crate qrcode-html "${version}"
           publish_crate qrcode-pdf "${version}"
-          publish_crate qrcode-rs "${version}"
+          publish_crate qrcode-rs "${version}" false
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+          PUBLISH_COOLDOWN_SECONDS: "300"
+          PUBLISH_MAX_ATTEMPTS: "6"
+          PUBLISH_RATE_LIMIT_SLEEP_SECONDS: "900"

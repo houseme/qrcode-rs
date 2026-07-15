@@ -162,6 +162,7 @@ Releases follow [SemVer](https://semver.org). The flow:
      do
        sleep 10
      done
+     sleep 300
    done
    ```
 
