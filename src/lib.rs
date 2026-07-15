@@ -544,6 +544,28 @@ impl QrCode {
         self.render()
     }
 
+    /// Renders the QR code on Tokio's blocking thread pool.
+    ///
+    /// This opt-in async helper is available with the `async` feature. It clones
+    /// the compact module grid and performs the synchronous render work inside
+    /// [`tokio::task::spawn_blocking`], so callers running inside a Tokio
+    /// runtime do not execute CPU-heavy rendering on the async worker thread.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`tokio::task::JoinError`] if the blocking task is cancelled or
+    /// panics.
+    #[cfg(feature = "async")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
+    pub async fn render_async<P>(&self) -> Result<P::Image, tokio::task::JoinError>
+    where
+        P: Pixel + Send + 'static,
+        P::Image: Send + 'static,
+    {
+        let code = self.clone();
+        tokio::task::spawn_blocking(move || code.render::<P>().build()).await
+    }
+
     /// Encodes raw input through a named plugin encoder.
     ///
     /// This is the encoder-side counterpart to [`QrCode::render_with`]: it
@@ -2077,6 +2099,17 @@ mod api_tests {
         let code = QrCode::new(b"render builder").unwrap();
 
         assert_eq!(code.render_builder::<char>().build(), code.render::<char>().build());
+    }
+
+    #[cfg(feature = "async")]
+    #[test]
+    fn render_async_matches_render_output() {
+        let code = QrCode::new(b"render async").unwrap();
+        let expected = code.render::<char>().build();
+        let runtime = tokio::runtime::Builder::new_current_thread().build().unwrap();
+        let rendered = runtime.block_on(code.render_async::<char>()).unwrap();
+
+        assert_eq!(rendered, expected);
     }
 
     #[test]
