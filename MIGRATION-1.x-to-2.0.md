@@ -19,6 +19,14 @@ it keeps 1.x-shaped constructors, render chains, indexing, and payload helpers
 available while new code can use the builder, trait-based module views, and
 split render/parse/decode crates.
 
+If you prefer a dedicated dependency name for compatibility code, use the thin
+`qrcode-compat` crate. It re-exports the facade with `compat-1x` enabled:
+
+```toml
+[dependencies]
+qrcode-compat = "0.1"
+```
+
 ## API Map
 
 | 1.x usage | 2.0-preferred usage | Notes |
@@ -58,7 +66,9 @@ work, the important flags are:
 5. If your library only needs one layer, depend on the split crate directly
    (`qrcode-core`, `qrcode-render`, `qrcode-parse`, `qrcode-decode`, or a
    renderer backend) instead of the full facade.
-6. Remove `compat-1x` once no 1.x-only paths remain.
+6. If you used `qrcode-compat`, switch imports back to the facade or split
+   crates once no 1.x-only paths remain.
+7. Remove `compat-1x` once no 1.x-only paths remain.
 
 ## Compatibility Checks
 
@@ -67,6 +77,8 @@ Run the compatibility test target while migrating:
 ```bash
 cargo test --test compat_1x --features compat-1x
 cargo test --test compat_1x --no-default-features --features compat-1x
+cargo test -p qrcode-compat
+cargo test -p qrcode-compat --no-default-features
 ```
 
 For the full local quality bar, also run:

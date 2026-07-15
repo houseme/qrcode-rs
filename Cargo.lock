@@ -960,6 +960,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "qrcode-compat"
+version = "0.1.0"
+dependencies = [
+ "qrcode-rs",
+]
+
+[[package]]
 name = "qrcode-core"
 version = "0.1.0"
 dependencies = [

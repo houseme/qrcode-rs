@@ -16,6 +16,7 @@ exclude = ["tests/*", ".gitignore"]
 
 [workspace]
 members = [
+    "crates/qrcode-compat",
     "crates/qrcode-core",
     "crates/qrcode-decode",
     "crates/qrcode-eps",
