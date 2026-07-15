@@ -526,6 +526,16 @@ mod tests {
     }
 
     #[test]
+    fn core_renderer_matches_direct_builder_output() {
+        let modules = [Color::Dark, Color::Light, Color::Light, Color::Dark];
+        let source = qrcode_core::ModuleView::new(&modules, 2).unwrap();
+        let mut renderer = Renderer::<char>::new(&modules, 2, 1);
+        renderer.dark_color('#').light_color('.');
+
+        assert_eq!(CoreRenderer::render(&renderer, &source).unwrap(), renderer.build());
+    }
+
+    #[test]
     fn from_symbol_uses_normal_qr_quiet_zone() {
         let source = SymbolSource { version: Version::Normal(1), modules: [Color::Dark] };
 
