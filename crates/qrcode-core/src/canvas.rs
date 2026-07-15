@@ -1770,7 +1770,7 @@ impl Canvas {
     /// will contribute 3+N points.
     #[cfg(test)]
     fn compute_adjacent_penalty_score(&self, is_horizontal: bool) -> u16 {
-        PenaltyGrid::new(self.width, &self.modules).compute_adjacent_penalty_score(is_horizontal)
+        compute_adjacent_penalty_score(self.width.as_usize(), &module_bytes(&self.modules), is_horizontal)
     }
 
     /// Compute the penalty score for having too many rectangles with the same
@@ -1780,7 +1780,7 @@ impl Canvas {
     /// contribute 3 points.
     #[cfg(test)]
     fn compute_block_penalty_score(&self) -> u16 {
-        PenaltyGrid::new(self.width, &self.modules).compute_block_penalty_score()
+        compute_block_penalty_score(self.width.as_usize(), &module_bytes(&self.modules))
     }
 
     /// Compute the penalty score for having a pattern similar to the finder
@@ -1790,7 +1790,7 @@ impl Canvas {
     /// 40 points.
     #[cfg(test)]
     fn compute_finder_penalty_score(&self, is_horizontal: bool) -> u16 {
-        PenaltyGrid::new(self.width, &self.modules).compute_finder_penalty_score(is_horizontal)
+        compute_finder_penalty_score(self.width.as_usize(), &module_bytes(&self.modules), is_horizontal)
     }
 
     /// Compute the penalty score for having an unbalanced dark/light ratio.
@@ -1803,7 +1803,7 @@ impl Canvas {
     /// should not affect which mask is chosen.
     #[cfg(test)]
     fn compute_balance_penalty_score(&self) -> u16 {
-        PenaltyGrid::new(self.width, &self.modules).compute_balance_penalty_score()
+        compute_balance_penalty_score(&module_bytes(&self.modules))
     }
 
     /// Compute the penalty score for having too many light modules on the sides.
@@ -1815,7 +1815,7 @@ impl Canvas {
     /// between the two (this score is (16×width − standard-score)).
     #[cfg(test)]
     fn compute_light_side_penalty_score(&self) -> u16 {
-        PenaltyGrid::new(self.width, &self.modules).compute_light_side_penalty_score()
+        compute_light_side_penalty_score(self.width.as_usize(), &module_bytes(&self.modules))
     }
 
     /// Compute the total penalty scores. A QR code having higher points is less
@@ -1825,46 +1825,8 @@ impl Canvas {
     }
 }
 
-struct PenaltyGrid {
-    width: i16,
-    modules: Vec<u8>,
-}
-
-impl PenaltyGrid {
-    fn new(width: i16, modules: &[Module]) -> Self {
-        debug_assert_eq!((width * width).as_usize(), modules.len());
-        Self { width, modules: modules.iter().map(|module| u8::from(module.is_dark())).collect() }
-    }
-
-    fn get(&self, x: i16, y: i16) -> u8 {
-        self.modules[y.as_usize() * self.width.as_usize() + x.as_usize()]
-    }
-
-    fn compute_adjacent_penalty_score(&self, is_horizontal: bool) -> u16 {
-        compute_adjacent_penalty_score(self.width.as_usize(), &self.modules, is_horizontal)
-    }
-
-    fn compute_block_penalty_score(&self) -> u16 {
-        compute_block_penalty_score(self.width.as_usize(), &self.modules)
-    }
-
-    fn compute_finder_penalty_score(&self, is_horizontal: bool) -> u16 {
-        compute_finder_penalty_score(self.width.as_usize(), &self.modules, is_horizontal)
-    }
-
-    fn compute_balance_penalty_score(&self) -> u16 {
-        let dark_modules = count_dark_modules(&self.modules);
-        let total_modules = self.modules.len();
-        let ratio = dark_modules * 200 / total_modules;
-        ratio.abs_diff(100).as_u16()
-    }
-
-    fn compute_light_side_penalty_score(&self) -> u16 {
-        let h = (1..self.width).filter(|j| self.get(*j, self.width - 1) == 0).count();
-        let v = (1..self.width).filter(|j| self.get(self.width - 1, *j) == 0).count();
-
-        (h + v + 15 * max(h, v)).as_u16()
-    }
+fn module_bytes(modules: &[Module]) -> Vec<u8> {
+    modules.iter().map(|module| u8::from(module.is_dark())).collect()
 }
 
 fn count_dark_modules(modules: &[u8]) -> usize {
@@ -1882,6 +1844,21 @@ fn count_dark_modules(modules: &[u8]) -> usize {
 
 fn count_dark_modules_scalar(modules: &[u8]) -> usize {
     modules.iter().filter(|&&module| module != 0).count()
+}
+
+fn compute_balance_penalty_score(modules: &[u8]) -> u16 {
+    let dark_modules = count_dark_modules(modules);
+    let total_modules = modules.len();
+    let ratio = dark_modules * 200 / total_modules;
+    ratio.abs_diff(100).as_u16()
+}
+
+fn compute_light_side_penalty_score(width: usize, modules: &[u8]) -> u16 {
+    let bottom_row = &modules[(width - 1) * width..][..width];
+    let h = (1..width).filter(|&x| bottom_row[x] == 0).count();
+    let v = (1..width).filter(|&y| modules[y * width + width - 1] == 0).count();
+
+    (h + v + 15 * max(h, v)).as_u16()
 }
 
 fn compute_adjacent_penalty_score(width: usize, modules: &[u8], is_horizontal: bool) -> u16 {
@@ -2119,27 +2096,31 @@ unsafe fn compute_block_penalty_score_sse2(width: usize, modules: &[u8]) -> u16 
 }
 
 fn compute_total_penalty_score_scalar(version: Version, width: i16, modules: &[Module]) -> u16 {
-    let grid = PenaltyGrid::new(width, modules);
+    debug_assert_eq!((width * width).as_usize(), modules.len());
+    let width = width.as_usize();
+    let modules = module_bytes(modules);
+
     match version {
         Version::Normal(_) => {
-            let s1_a = grid.compute_adjacent_penalty_score(true);
-            let s1_b = grid.compute_adjacent_penalty_score(false);
-            let s2 = grid.compute_block_penalty_score();
-            let s3_a = grid.compute_finder_penalty_score(true);
-            let s3_b = grid.compute_finder_penalty_score(false);
-            let s4 = grid.compute_balance_penalty_score();
+            let s1_a = compute_adjacent_penalty_score(width, &modules, true);
+            let s1_b = compute_adjacent_penalty_score(width, &modules, false);
+            let s2 = compute_block_penalty_score(width, &modules);
+            let s3_a = compute_finder_penalty_score(width, &modules, true);
+            let s3_b = compute_finder_penalty_score(width, &modules, false);
+            let s4 = compute_balance_penalty_score(&modules);
             s1_a + s1_b + s2 + s3_a + s3_b + s4
         }
-        Version::Micro(_) => grid.compute_light_side_penalty_score(),
+        Version::Micro(_) => compute_light_side_penalty_score(width, &modules),
     }
 }
 
 #[cfg(test)]
 mod penalty_tests {
     use crate::canvas::{
-        Canvas, MaskPattern, compute_adjacent_penalty_score, compute_block_penalty_score,
-        compute_block_penalty_score_scalar, compute_finder_penalty_score, compute_total_penalty_score_scalar,
-        count_dark_modules, count_dark_modules_scalar,
+        Canvas, MaskPattern, compute_adjacent_penalty_score, compute_balance_penalty_score,
+        compute_block_penalty_score, compute_block_penalty_score_scalar, compute_finder_penalty_score,
+        compute_light_side_penalty_score, compute_total_penalty_score_scalar, count_dark_modules,
+        count_dark_modules_scalar,
     };
     use crate::cast::As;
     use crate::types::{Color, EcLevel, Version};
@@ -2251,6 +2232,13 @@ mod penalty_tests {
     }
 
     #[test]
+    fn balance_penalty_score_matches_canvas_wrapper() {
+        let c = create_test_canvas();
+        let modules = c.modules.iter().map(|module| u8::from(module.is_dark())).collect::<Vec<_>>();
+        assert_eq!(compute_balance_penalty_score(&modules), c.compute_balance_penalty_score());
+    }
+
+    #[test]
     fn dark_module_count_matches_scalar_for_varied_lengths() {
         for len in 0..65 {
             let modules = (0..len).map(|i| u8::from(i % 3 == 0 || i % 7 == 0)).collect::<Vec<_>>();
@@ -2315,6 +2303,18 @@ mod penalty_tests {
         }
 
         assert_eq!(c.compute_light_side_penalty_score(), 168);
+    }
+
+    #[test]
+    fn light_side_penalty_score_matches_canvas_wrapper() {
+        let mut c = Canvas::new(Version::Micro(4), EcLevel::Q);
+        c.draw_all_functional_patterns();
+        let modules = c.modules.iter().map(|module| u8::from(module.is_dark())).collect::<Vec<_>>();
+
+        assert_eq!(
+            compute_light_side_penalty_score(c.width.as_usize(), &modules),
+            c.compute_light_side_penalty_score()
+        );
     }
 }
 
