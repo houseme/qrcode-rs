@@ -192,10 +192,18 @@ impl QrCode {
     /// `N` must be in `1..=40`. Invalid values fail during const evaluation
     /// when this fixed-version path is monomorphized.
     ///
-    ///     use qrcode_rs::{EcLevel, QrCode};
+    /// ```rust
+    /// use qrcode_rs::{EcLevel, QrCode, Version};
     ///
-    ///     let code = QrCode::with_const_version::<5, _>(b"Some data", EcLevel::M).unwrap();
-    ///     assert_eq!(code.version(), qrcode_rs::Version::Normal(5));
+    /// let code = QrCode::with_const_version::<5, _>(b"Some data", EcLevel::M).unwrap();
+    /// assert_eq!(code.version(), Version::Normal(5));
+    /// ```
+    ///
+    /// ```compile_fail
+    /// use qrcode_rs::{EcLevel, QrCode};
+    ///
+    /// let _ = QrCode::with_const_version::<41, _>(b"Some data", EcLevel::M);
+    /// ```
     ///
     /// # Errors
     ///
@@ -949,6 +957,19 @@ impl Encoder for VersionEncoder {
 ///
 /// This is the trait-friendly counterpart to
 /// [`QrCode::with_const_version`]. `N` must be in `1..=40`.
+///
+/// ```rust
+/// use qrcode_rs::{ConstVersionEncoder, EcLevel, Encoder, Version};
+///
+/// let code = ConstVersionEncoder::<5>::new(EcLevel::M).encode(b"Some data").unwrap();
+/// assert_eq!(code.version(), Version::Normal(5));
+/// ```
+///
+/// ```compile_fail
+/// use qrcode_rs::{ConstVersionEncoder, EcLevel};
+///
+/// const INVALID: ConstVersionEncoder<0> = ConstVersionEncoder::<0>::new(EcLevel::M);
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ConstVersionEncoder<const N: i16> {
     ec_level: EcLevel,
