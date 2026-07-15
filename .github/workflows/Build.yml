@@ -82,6 +82,27 @@ jobs:
           toolchain: stable
       - name: Run cargo test
         run: cargo test --features "image,svg,eps,pic"
+  compat_test:
+    name: Run compat-1x tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-compat-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - name: Run compat tests
+        run: |
+          cargo test --test compat_1x --features compat-1x
+          cargo test --test compat_1x --no-default-features --features compat-1x
   fuzz_smoke:
     name: Fuzz smoke
     runs-on: ubuntu-latest
@@ -119,6 +140,7 @@ jobs:
       - rust_fmt_check
       - clippy_check
       - test
+      - compat_test
       - fuzz_smoke
     steps:
       - name: Checkout code
@@ -129,4 +151,3 @@ jobs:
         run: cargo publish --registry crates-io --package qrcode-rs --allow-dirty
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
-
