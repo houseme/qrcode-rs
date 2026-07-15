@@ -1878,7 +1878,7 @@ fn count_dark_modules(modules: &[u8]) -> usize {
             return unsafe { count_dark_modules_sse2(modules) };
         }
 
-        return count_dark_modules_scalar(modules);
+        count_dark_modules_scalar(modules)
     }
 
     #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
@@ -2095,7 +2095,7 @@ fn compute_block_penalty_score(width: usize, modules: &[u8]) -> u16 {
             return unsafe { compute_block_penalty_score_sse2(width, modules) };
         }
 
-        return compute_block_penalty_score_scalar(width, modules);
+        compute_block_penalty_score_scalar(width, modules)
     }
 
     #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]

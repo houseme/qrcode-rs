@@ -202,9 +202,11 @@ jobs:
       - name: Install rust
         uses: dtolnay/rust-toolchain@nightly
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --locked
+        run: cargo +nightly install cargo-fuzz --locked
       - name: Check fuzz targets
         run: cargo check --manifest-path fuzz/Cargo.toml --bins
+        env:
+          RUSTUP_TOOLCHAIN: nightly
       - name: Run short fuzz targets
         run: |
           cargo fuzz run encode -- -runs=16
@@ -212,6 +214,8 @@ jobs:
           cargo fuzz run render_svg -- -runs=16
           cargo fuzz run parse_payloads -- -runs=16
           cargo fuzz run structured_append -- -runs=16
+        env:
+          RUSTUP_TOOLCHAIN: nightly
   publish_on_crates_io:
     name: Publish on crates.io
     runs-on: ubuntu-latest
