@@ -1,4 +1,5 @@
 /target
+/fuzz/target
 .DS_Store
 *.o
 .idea

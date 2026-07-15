@@ -1,0 +1,49 @@
+[package]
+name = "qrcode-rs-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+qrcode-rs = { path = "..", default-features = false, features = ["std", "svg"] }
+
+[workspace]
+
+[[bin]]
+name = "encode"
+path = "fuzz_targets/encode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "encode_with_version"
+path = "fuzz_targets/encode_with_version.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "render_svg"
+path = "fuzz_targets/render_svg.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_payloads"
+path = "fuzz_targets/parse_payloads.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "structured_append"
+path = "fuzz_targets/structured_append.rs"
+test = false
+doc = false
+bench = false
