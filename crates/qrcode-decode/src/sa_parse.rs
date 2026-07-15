@@ -208,6 +208,7 @@ fn decode_kanji(r: &mut BitReader<'_>, version: Version, out: &mut Vec<u8>) -> R
 #[cfg(test)]
 mod tests {
     use super::{SaParseError, parse_sa_datastream};
+    use alloc::vec::Vec;
     use qrcode_core::bits::Bits;
     use qrcode_core::{EcLevel, Version};
 

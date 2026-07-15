@@ -86,6 +86,19 @@ jobs:
         run: |
           cargo test --test core_abstraction --all-features
           cargo test --test core_abstraction --no-default-features
+      - name: Run split crate tests
+        run: |
+          cargo test -p qrcode-core --no-default-features
+          cargo test -p qrcode-core
+          cargo test -p qrcode-render
+          cargo test -p qrcode-render --features std
+          cargo test -p qrcode-parse --no-default-features
+          cargo test -p qrcode-decode --no-default-features
+          cargo test -p qrcode-svg
+          cargo test -p qrcode-eps
+          cargo test -p qrcode-pic
+          cargo test -p qrcode-html
+          cargo test -p qrcode-pdf
       - name: Run property and differential tests
         run: |
           cargo test --test proptest --all-features

@@ -16,7 +16,6 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-#[cfg(not(feature = "std"))]
 extern crate alloc;
 
 #[cfg(not(feature = "std"))]
@@ -214,6 +213,7 @@ pub fn aria_label(html: &str, label: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::Color;
+    use alloc::string::String;
 
     fn sample_html() -> String {
         let modules =
