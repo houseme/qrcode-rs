@@ -82,6 +82,8 @@ jobs:
           toolchain: stable
       - name: Run cargo test
         run: cargo test --features "image,svg,eps,pic"
+      - name: Run facade no-default tests
+        run: cargo test --lib --no-default-features
       - name: Run core abstraction tests
         run: |
           cargo test --test core_abstraction --all-features
