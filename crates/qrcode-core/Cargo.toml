@@ -19,3 +19,6 @@ default = []
 std = []
 # Enables serde Serialize/Deserialize on the core types.
 serde = ["dep:serde"]
+# Exposes hidden benchmark-only hooks for comparing scalar and accelerated
+# internals without duplicating scoring logic in Criterion benches.
+bench-internals = []

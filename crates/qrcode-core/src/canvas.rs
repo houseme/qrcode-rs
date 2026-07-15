@@ -1830,6 +1830,20 @@ impl Canvas {
         write_module_bytes(&self.modules, scratch);
         compute_total_penalty_score_from_bytes(self.version, self.width.as_usize(), scratch)
     }
+
+    #[cfg(feature = "bench-internals")]
+    #[doc(hidden)]
+    pub fn score_mask_for_bench(&self, scratch: &mut Vec<u8>) -> u16 {
+        self.compute_total_penalty_scores_with_scratch(scratch)
+    }
+
+    #[cfg(feature = "bench-internals")]
+    #[doc(hidden)]
+    pub fn score_mask_scalar_for_bench(&self, scratch: &mut Vec<u8>) -> u16 {
+        debug_assert_eq!((self.width * self.width).as_usize(), self.modules.len());
+        write_module_bytes(&self.modules, scratch);
+        compute_total_penalty_score_from_bytes_scalar(self.version, self.width.as_usize(), scratch)
+    }
 }
 
 #[cfg(test)]
@@ -1861,6 +1875,14 @@ fn count_dark_modules_scalar(modules: &[u8]) -> usize {
 
 fn compute_balance_penalty_score(modules: &[u8]) -> u16 {
     let dark_modules = count_dark_modules(modules);
+    let total_modules = modules.len();
+    let ratio = dark_modules * 200 / total_modules;
+    ratio.abs_diff(100).as_u16()
+}
+
+#[cfg(any(test, feature = "bench-internals"))]
+fn compute_balance_penalty_score_scalar(modules: &[u8]) -> u16 {
+    let dark_modules = count_dark_modules_scalar(modules);
     let total_modules = modules.len();
     let ratio = dark_modules * 200 / total_modules;
     ratio.abs_diff(100).as_u16()
@@ -2123,11 +2145,27 @@ fn compute_total_penalty_score_from_bytes(version: Version, width: usize, module
     }
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
+fn compute_total_penalty_score_from_bytes_scalar(version: Version, width: usize, modules: &[u8]) -> u16 {
+    match version {
+        Version::Normal(_) => {
+            let s1_a = compute_adjacent_penalty_score(width, modules, true);
+            let s1_b = compute_adjacent_penalty_score(width, modules, false);
+            let s2 = compute_block_penalty_score_scalar(width, modules);
+            let s3_a = compute_finder_penalty_score(width, modules, true);
+            let s3_b = compute_finder_penalty_score(width, modules, false);
+            let s4 = compute_balance_penalty_score_scalar(modules);
+            s1_a + s1_b + s2 + s3_a + s3_b + s4
+        }
+        Version::Micro(_) => compute_light_side_penalty_score(width, modules),
+    }
+}
+
 #[cfg(test)]
 fn compute_total_penalty_score_scalar(version: Version, width: i16, modules: &[Module]) -> u16 {
     debug_assert_eq!((width * width).as_usize(), modules.len());
     let modules = modules.iter().map(|module| u8::from(module.is_dark())).collect::<Vec<_>>();
-    compute_total_penalty_score_from_bytes(version, width.as_usize(), &modules)
+    compute_total_penalty_score_from_bytes_scalar(version, width.as_usize(), &modules)
 }
 
 #[cfg(test)]
@@ -2135,7 +2173,8 @@ mod penalty_tests {
     use crate::canvas::{
         Canvas, MaskPattern, compute_adjacent_penalty_score, compute_balance_penalty_score,
         compute_block_penalty_score, compute_block_penalty_score_scalar, compute_finder_penalty_score,
-        compute_light_side_penalty_score, compute_total_penalty_score_scalar, count_dark_modules,
+        compute_light_side_penalty_score, compute_total_penalty_score_from_bytes,
+        compute_total_penalty_score_from_bytes_scalar, compute_total_penalty_score_scalar, count_dark_modules,
         count_dark_modules_scalar,
     };
     use crate::cast::As;
@@ -2268,6 +2307,17 @@ mod penalty_tests {
         assert_eq!(
             compute_total_penalty_score_scalar(c.version, c.width, &c.modules),
             c.compute_total_penalty_scores()
+        );
+    }
+
+    #[test]
+    fn accelerated_penalty_score_matches_scalar_byte_grid() {
+        let c = create_test_canvas();
+        let modules = c.modules.iter().map(|module| u8::from(module.is_dark())).collect::<Vec<_>>();
+
+        assert_eq!(
+            compute_total_penalty_score_from_bytes(c.version, c.width.as_usize(), &modules),
+            compute_total_penalty_score_from_bytes_scalar(c.version, c.width.as_usize(), &modules)
         );
     }
 

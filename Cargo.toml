@@ -83,6 +83,9 @@ cli = ["dep:clap", "image", "svg", "eps", "pic", "html", "pdf"]
 # Enables the `rqrr`-backed `RqrrDecoder` (decoding QR codes back to data).
 # Pulls in `rqrr` + the `image` renderer (used to feed grayscale into the decoder).
 decode-rqrr = ["image", "qrcode-decode/rqrr"]
+# Exposes hidden benchmark-only hooks from qrcode-core. Not part of the stable
+# public API surface.
+bench-internals = ["qrcode-core/bench-internals"]
 
 [[bin]]
 name = "qrencodes"

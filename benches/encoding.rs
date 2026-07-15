@@ -5,6 +5,8 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use qrcode_rs::bits::Bits;
 use qrcode_rs::canvas::Canvas;
+#[cfg(feature = "bench-internals")]
+use qrcode_rs::canvas::MaskPattern;
 use qrcode_rs::ec;
 use qrcode_rs::structured_append::StructuredAppend;
 use qrcode_rs::{EcLevel, QrCode, Version};
@@ -20,6 +22,29 @@ fn prepared_canvas(version: Version, ec_level: EcLevel, payload: &[u8]) -> Canva
     canvas.draw_all_functional_patterns();
     canvas.draw_data(&encoded_data, &ec_data);
     canvas
+}
+
+#[cfg(feature = "bench-internals")]
+fn prepared_mask_candidates(version: Version, ec_level: EcLevel, payload: &[u8]) -> Vec<Canvas> {
+    const ALL_PATTERNS_QR: [MaskPattern; 8] = [
+        MaskPattern::Checkerboard,
+        MaskPattern::HorizontalLines,
+        MaskPattern::VerticalLines,
+        MaskPattern::DiagonalLines,
+        MaskPattern::LargeCheckerboard,
+        MaskPattern::Fields,
+        MaskPattern::Diamonds,
+        MaskPattern::Meadow,
+    ];
+
+    ALL_PATTERNS_QR
+        .iter()
+        .map(|&pattern| {
+            let mut canvas = prepared_canvas(version, ec_level, payload);
+            canvas.apply_mask(pattern);
+            canvas
+        })
+        .collect()
 }
 
 fn bench_encode(c: &mut Criterion) {
@@ -61,6 +86,37 @@ fn bench_encode(c: &mut Criterion) {
         mask.bench_function(format!("v{v}_apply_best_mask"), |b| b.iter(|| canvas.apply_best_mask()));
     }
     mask.finish();
+
+    #[cfg(feature = "bench-internals")]
+    {
+        let mut mask_score = c.benchmark_group("mask_scoring");
+        for v in [1_i16, 10, 20, 30, 40] {
+            let candidates = prepared_mask_candidates(Version::Normal(v), EcLevel::L, b"mask");
+            mask_score.bench_function(format!("v{v}_accelerated"), |b| {
+                let mut scratch = Vec::new();
+                b.iter(|| {
+                    let mut best_score = u16::MAX;
+                    for canvas in &candidates {
+                        best_score = best_score.min(canvas.score_mask_for_bench(std::hint::black_box(&mut scratch)));
+                    }
+                    std::hint::black_box(best_score)
+                })
+            });
+
+            mask_score.bench_function(format!("v{v}_scalar"), |b| {
+                let mut scratch = Vec::new();
+                b.iter(|| {
+                    let mut best_score = u16::MAX;
+                    for canvas in &candidates {
+                        best_score =
+                            best_score.min(canvas.score_mask_scalar_for_bench(std::hint::black_box(&mut scratch)));
+                    }
+                    std::hint::black_box(best_score)
+                })
+            });
+        }
+        mask_score.finish();
+    }
 
     // Structured Append: split a payload across N symbols (per-symbol version
     // search via the tier-based path).
