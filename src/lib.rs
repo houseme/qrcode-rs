@@ -512,9 +512,7 @@ impl QrCode {
         config: &RenderConfig,
     ) -> Result<RenderOutput, PluginError> {
         let mut modules = ModuleGrid::new(self.content.clone(), self.width, self.width)?;
-        for postprocessor in registry.postprocessors() {
-            postprocessor.process(&mut modules)?;
-        }
+        registry.process_modules(&mut modules)?;
         registry.build_renderer(renderer_name, config)?.render(&modules)
     }
 }

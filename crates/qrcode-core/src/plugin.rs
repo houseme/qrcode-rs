@@ -333,6 +333,18 @@ impl PluginRegistry {
         &self.postprocessors
     }
 
+    /// Applies all registered postprocessors in registration order.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first [`PluginError`] reported by a postprocessor.
+    pub fn process_modules(&self, modules: &mut dyn ModuleStorage) -> Result<(), PluginError> {
+        for postprocessor in &self.postprocessors {
+            postprocessor.process(modules)?;
+        }
+        Ok(())
+    }
+
     /// Iterates renderer names in deterministic order.
     pub fn renderer_names(&self) -> impl Iterator<Item = &str> {
         self.renderers.keys().map(String::as_str)
@@ -404,6 +416,14 @@ mod tests {
         }
     }
 
+    struct FailPostprocessor;
+
+    impl PostProcessor for FailPostprocessor {
+        fn process(&self, _modules: &mut dyn ModuleStorage) -> Result<(), super::PluginError> {
+            Err(super::PluginError::PostProcessFailed("boom".into()))
+        }
+    }
+
     struct DemoPlugin;
 
     impl QrPlugin for DemoPlugin {
@@ -472,10 +492,20 @@ mod tests {
         registry.register_postprocessor(Box::new(FlipFirst));
         let mut grid = ModuleGrid::new(alloc::vec![Color::Light; 4], 2, 2).unwrap();
 
-        for postprocessor in registry.postprocessors() {
-            postprocessor.process(&mut grid).unwrap();
-        }
+        registry.process_modules(&mut grid).unwrap();
 
         assert_eq!(ModuleSource::get(&grid, 0, 0), Color::Dark);
+    }
+
+    #[test]
+    fn process_modules_stops_on_first_postprocessor_error() {
+        let mut registry = PluginRegistry::new();
+        registry.register_postprocessor(Box::new(FailPostprocessor));
+        let mut grid = ModuleGrid::new(alloc::vec![Color::Light; 4], 2, 2).unwrap();
+
+        assert!(matches!(
+            registry.process_modules(&mut grid),
+            Err(super::PluginError::PostProcessFailed(message)) if message == "boom"
+        ));
     }
 }
