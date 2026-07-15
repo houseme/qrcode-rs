@@ -9,6 +9,9 @@
 - **`compat-1x` feature** — a transitional compatibility contract that keeps
   the 1.x facade constructors, render chain, indexing, and payload helpers
   covered while 2.0 internals move into split workspace crates.
+- **`qrcode-compat` workspace crate** — local-only migration harness for the
+  dedicated dependency-name path; publishing is deferred until the facade crate
+  itself is bumped to 2.0.0.
 
 ### Notes / deferred
 

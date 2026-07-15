@@ -51,7 +51,7 @@ println!("{}", string);
 
 ## Migration
 
-- [Migrating from qrcode-rs 1.x to 2.0](../MIGRATION-1.x-to-2.0.md)
+- [Migrating from qrcode-rs 1.x to 2.0](https://github.com/houseme/qrcode-rs/blob/main/MIGRATION-1.x-to-2.0.md)
 
 ## License
 

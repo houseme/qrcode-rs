@@ -19,12 +19,15 @@ it keeps 1.x-shaped constructors, render chains, indexing, and payload helpers
 available while new code can use the builder, trait-based module views, and
 split render/parse/decode crates.
 
-If you prefer a dedicated dependency name for compatibility code, use the thin
-`qrcode-compat` crate. It re-exports the facade with `compat-1x` enabled:
+During 2.0 development, the workspace also contains a thin `qrcode-compat`
+crate for local migration testing. It re-exports the facade with `compat-1x`
+enabled, but it is intentionally not published until the facade crate itself is
+bumped and published as 2.0.0. Use a workspace path dependency when testing it
+inside this repository:
 
 ```toml
 [dependencies]
-qrcode-compat = "0.1"
+qrcode-compat = { path = "crates/qrcode-compat" }
 ```
 
 ## API Map
@@ -66,8 +69,8 @@ work, the important flags are:
 5. If your library only needs one layer, depend on the split crate directly
    (`qrcode-core`, `qrcode-render`, `qrcode-parse`, `qrcode-decode`, or a
    renderer backend) instead of the full facade.
-6. If you used `qrcode-compat`, switch imports back to the facade or split
-   crates once no 1.x-only paths remain.
+6. If you used the workspace-local `qrcode-compat` crate, switch imports back
+   to the facade or split crates once no 1.x-only paths remain.
 7. Remove `compat-1x` once no 1.x-only paths remain.
 
 ## Compatibility Checks
