@@ -4,12 +4,17 @@
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use qrcode_rs::QrCode;
+use qrcode_rs::render::Renderer;
 
 fn bench_render(c: &mut Criterion) {
     let code = QrCode::new(b"https://example.com/qrcode-rs").unwrap();
+    let borrowed = code.as_ref();
 
     let mut g = c.benchmark_group("render");
     g.bench_function("string", |b| b.iter(|| code.render::<char>().dark_color('#').light_color(' ').build()));
+    g.bench_function("borrowed_symbol_string", |b| {
+        b.iter(|| Renderer::<char>::from_symbol(&borrowed).dark_color('#').light_color(' ').build())
+    });
 
     #[cfg(feature = "svg")]
     {
