@@ -1074,6 +1074,23 @@ impl<D: AsRef<[u8]>> QrCodeBuilder<D> {
     /// immediately and returns [`QrError::InvalidCharacter`] when the selected
     /// mode cannot represent it.
     ///
+    /// ```rust
+    /// use qrcode_rs::{NumericMode, QrCode, QrError, Version};
+    ///
+    /// let code = QrCode::builder(b"01234567")
+    ///     .version(Version::Normal(1))
+    ///     .encoding_mode_typed::<NumericMode>()
+    ///     .unwrap()
+    ///     .build()
+    ///     .unwrap();
+    /// assert_eq!(code.version(), Version::Normal(1));
+    ///
+    /// let err = QrCode::builder(b"12a")
+    ///     .encoding_mode_typed::<NumericMode>()
+    ///     .unwrap_err();
+    /// assert_eq!(err, QrError::InvalidCharacter { position: 2, byte: b'a' });
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns [`QrError::InvalidCharacter`] with the first invalid byte when
