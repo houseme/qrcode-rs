@@ -1329,6 +1329,16 @@ where
 {
 }
 
+impl<I> ExactSizeIterator for QrCodeStream<I>
+where
+    I: ExactSizeIterator,
+    I::Item: AsRef<[u8]>,
+{
+    fn len(&self) -> usize {
+        self.inputs.len()
+    }
+}
+
 //}}}
 //------------------------------------------------------------------------------
 //{{{ Info
@@ -1793,6 +1803,15 @@ mod api_tests {
         let batched = QrCode::batch(inputs, EcLevel::H).unwrap();
 
         assert_eq!(streamed.iter().map(colors).collect::<Vec<_>>(), batched.iter().map(colors).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn stream_exposes_exact_remaining_len() {
+        let mut stream = QrCode::stream(["alpha", "beta", "gamma"]);
+
+        assert_eq!(stream.len(), 3);
+        assert!(stream.next().unwrap().is_ok());
+        assert_eq!(stream.len(), 2);
     }
 
     #[test]
