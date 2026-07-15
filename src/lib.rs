@@ -1663,6 +1663,24 @@ mod api_tests {
     }
 
     #[test]
+    fn render_with_uses_builtin_invert_modules_plugin() {
+        let code = QrCode::new(b"plugin").unwrap();
+        let mut registry = PluginRegistry::new();
+        registry.register_plugin(&crate::render::plugin::PlainTextRendererPlugin);
+        registry.register_plugin(&crate::render::plugin::InvertModulesPlugin);
+        let config =
+            RenderConfig::new().with_option("dark", "X").with_option("light", ".").with_option("quiet_zone", "0");
+
+        let output = code
+            .render_with(&registry, crate::render::plugin::PlainTextRendererPlugin::RENDERER_NAME, &config)
+            .unwrap();
+        let direct =
+            code.render::<char>().dark_color('.').light_color('X').quiet_zone(false).module_dimensions(1, 1).build();
+
+        assert_eq!(output, RenderOutput::Text(direct));
+    }
+
+    #[test]
     fn encode_with_uses_registered_encoder() {
         let mut registry = PluginRegistry::new();
         registry.register_encoder("length", Box::new(LengthPluginFactory));

@@ -2,8 +2,8 @@
 
 use alloc::{boxed::Box, string::String};
 use qrcode_core::{
-    Color, DynRenderer, ModuleSource, PluginError, PluginRegistry, QrPlugin, RenderConfig, RenderOutput,
-    RendererFactory,
+    Color, DynRenderer, ModuleSource, ModuleStorage, PluginError, PluginRegistry, PostProcessor, QrPlugin,
+    RenderConfig, RenderOutput, RendererFactory,
 };
 
 /// Built-in plugin that registers the plain-text renderer.
@@ -26,6 +26,39 @@ impl QrPlugin for PlainTextRendererPlugin {
 
     fn register(&self, registry: &mut PluginRegistry) {
         registry.register_renderer(Self::RENDERER_NAME, Box::new(PlainTextRendererFactory));
+    }
+}
+
+/// Built-in plugin that registers [`InvertModulesPostProcessor`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct InvertModulesPlugin;
+
+impl QrPlugin for InvertModulesPlugin {
+    fn name(&self) -> &str {
+        "qrcode-render/invert-modules"
+    }
+
+    fn version(&self) -> &str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    fn register(&self, registry: &mut PluginRegistry) {
+        registry.register_postprocessor(Box::new(InvertModulesPostProcessor));
+    }
+}
+
+/// Postprocessor that flips every module from dark to light, or light to dark.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct InvertModulesPostProcessor;
+
+impl PostProcessor for InvertModulesPostProcessor {
+    fn process(&self, modules: &mut dyn ModuleStorage) -> Result<(), PluginError> {
+        for y in 0..modules.height() {
+            for x in 0..modules.width() {
+                modules.set(x, y, !modules.get(x, y));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -99,10 +132,10 @@ fn config_u32(config: &RenderConfig, key: &str, default: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{PlainTextRendererFactory, PlainTextRendererPlugin};
+    use super::{InvertModulesPlugin, InvertModulesPostProcessor, PlainTextRendererFactory, PlainTextRendererPlugin};
     use qrcode_core::{
-        Color, ModuleGrid, ModuleSource, PluginError, PluginRegistry, QrPlugin, RenderConfig, RenderOutput,
-        RendererFactory,
+        Color, ModuleGrid, ModuleSource, PluginError, PluginRegistry, PostProcessor, QrPlugin, RenderConfig,
+        RenderOutput, RendererFactory,
     };
 
     struct BadSource {
@@ -133,6 +166,24 @@ mod tests {
         PlainTextRendererPlugin.register(&mut registry);
 
         assert!(registry.renderer(PlainTextRendererPlugin::RENDERER_NAME).is_some());
+    }
+
+    #[test]
+    fn invert_modules_plugin_registers_postprocessor() {
+        let mut registry = PluginRegistry::new();
+        InvertModulesPlugin.register(&mut registry);
+
+        assert_eq!(registry.postprocessors().len(), 1);
+    }
+
+    #[test]
+    fn invert_modules_postprocessor_flips_all_modules() {
+        let mut modules =
+            ModuleGrid::new(alloc::vec![Color::Dark, Color::Light, Color::Light, Color::Dark], 2, 2).unwrap();
+
+        InvertModulesPostProcessor.process(&mut modules).unwrap();
+
+        assert_eq!(modules.modules(), [Color::Light, Color::Dark, Color::Dark, Color::Light]);
     }
 
     #[test]
