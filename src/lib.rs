@@ -34,7 +34,6 @@
     clippy::must_use_candidate, // This is just annoying.
 )]
 
-#[cfg(not(feature = "std"))]
 extern crate alloc;
 
 pub mod render;
@@ -86,6 +85,41 @@ pub struct QrCode {
     version: Version,
     ec_level: EcLevel,
     width: usize,
+}
+
+/// Borrowed plugin view for a QR code.
+///
+/// This is a convenience wrapper around [`QrCode::render_with`] for code that
+/// wants to bind a symbol and registry once, then render through one or more
+/// named plugin renderers.
+pub struct QrCodePlugins<'a> {
+    code: &'a QrCode,
+    registry: &'a PluginRegistry,
+}
+
+impl QrCodePlugins<'_> {
+    /// Returns the QR code bound to this plugin view.
+    #[must_use]
+    pub fn code(&self) -> &QrCode {
+        self.code
+    }
+
+    /// Returns the plugin registry bound to this plugin view.
+    #[must_use]
+    pub fn registry(&self) -> &PluginRegistry {
+        self.registry
+    }
+
+    /// Renders the bound QR code through a named plugin renderer.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError::RendererNotFound`] when no renderer is registered
+    /// with `renderer_name`, or another [`PluginError`] from grid construction,
+    /// postprocessing, or rendering.
+    pub fn render(&self, renderer_name: &str, config: &RenderConfig) -> Result<RenderOutput, PluginError> {
+        self.code.render_with(self.registry, renderer_name, config)
+    }
 }
 
 // Compile-time guarantee that QrCode stays Send + Sync as fields evolve.
@@ -617,6 +651,15 @@ impl QrCode {
         let mut modules = ModuleGrid::new(self.content.clone(), self.width, self.width)?;
         registry.process_modules(&mut modules)?;
         registry.build_renderer(renderer_name, config)?.render(&modules)
+    }
+
+    /// Binds this QR code to a plugin registry for fluent plugin rendering.
+    ///
+    /// The returned view borrows both values and delegates to
+    /// [`QrCode::render_with`], so it has the same deterministic, explicit
+    /// registry behavior without introducing global plugin state.
+    pub fn with_plugins<'a>(&'a self, registry: &'a PluginRegistry) -> QrCodePlugins<'a> {
+        QrCodePlugins { code: self, registry }
     }
 }
 
@@ -1664,6 +1707,12 @@ mod api_tests {
         PluginRegistry, PostProcessor, QrCode, QrError, QrSymbol, RenderConfig, RenderOutput, RendererFactory, Version,
         VersionEncoder,
     };
+    use alloc::{
+        boxed::Box,
+        string::{String, ToString},
+        vec,
+        vec::Vec,
+    };
     use qrcode_core::traits::{
         Encoder as CoreEncoder, ModuleSource as CoreModuleSource, ModuleStorage as CoreModuleStorage,
         Renderer as CoreRenderer,
@@ -1817,6 +1866,21 @@ mod api_tests {
 
         assert_eq!(text.len(), code.width() * code.width());
         assert!(text.starts_with('#'));
+    }
+
+    #[test]
+    fn with_plugins_renders_through_bound_registry() {
+        let code = QrCode::new(b"plugin").unwrap();
+        let mut registry = PluginRegistry::new();
+        registry.register_renderer("text", Box::new(TextPluginFactory));
+        registry.register_postprocessor(Box::new(DarkenFirstModule));
+
+        let bound = code.with_plugins(&registry);
+        let output = bound.render("text", &RenderConfig::new()).unwrap();
+
+        assert_eq!(bound.code().width(), code.width());
+        assert!(bound.registry().renderer("text").is_some());
+        assert_eq!(output, code.render_with(&registry, "text", &RenderConfig::new()).unwrap());
     }
 
     #[test]

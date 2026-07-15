@@ -274,6 +274,7 @@ pub fn reassemble(parts: &[SaSymbol<'_>]) -> Result<Vec<u8>, SaError> {
 mod tests {
     use super::StructuredAppend;
     use crate::types::{EcLevel, QrError};
+    use alloc::{vec, vec::Vec};
 
     #[test]
     fn test_new_rejects_out_of_range() {
@@ -352,6 +353,7 @@ mod tests {
 #[cfg(test)]
 mod reassemble_tests {
     use super::{SaError, SaSymbol, reassemble};
+    use alloc::vec::Vec;
 
     fn sym(position: u8, total: u8, parity: u8, data: &[u8]) -> SaSymbol<'_> {
         SaSymbol { position, total, parity, data }
