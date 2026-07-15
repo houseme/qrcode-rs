@@ -1857,6 +1857,13 @@ fn write_module_bytes(modules: &[Module], output: &mut Vec<u8>) {
 }
 
 fn count_dark_modules(modules: &[u8]) -> usize {
+    #[cfg(target_arch = "aarch64")]
+    {
+        // AArch64 guarantees NEON support; the helper only performs guarded
+        // unaligned loads within the input slice.
+        unsafe { count_dark_modules_neon(modules) }
+    }
+
     #[cfg(target_arch = "x86_64")]
     {
         if avx2_available() {
@@ -1870,9 +1877,14 @@ fn count_dark_modules(modules: &[u8]) -> usize {
             // 16-byte loads.
             return unsafe { count_dark_modules_sse2(modules) };
         }
+
+        return count_dark_modules_scalar(modules);
     }
 
-    count_dark_modules_scalar(modules)
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+    {
+        count_dark_modules_scalar(modules)
+    }
 }
 
 fn count_dark_modules_scalar(modules: &[u8]) -> usize {
@@ -2031,6 +2043,13 @@ fn line_range_has_dark(line: &[u8], start: usize, end: usize) -> bool {
 }
 
 fn compute_block_penalty_score(width: usize, modules: &[u8]) -> u16 {
+    #[cfg(target_arch = "aarch64")]
+    {
+        // AArch64 guarantees NEON support; the helper only performs guarded
+        // unaligned loads within each row pair.
+        unsafe { compute_block_penalty_score_neon(width, modules) }
+    }
+
     #[cfg(target_arch = "x86_64")]
     {
         if avx2_available() {
@@ -2044,11 +2063,22 @@ fn compute_block_penalty_score(width: usize, modules: &[u8]) -> u16 {
             // each row pair.
             return unsafe { compute_block_penalty_score_sse2(width, modules) };
         }
+
+        return compute_block_penalty_score_scalar(width, modules);
     }
 
-    compute_block_penalty_score_scalar(width, modules)
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+    {
+        compute_block_penalty_score_scalar(width, modules)
+    }
 }
 
+#[cfg(any(
+    test,
+    feature = "bench-internals",
+    target_arch = "x86_64",
+    not(any(target_arch = "aarch64", target_arch = "x86_64"))
+))]
 fn compute_block_penalty_score_scalar(width: usize, modules: &[u8]) -> u16 {
     let mut total_score = 0;
 
@@ -2084,6 +2114,27 @@ fn avx2_available() -> bool {
 #[cfg(all(target_arch = "x86_64", not(feature = "std")))]
 fn avx2_available() -> bool {
     false
+}
+
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn count_dark_modules_neon(modules: &[u8]) -> usize {
+    use core::arch::aarch64::{vaddvq_u8, vceqq_u8, vcntq_u8, vdupq_n_u8, vld1q_u8, vmvnq_u8};
+
+    let mut count = 0;
+    let mut offset = 0;
+    let zero = vdupq_n_u8(0);
+
+    while offset + 16 <= modules.len() {
+        // The loop guard ensures the full 16-byte vector is in bounds for this
+        // slice.
+        let chunk = unsafe { vld1q_u8(modules.as_ptr().wrapping_add(offset)) };
+        let nonzero_lanes = vmvnq_u8(vceqq_u8(chunk, zero));
+        count += (vaddvq_u8(vcntq_u8(nonzero_lanes)) / 8) as usize;
+        offset += 16;
+    }
+
+    count + count_dark_modules_scalar(&modules[offset..])
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -2136,6 +2187,39 @@ fn count_dark_modules_sse2_remainder(modules: &[u8]) -> usize {
     }
 
     count + count_dark_modules_scalar(&modules[offset..])
+}
+
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn compute_block_penalty_score_neon(width: usize, modules: &[u8]) -> u16 {
+    use core::arch::aarch64::{vaddvq_u8, vandq_u8, vceqq_u8, vcntq_u8, vld1q_u8};
+
+    let mut total_score = 0;
+    for y in 0..width.saturating_sub(1) {
+        let row = &modules[y * width..][..width];
+        let next_row = &modules[(y + 1) * width..][..width];
+        let mut x = 0;
+
+        while x + 16 < width {
+            // The loop guard ensures all four 16-byte windows stay inside
+            // their row slices.
+            let row_chunk = unsafe { vld1q_u8(row.as_ptr().wrapping_add(x)) };
+            let row_right_chunk = unsafe { vld1q_u8(row.as_ptr().wrapping_add(x + 1)) };
+            let next_chunk = unsafe { vld1q_u8(next_row.as_ptr().wrapping_add(x)) };
+            let next_right_chunk = unsafe { vld1q_u8(next_row.as_ptr().wrapping_add(x + 1)) };
+
+            let horizontal = vceqq_u8(row_chunk, row_right_chunk);
+            let vertical = vceqq_u8(row_chunk, next_chunk);
+            let diagonal = vceqq_u8(row_chunk, next_right_chunk);
+            let blocks = vandq_u8(vandq_u8(horizontal, vertical), diagonal);
+            total_score += (vaddvq_u8(vcntq_u8(blocks)) / 8) as u16 * 3;
+            x += 16;
+        }
+
+        total_score += compute_block_penalty_score_scalar_tail(row, next_row, x);
+    }
+
+    total_score
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -2214,7 +2298,7 @@ unsafe fn compute_block_penalty_score_sse2(width: usize, modules: &[u8]) -> u16 
     total_score
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 fn compute_block_penalty_score_scalar_tail(row: &[u8], next_row: &[u8], start: usize) -> u16 {
     let mut total_score = 0;
     let mut x = start;
