@@ -187,6 +187,18 @@ pub trait ModuleSource {
     /// Returns all modules in row-major order.
     fn modules(&self) -> &[Color];
 
+    /// Returns row `y` as a contiguous row-major slice.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `y >= height()` or when [`modules`](Self::modules) does not
+    /// contain a complete row-major grid.
+    fn row(&self, y: usize) -> &[Color] {
+        let width = self.width();
+        let start = y * width;
+        &self.modules()[start..start + width]
+    }
+
     /// Returns whether this storage has no modules.
     fn is_empty(&self) -> bool {
         self.width() == 0 || self.height() == 0
@@ -391,6 +403,7 @@ mod tests {
         assert_eq!(view.width(), 2);
         assert_eq!(view.height(), 2);
         assert_eq!(view.modules(), modules);
+        assert_eq!(view.row(1), &[Color::Light, Color::Dark]);
         assert_eq!(view.get(0, 0), Color::Dark);
         assert_eq!(view.get(1, 1), Color::Dark);
     }
@@ -482,6 +495,7 @@ mod tests {
         assert_eq!(ModuleSource::width(&storage), 2);
         assert_eq!(ModuleSource::height(&storage), 2);
         assert_eq!(ModuleSource::get(&storage, 1, 0), Color::Dark);
+        assert_eq!(<DummyStorage as ModuleSource>::row(&storage, 1), &[Color::Dark, Color::Light]);
         assert_eq!(ModuleSource::modules(&storage), &[Color::Light, Color::Dark, Color::Dark, Color::Light]);
     }
 }
