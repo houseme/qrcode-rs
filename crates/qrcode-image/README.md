@@ -38,6 +38,10 @@ let png = encode_png(&source, RenderOptions::default().module_size(4, 4))?;
 `render_rgba`, `render_luma`, and `render_dynamic` provide the corresponding
 in-memory image forms. Dimension arithmetic is checked before allocating an
 image, so oversized module or quiet-zone settings return an error.
+Module dimensions must be non-zero; invalid options return
+`ImageRenderError::InvalidModuleDimensions` instead of being silently
+clamped. Options can also be checked ahead of time with
+`RenderOptions::validate()`.
 
 The `std` feature is available independently, matching the feature shape of
 `qrcode-render`; `image` implies `std` and enables PNG/JPEG support.

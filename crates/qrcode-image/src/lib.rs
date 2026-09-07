@@ -72,6 +72,26 @@ impl Default for RenderOptions {
 
 #[cfg(feature = "image")]
 impl RenderOptions {
+    /// Validates the options before rendering.
+    ///
+    /// Module dimensions must be non-zero. A zero dimension is almost always
+    /// a caller configuration error, so the high-level helpers report it
+    /// instead of silently changing it to one pixel.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ImageRenderError::InvalidModuleDimensions`] when either
+    /// module dimension is zero.
+    pub const fn validate(self) -> Result<(), ImageRenderError> {
+        if self.module_width == 0 || self.module_height == 0 {
+            return Err(ImageRenderError::InvalidModuleDimensions {
+                width: self.module_width,
+                height: self.module_height,
+            });
+        }
+        Ok(())
+    }
+
     /// Sets the quiet-zone width in modules.
     #[must_use]
     pub const fn quiet_zone(mut self, quiet_zone: u32) -> Self {
@@ -101,6 +121,13 @@ impl RenderOptions {
 pub enum ImageRenderError {
     /// The source module grid is invalid.
     Render(RenderError),
+    /// A module dimension was set to zero.
+    InvalidModuleDimensions {
+        /// Requested width of each module in pixels.
+        width: u32,
+        /// Requested height of each module in pixels.
+        height: u32,
+    },
     /// The requested output dimensions exceed the image crate's `u32` limits.
     OutputTooLarge {
         /// Requested output width in pixels.
@@ -115,6 +142,9 @@ impl core::fmt::Display for ImageRenderError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Render(error) => error.fmt(f),
+            Self::InvalidModuleDimensions { width, height } => {
+                write!(f, "module dimensions must be non-zero: {width}x{height}")
+            }
             Self::OutputTooLarge { width, height } => {
                 write!(f, "requested image dimensions are too large: {width}x{height}")
             }
@@ -177,9 +207,10 @@ where
     P: Pixel,
     S: ModuleSource + ?Sized,
 {
+    options.validate()?;
     let mut renderer = Renderer::<P>::try_from_source(source, options.quiet_zone)?;
-    let module_width = options.module_width.max(1);
-    let module_height = options.module_height.max(1);
+    let module_width = options.module_width;
+    let module_height = options.module_height;
     let quiet_zone = if options.include_quiet_zone { options.quiet_zone } else { 0 };
     let quiet_zone_pixels =
         quiet_zone.checked_mul(2).ok_or(ImageRenderError::OutputTooLarge { width: u32::MAX, height: u32::MAX })?;
@@ -304,5 +335,28 @@ mod tests {
         let error = render_luma(&source, RenderOptions::default().module_size(u32::MAX, 1)).unwrap_err();
 
         assert!(matches!(error, super::ImageRenderError::OutputTooLarge { .. }));
+    }
+
+    #[test]
+    fn zero_module_dimensions_are_rejected() {
+        let modules = [Color::Dark];
+        let source = ModuleView::new(&modules, 1).expect("valid test grid");
+
+        let width_error = render_luma(&source, RenderOptions::default().module_size(0, 2)).unwrap_err();
+        assert!(matches!(width_error, super::ImageRenderError::InvalidModuleDimensions { width: 0, height: 2 }));
+
+        let height_error = render_luma(&source, RenderOptions::default().module_size(2, 0)).unwrap_err();
+        assert!(matches!(height_error, super::ImageRenderError::InvalidModuleDimensions { width: 2, height: 0 }));
+    }
+
+    #[test]
+    fn render_options_validation_is_const_friendly() {
+        const VALID: Result<(), super::ImageRenderError> =
+            RenderOptions { quiet_zone: 4, module_width: 8, module_height: 8, include_quiet_zone: true }.validate();
+        const INVALID: Result<(), super::ImageRenderError> =
+            RenderOptions { quiet_zone: 4, module_width: 0, module_height: 8, include_quiet_zone: true }.validate();
+
+        assert!(VALID.is_ok());
+        assert!(matches!(INVALID, Err(super::ImageRenderError::InvalidModuleDimensions { width: 0, height: 8 })));
     }
 }
