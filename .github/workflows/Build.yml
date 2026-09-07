@@ -96,6 +96,8 @@ jobs:
           cargo test -p qrcode-core
           cargo test -p qrcode-render
           cargo test -p qrcode-render --features std
+          cargo test -p qrcode-image --no-default-features
+          cargo test -p qrcode-image --features image
           cargo test -p qrcode-parse --no-default-features
           cargo test -p qrcode-decode --no-default-features
           cargo test -p qrcode-decode --features image,rqrr
@@ -104,6 +106,7 @@ jobs:
           cargo test -p qrcode-pic
           cargo test -p qrcode-html
           cargo test -p qrcode-pdf
+          cargo run -p qrcode-cli -- --help
       - name: Run property and differential tests
         run: |
           cargo test --test proptest --all-features
@@ -296,6 +299,7 @@ jobs:
           version="2.0.0"
           publish_crate qrcode-core "${version}"
           publish_crate qrcode-render "${version}"
+          publish_crate qrcode-image "${version}"
           publish_crate qrcode-parse "${version}"
           publish_crate qrcode-decode "${version}"
           publish_crate qrcode-svg "${version}"
@@ -304,6 +308,7 @@ jobs:
           publish_crate qrcode-html "${version}"
           publish_crate qrcode-pdf "${version}"
           publish_crate qrcode-rs "${version}" false
+          publish_crate qrcode-cli "${version}" false
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
           PUBLISH_COOLDOWN_SECONDS: "300"

@@ -73,10 +73,12 @@ surface:
 | Crate | Use it when you need |
 | --- | --- |
 | `qrcode-core` | Core encoding types, module views, traits, and plugin contracts. |
-| `qrcode-render` | Shared render traits, text/Unicode/ANSI/image helpers, and color utilities. |
+| `qrcode-render` | Shared render traits, text/Unicode/ANSI helpers, and color utilities. |
+| `qrcode-image` | Image-backed pixels, PNG/JPEG encoding, logo overlays, and gradients. |
 | `qrcode-parse` | WiFi, vCard, and GS1 payload parsing without the facade. |
 | `qrcode-decode` | Decoder traits, grayscale views, Structured Append parsing, and the optional `rqrr` adapter. |
 | `qrcode-svg`, `qrcode-eps`, `qrcode-pic`, `qrcode-html`, `qrcode-pdf` | Individual renderer backends. |
+| `qrcode-cli` | Independently installable `qrencodes` command-line binary. |
 
 For example:
 
@@ -296,7 +298,7 @@ The [`examples/`](examples) directory covers the main workflows in this crate:
 
 ## Migration
 
-For the 1.x to 2.0 upgrade path, see [MIGRATION-1.x-to-2.0.md](MIGRATION-1.x-to-2.0.md). The `compat-1x` feature keeps the legacy facade available while call sites move to the builder, module-view, streaming, and split-crate APIs.
+For the 1.x to 2.0 upgrade path, see [MIGRATION-1.x-to-2.0.md](MIGRATION-1.x-to-2.0.md). The `compat-1x` feature keeps the legacy facade available while call sites move to the builder, module-view, streaming, and split-crate APIs. Plugin authors can follow [PLUGIN_GUIDE.md](PLUGIN_GUIDE.md).
 
 ## License
 

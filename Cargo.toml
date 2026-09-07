@@ -17,11 +17,13 @@ exclude = ["tests/*", ".gitignore", ".github/*", "rust-toolchain.toml", "rustfmt
 
 [workspace]
 members = [
+    "crates/qrcode-cli",
     "crates/qrcode-compat",
     "crates/qrcode-core",
     "crates/qrcode-decode",
     "crates/qrcode-eps",
     "crates/qrcode-html",
+    "crates/qrcode-image",
     "crates/qrcode-pdf",
     "crates/qrcode-pic",
     "crates/qrcode-parse",
@@ -45,6 +47,7 @@ qrcode-core = { path = "crates/qrcode-core", version = "2.0.0", default-features
 qrcode-decode = { path = "crates/qrcode-decode", version = "2.0.0", default-features = false }
 qrcode-eps = { path = "crates/qrcode-eps", version = "2.0.0", default-features = false, optional = true }
 qrcode-html = { path = "crates/qrcode-html", version = "2.0.0", default-features = false, optional = true }
+qrcode-image = { path = "crates/qrcode-image", version = "2.0.0", default-features = false, optional = true }
 qrcode-pdf = { path = "crates/qrcode-pdf", version = "2.0.0", default-features = false, optional = true }
 qrcode-pic = { path = "crates/qrcode-pic", version = "2.0.0", default-features = false, optional = true }
 qrcode-parse = { path = "crates/qrcode-parse", version = "2.0.0", default-features = false }
@@ -66,13 +69,14 @@ std = [
     "qrcode-decode/std",
     "qrcode-eps?/std",
     "qrcode-html?/std",
+    "qrcode-image?/std",
     "qrcode-pdf?/std",
     "qrcode-pic?/std",
     "qrcode-parse/std",
     "qrcode-render/std",
     "qrcode-svg?/std",
 ]
-image = ["dep:image", "image/png", "std", "qrcode-decode/image", "qrcode-render/image"]
+image = ["dep:image", "image/png", "std", "qrcode-decode/image", "qrcode-image/image"]
 svg = ["dep:qrcode-svg"]
 pic = ["dep:qrcode-pic"]
 eps = ["dep:qrcode-eps"]

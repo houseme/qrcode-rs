@@ -1,7 +1,7 @@
 # qrcode-render
 
 `qrcode-render` contains the shared QR rendering traits and built-in text,
-Unicode, ANSI, image, color, and template helpers used by
+Unicode, ANSI, color, and template helpers used by
 [`qrcode-rs`](https://crates.io/crates/qrcode-rs).
 
 Most users should render through the facade crate:
@@ -25,9 +25,11 @@ qrcode-render = "2.0"
 | Feature | Purpose |
 | --- | --- |
 | `std` | Opts into the standard library. Disabled by default. |
-| `image` | Enables image-backed rendering helpers and PNG/JPEG support. |
+| `image` | Enables the image backend implementation and PNG/JPEG support. |
 
 ## Companion Backends
 
 Format-specific vector backends live in separate crates:
-`qrcode-svg`, `qrcode-eps`, `qrcode-pic`, `qrcode-html`, and `qrcode-pdf`.
+`qrcode-image`, `qrcode-svg`, `qrcode-eps`, `qrcode-pic`, `qrcode-html`, and
+`qrcode-pdf`. Use `qrcode-image` when you want the image backend as a focused
+dependency; its API re-exports this crate's image implementation.

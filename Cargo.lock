@@ -960,6 +960,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "qrcode-cli"
+version = "2.0.0"
+dependencies = [
+ "clap",
+ "qrcode-eps",
+ "qrcode-html",
+ "qrcode-image",
+ "qrcode-pdf",
+ "qrcode-pic",
+ "qrcode-render",
+ "qrcode-rs",
+ "qrcode-svg",
+]
+
+[[package]]
 name = "qrcode-compat"
 version = "2.0.0"
 dependencies = [
@@ -994,6 +1009,15 @@ dependencies = [
 name = "qrcode-html"
 version = "2.0.0"
 dependencies = [
+ "qrcode-core",
+ "qrcode-render",
+]
+
+[[package]]
+name = "qrcode-image"
+version = "2.0.0"
+dependencies = [
+ "image",
  "qrcode-core",
  "qrcode-render",
 ]
@@ -1040,6 +1064,7 @@ dependencies = [
  "qrcode-decode",
  "qrcode-eps",
  "qrcode-html",
+ "qrcode-image",
  "qrcode-parse",
  "qrcode-pdf",
  "qrcode-pic",
