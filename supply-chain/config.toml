@@ -1,908 +1,909 @@
-# cargo-vet configuration. This baseline is generated from the locked,
-# all-features dependency graph. Exemptions are exact versions and are the
-# review backlog; replace them with audits or trusted peer imports over time.
+
+# cargo-vet config file
 
 [cargo-vet]
 version = "0.10"
 
-[policy."qrcode-rs"]
+[policy.qrcode-cli]
 audit-as-crates-io = false
 
-[policy."qrcode-cli"]
+[policy.qrcode-compat]
 audit-as-crates-io = false
 
-[policy."qrcode-compat"]
+[policy.qrcode-core]
 audit-as-crates-io = false
 
-[policy."qrcode-core"]
+[policy.qrcode-decode]
 audit-as-crates-io = false
 
-[policy."qrcode-decode"]
+[policy.qrcode-eps]
 audit-as-crates-io = false
 
-[policy."qrcode-eps"]
+[policy.qrcode-html]
 audit-as-crates-io = false
 
-[policy."qrcode-html"]
+[policy.qrcode-image]
 audit-as-crates-io = false
 
-[policy."qrcode-image"]
+[policy.qrcode-parse]
 audit-as-crates-io = false
 
-[policy."qrcode-parse"]
+[policy.qrcode-pdf]
 audit-as-crates-io = false
 
-[policy."qrcode-pdf"]
+[policy.qrcode-pic]
 audit-as-crates-io = false
 
-[policy."qrcode-pic"]
+[policy.qrcode-render]
 audit-as-crates-io = false
 
-[policy."qrcode-render"]
+[policy.qrcode-rs]
 audit-as-crates-io = false
 
-[policy."qrcode-svg"]
+[policy.qrcode-svg]
 audit-as-crates-io = false
-[[exemptions."adler2"]]
+
+[[exemptions.adler2]]
 version = "2.0.1"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."allocator-api2"]]
-version = "0.2.21"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."equivalent"]]
-version = "1.0.2"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."foldhash"]]
-version = "0.2.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."g2gen"]]
-version = "1.2.2"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."g2p"]]
-version = "1.2.2"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."g2poly"]]
-version = "1.2.2"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."hashbrown"]]
-version = "0.16.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."lru"]]
-version = "0.16.4"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."pin-project-lite"]]
-version = "0.2.17"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."rqrr"]]
-version = "0.10.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."tokio"]]
-version = "1.52.3"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-[[exemptions."aho-corasick"]]
+[[exemptions.aho-corasick]]
 version = "1.1.4"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."aligned"]]
+[[exemptions.aligned]]
 version = "0.4.3"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."aligned-vec"]]
+[[exemptions.aligned-vec]]
 version = "0.6.4"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."alloca"]]
+[[exemptions.alloca]]
 version = "0.4.0"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."anes"]]
-version = "0.1.6"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."anstyle"]]
-version = "1.0.14"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."anyhow"]]
-version = "1.0.103"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."arbitrary"]]
-version = "1.4.2"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."arg_enum_proc_macro"]]
-version = "0.3.4"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."arrayvec"]]
-version = "0.7.8"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."as-slice"]]
-version = "0.2.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."autocfg"]]
-version = "1.5.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."av-scenechange"]]
-version = "0.14.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."av1-grain"]]
-version = "0.2.5"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."avif-serialize"]]
-version = "0.8.9"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."bit-set"]]
-version = "0.8.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."bit-vec"]]
-version = "0.8.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."bit_field"]]
-version = "0.10.3"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."bitflags"]]
-version = "2.13.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."bitstream-io"]]
-version = "4.10.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."built"]]
-version = "0.8.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."bumpalo"]]
-version = "3.20.3"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."bytemuck"]]
-version = "1.25.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."byteorder-lite"]]
-version = "0.1.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."cast"]]
-version = "0.3.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."cc"]]
-version = "1.2.66"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."cfg-if"]]
-version = "1.0.4"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."ciborium"]]
-version = "0.2.2"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."ciborium-io"]]
-version = "0.2.2"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."ciborium-ll"]]
-version = "0.2.2"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."clap"]]
-version = "4.6.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."clap_builder"]]
-version = "4.6.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."clap_derive"]]
-version = "4.6.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."clap_lex"]]
-version = "1.1.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."color_quant"]]
-version = "1.1.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."crc32fast"]]
-version = "1.5.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."criterion"]]
-version = "0.8.2"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."criterion-plot"]]
-version = "0.8.2"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."crossbeam-deque"]]
-version = "0.8.7"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."crossbeam-epoch"]]
-version = "0.9.20"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."crossbeam-utils"]]
-version = "0.8.22"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."crunchy"]]
-version = "0.2.4"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."either"]]
-version = "1.16.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."equator"]]
-version = "0.4.2"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."equator-macro"]]
-version = "0.4.2"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."errno"]]
-version = "0.3.14"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."exr"]]
-version = "1.74.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."fastrand"]]
-version = "2.4.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."fax"]]
-version = "0.2.7"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."fdeflate"]]
-version = "0.3.7"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."find-msvc-tools"]]
-version = "0.1.9"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."flate2"]]
-version = "1.1.9"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."fnv"]]
-version = "1.0.7"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."getrandom"]]
-version = "0.3.4"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."getrandom"]]
-version = "0.4.3"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."gif"]]
-version = "0.14.2"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."half"]]
-version = "2.7.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."heck"]]
-version = "0.5.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."image"]]
-version = "0.25.10"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."image-webp"]]
-version = "0.2.4"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."imgref"]]
-version = "1.12.2"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."interpolate_name"]]
-version = "0.2.4"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."itertools"]]
-version = "0.13.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."itertools"]]
-version = "0.14.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."itoa"]]
-version = "1.0.18"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."jobserver"]]
-version = "0.1.35"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."lebe"]]
-version = "0.5.3"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."libc"]]
-version = "0.2.186"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."libfuzzer-sys"]]
-version = "0.4.13"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."linux-raw-sys"]]
-version = "0.12.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."log"]]
-version = "0.4.33"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."loop9"]]
-version = "0.1.5"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."maybe-rayon"]]
-version = "0.1.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."memchr"]]
-version = "2.8.2"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."miniz_oxide"]]
-version = "0.8.9"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."moxcms"]]
-version = "0.8.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."new_debug_unreachable"]]
-version = "1.0.6"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."no_std_io2"]]
-version = "0.9.4"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."nom"]]
-version = "8.0.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."noop_proc_macro"]]
-version = "0.3.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."num-bigint"]]
-version = "0.4.8"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."num-derive"]]
-version = "0.4.2"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."num-integer"]]
-version = "0.1.46"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."num-rational"]]
-version = "0.4.2"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."num-traits"]]
-version = "0.2.19"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."once_cell"]]
-version = "1.21.4"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."oorandom"]]
-version = "11.1.5"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."page_size"]]
-version = "0.6.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."paste"]]
-version = "1.0.15"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."pastey"]]
-version = "0.1.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."png"]]
-version = "0.18.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."ppv-lite86"]]
+[[exemptions.allocator-api2]]
 version = "0.2.21"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."proc-macro2"]]
-version = "1.0.106"
+[[exemptions.anes]]
+version = "0.1.6"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."profiling"]]
-version = "1.0.18"
+[[exemptions.anstyle]]
+version = "1.0.14"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."profiling-procmacros"]]
-version = "1.0.18"
+[[exemptions.anyhow]]
+version = "1.0.103"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."proptest"]]
-version = "1.11.0"
+[[exemptions.arbitrary]]
+version = "1.4.2"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."pxfm"]]
-version = "0.1.30"
+[[exemptions.arg_enum_proc_macro]]
+version = "0.3.4"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."qoi"]]
-version = "0.4.1"
+[[exemptions.arrayvec]]
+version = "0.7.8"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."qrcode"]]
+[[exemptions.as-slice]]
+version = "0.2.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.autocfg]]
+version = "1.5.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.av-scenechange]]
 version = "0.14.1"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."quick-error"]]
-version = "1.2.3"
+[[exemptions.av1-grain]]
+version = "0.2.5"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."quick-error"]]
-version = "2.0.1"
+[[exemptions.avif-serialize]]
+version = "0.8.9"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."quote"]]
-version = "1.0.46"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."r-efi"]]
-version = "5.3.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."r-efi"]]
-version = "6.0.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."rand"]]
-version = "0.9.4"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."rand_chacha"]]
-version = "0.9.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."rand_core"]]
-version = "0.9.5"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."rand_xorshift"]]
-version = "0.4.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."rav1e"]]
-version = "0.8.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."ravif"]]
-version = "0.13.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."rayon"]]
-version = "1.12.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."rayon-core"]]
-version = "1.13.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."regex"]]
-version = "1.12.4"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."regex-automata"]]
-version = "0.4.14"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."regex-syntax"]]
-version = "0.8.11"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."rgb"]]
-version = "0.8.53"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."rustix"]]
-version = "1.1.4"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."rustversion"]]
-version = "1.0.23"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."rusty-fork"]]
-version = "0.3.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."same-file"]]
-version = "1.0.6"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."serde"]]
-version = "1.0.228"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."serde_core"]]
-version = "1.0.228"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."serde_derive"]]
-version = "1.0.228"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."serde_json"]]
-version = "1.0.150"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."shlex"]]
-version = "2.0.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."simd-adler32"]]
-version = "0.3.9"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."simd_helpers"]]
-version = "0.1.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."smallvec"]]
-version = "1.15.2"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."stable_deref_trait"]]
-version = "1.2.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."strsim"]]
-version = "0.11.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."syn"]]
-version = "2.0.118"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."tempfile"]]
-version = "3.27.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."thiserror"]]
-version = "2.0.18"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."thiserror-impl"]]
-version = "2.0.18"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."tiff"]]
-version = "0.11.3"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."tinytemplate"]]
-version = "1.2.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."unarray"]]
-version = "0.1.4"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."unicode-ident"]]
-version = "1.0.24"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."v_frame"]]
-version = "0.3.9"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."wait-timeout"]]
-version = "0.2.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."walkdir"]]
-version = "2.5.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."wasip2"]]
-version = "1.0.4+wasi-0.2.12"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."wasm-bindgen"]]
-version = "0.2.126"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."wasm-bindgen-macro"]]
-version = "0.2.126"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."wasm-bindgen-macro-support"]]
-version = "0.2.126"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."wasm-bindgen-shared"]]
-version = "0.2.126"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."weezl"]]
-version = "0.1.12"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."winapi"]]
-version = "0.3.9"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."winapi-i686-pc-windows-gnu"]]
-version = "0.4.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."winapi-util"]]
-version = "0.1.11"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."winapi-x86_64-pc-windows-gnu"]]
-version = "0.4.0"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."windows-link"]]
-version = "0.2.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."windows-sys"]]
-version = "0.61.2"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."wit-bindgen"]]
-version = "0.57.1"
-criteria = "safe-to-deploy"
-notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
-
-[[exemptions."y4m"]]
+[[exemptions.bit-set]]
 version = "0.8.0"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."zerocopy"]]
+[[exemptions.bit-vec]]
+version = "0.8.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.bit_field]]
+version = "0.10.3"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.bitflags]]
+version = "2.13.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.bitstream-io]]
+version = "4.10.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.built]]
+version = "0.8.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.bumpalo]]
+version = "3.20.3"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.bytemuck]]
+version = "1.25.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.byteorder-lite]]
+version = "0.1.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.cast]]
+version = "0.3.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.cc]]
+version = "1.2.66"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.cfg-if]]
+version = "1.0.4"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.ciborium]]
+version = "0.2.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.ciborium-io]]
+version = "0.2.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.ciborium-ll]]
+version = "0.2.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.clap]]
+version = "4.6.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.clap_builder]]
+version = "4.6.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.clap_derive]]
+version = "4.6.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.clap_lex]]
+version = "1.1.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.color_quant]]
+version = "1.1.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.crc32fast]]
+version = "1.5.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.criterion]]
+version = "0.8.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.criterion-plot]]
+version = "0.8.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.crossbeam-deque]]
+version = "0.8.7"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.crossbeam-epoch]]
+version = "0.9.20"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.crossbeam-utils]]
+version = "0.8.22"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.crunchy]]
+version = "0.2.4"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.either]]
+version = "1.16.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.equator]]
+version = "0.4.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.equator-macro]]
+version = "0.4.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.equivalent]]
+version = "1.0.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.errno]]
+version = "0.3.14"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.exr]]
+version = "1.74.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.fastrand]]
+version = "2.4.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.fax]]
+version = "0.2.7"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.fdeflate]]
+version = "0.3.7"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.find-msvc-tools]]
+version = "0.1.9"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.flate2]]
+version = "1.1.9"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.fnv]]
+version = "1.0.7"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.foldhash]]
+version = "0.2.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.g2gen]]
+version = "1.2.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.g2p]]
+version = "1.2.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.g2poly]]
+version = "1.2.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.getrandom]]
+version = "0.3.4"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.getrandom]]
+version = "0.4.3"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.gif]]
+version = "0.14.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.half]]
+version = "2.7.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.hashbrown]]
+version = "0.16.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.heck]]
+version = "0.5.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.image]]
+version = "0.25.10"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.image-webp]]
+version = "0.2.4"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.imgref]]
+version = "1.12.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.interpolate_name]]
+version = "0.2.4"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.itertools]]
+version = "0.13.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.itertools]]
+version = "0.14.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.itoa]]
+version = "1.0.18"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.jobserver]]
+version = "0.1.35"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.lebe]]
+version = "0.5.3"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.libc]]
+version = "0.2.186"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.libfuzzer-sys]]
+version = "0.4.13"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.linux-raw-sys]]
+version = "0.12.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.log]]
+version = "0.4.33"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.loop9]]
+version = "0.1.5"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.lru]]
+version = "0.16.4"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.maybe-rayon]]
+version = "0.1.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.memchr]]
+version = "2.8.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.miniz_oxide]]
+version = "0.8.9"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.moxcms]]
+version = "0.8.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.new_debug_unreachable]]
+version = "1.0.6"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.no_std_io2]]
+version = "0.9.4"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.nom]]
+version = "8.0.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.noop_proc_macro]]
+version = "0.3.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.num-bigint]]
+version = "0.4.8"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.num-derive]]
+version = "0.4.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.num-integer]]
+version = "0.1.46"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.num-rational]]
+version = "0.4.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.num-traits]]
+version = "0.2.19"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.once_cell]]
+version = "1.21.4"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.oorandom]]
+version = "11.1.5"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.page_size]]
+version = "0.6.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.paste]]
+version = "1.0.15"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.pastey]]
+version = "0.1.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.pin-project-lite]]
+version = "0.2.17"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.png]]
+version = "0.18.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.ppv-lite86]]
+version = "0.2.21"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.proc-macro2]]
+version = "1.0.106"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.profiling]]
+version = "1.0.18"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.profiling-procmacros]]
+version = "1.0.18"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.proptest]]
+version = "1.11.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.pxfm]]
+version = "0.1.30"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.qoi]]
+version = "0.4.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.qrcode]]
+version = "0.14.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.quick-error]]
+version = "1.2.3"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.quick-error]]
+version = "2.0.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.quote]]
+version = "1.0.46"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.r-efi]]
+version = "5.3.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.r-efi]]
+version = "6.0.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.rand]]
+version = "0.9.4"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.rand_chacha]]
+version = "0.9.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.rand_core]]
+version = "0.9.5"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.rand_xorshift]]
+version = "0.4.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.rav1e]]
+version = "0.8.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.ravif]]
+version = "0.13.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.rayon]]
+version = "1.12.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.rayon-core]]
+version = "1.13.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.regex]]
+version = "1.12.4"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.regex-automata]]
+version = "0.4.14"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.regex-syntax]]
+version = "0.8.11"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.rgb]]
 version = "0.8.53"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."zerocopy-derive"]]
+[[exemptions.rqrr]]
+version = "0.10.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.rustix]]
+version = "1.1.4"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.rustversion]]
+version = "1.0.23"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.rusty-fork]]
+version = "0.3.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.same-file]]
+version = "1.0.6"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.serde]]
+version = "1.0.228"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.serde_core]]
+version = "1.0.228"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.serde_derive]]
+version = "1.0.228"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.serde_json]]
+version = "1.0.150"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.shlex]]
+version = "2.0.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.simd-adler32]]
+version = "0.3.9"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.simd_helpers]]
+version = "0.1.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.smallvec]]
+version = "1.15.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.stable_deref_trait]]
+version = "1.2.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.strsim]]
+version = "0.11.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.syn]]
+version = "2.0.118"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.tempfile]]
+version = "3.27.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.thiserror]]
+version = "2.0.18"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.thiserror-impl]]
+version = "2.0.18"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.tiff]]
+version = "0.11.3"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.tinytemplate]]
+version = "1.2.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.tokio]]
+version = "1.52.3"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.unarray]]
+version = "0.1.4"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.unicode-ident]]
+version = "1.0.24"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.v_frame]]
+version = "0.3.9"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.wait-timeout]]
+version = "0.2.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.walkdir]]
+version = "2.5.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.wasip2]]
+version = "1.0.4+wasi-0.2.12"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.wasm-bindgen]]
+version = "0.2.126"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.wasm-bindgen-macro]]
+version = "0.2.126"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.wasm-bindgen-macro-support]]
+version = "0.2.126"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.wasm-bindgen-shared]]
+version = "0.2.126"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.weezl]]
+version = "0.1.12"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.winapi]]
+version = "0.3.9"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.winapi-i686-pc-windows-gnu]]
+version = "0.4.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.winapi-util]]
+version = "0.1.11"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.winapi-x86_64-pc-windows-gnu]]
+version = "0.4.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.windows-link]]
+version = "0.2.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.windows-sys]]
+version = "0.61.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.wit-bindgen]]
+version = "0.57.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.y4m]]
+version = "0.8.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.zerocopy]]
 version = "0.8.53"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."zmij"]]
+[[exemptions.zerocopy-derive]]
+version = "0.8.53"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions.zmij]]
 version = "1.0.21"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."zune-core"]]
+[[exemptions.zune-core]]
 version = "0.5.1"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."zune-inflate"]]
+[[exemptions.zune-inflate]]
 version = "0.2.54"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 
-[[exemptions."zune-jpeg"]]
+[[exemptions.zune-jpeg]]
 version = "0.5.15"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
