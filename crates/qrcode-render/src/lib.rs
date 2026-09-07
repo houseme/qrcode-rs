@@ -428,6 +428,19 @@ where
     }
 }
 
+impl<'a, P: Pixel> qrcode_core::Builder for &'a Renderer<'a, P> {
+    type Output = P::Image;
+    type Error = RenderError;
+
+    fn build(self) -> Result<Self::Output, Self::Error> {
+        // `Renderer::new` and `try_from_source` establish the square-grid
+        // invariant, while the builder methods only update rendering options.
+        // Keep the fallible trait contract aligned with the renderer trait and
+        // return the existing concrete error type for API consistency.
+        Ok(Renderer::build(self))
+    }
+}
+
 impl<'a, P: StyledPixel> Renderer<'a, P> {
     /// Applies a render template: dark/light colors (via
     /// [`StyledPixel::from_hex`]), optional module size, and the quiet-zone
@@ -533,6 +546,16 @@ mod tests {
         renderer.dark_color('#').light_color('.');
 
         assert_eq!(CoreRenderer::render(&renderer, &source).unwrap(), renderer.build());
+    }
+
+    #[test]
+    fn core_builder_returns_the_same_output_as_inherent_builder() {
+        let modules = [Color::Dark, Color::Light, Color::Light, Color::Dark];
+        let mut renderer = Renderer::<char>::new(&modules, 2, 1);
+        renderer.dark_color('#').light_color('.').module_dimensions(2, 3);
+        let expected = renderer.build();
+
+        assert_eq!(qrcode_core::Builder::build(&renderer), Ok(expected));
     }
 
     #[test]

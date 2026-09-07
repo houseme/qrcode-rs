@@ -161,7 +161,10 @@ impl ModuleGrid {
     /// Returns [`PluginError::InvalidModuleGrid`] when the dimensions are zero
     /// or `modules.len() != width * height`.
     pub fn new(modules: Vec<Color>, width: usize, height: usize) -> Result<Self, PluginError> {
-        if width == 0 || height == 0 || modules.len() != width * height {
+        let Some(expected_len) = width.checked_mul(height) else {
+            return Err(PluginError::InvalidModuleGrid);
+        };
+        if width == 0 || height == 0 || modules.len() != expected_len {
             return Err(PluginError::InvalidModuleGrid);
         }
         Ok(Self { modules, width, height })
@@ -210,6 +213,17 @@ pub trait DynRenderer {
 pub trait RendererFactory {
     /// Builds a renderer from `config`.
     fn build(&self, config: &RenderConfig) -> Box<dyn DynRenderer>;
+
+    /// Validates a renderer configuration before building it.
+    ///
+    /// The default implementation accepts every configuration, preserving
+    /// compatibility with existing plugin factories. Factories with
+    /// renderer-specific options can override this hook so
+    /// [`PluginRegistry::build_renderer`] reports invalid input before a
+    /// renderer is constructed.
+    fn validate_config(&self, _config: &RenderConfig) -> Result<(), PluginError> {
+        Ok(())
+    }
 }
 
 /// Object-safe encoder used by [`EncoderFactory`].
@@ -253,6 +267,7 @@ pub trait QrPlugin {
 /// Explicit plugin registry.
 #[derive(Default)]
 pub struct PluginRegistry {
+    plugins: BTreeMap<String, String>,
     renderers: BTreeMap<String, Box<dyn RendererFactory>>,
     encoders: BTreeMap<String, Box<dyn EncoderFactory>>,
     postprocessors: Vec<Box<dyn PostProcessor>>,
@@ -262,12 +277,29 @@ impl PluginRegistry {
     /// Creates an empty registry.
     #[must_use]
     pub const fn new() -> Self {
-        Self { renderers: BTreeMap::new(), encoders: BTreeMap::new(), postprocessors: Vec::new() }
+        Self {
+            plugins: BTreeMap::new(),
+            renderers: BTreeMap::new(),
+            encoders: BTreeMap::new(),
+            postprocessors: Vec::new(),
+        }
     }
 
     /// Registers all extension points provided by `plugin`.
     pub fn register_plugin<P: QrPlugin + ?Sized>(&mut self, plugin: &P) {
+        self.plugins.insert(String::from(plugin.name()), String::from(plugin.version()));
         plugin.register(self);
+    }
+
+    /// Returns the registered version for a plugin name.
+    #[must_use]
+    pub fn plugin_version(&self, name: &str) -> Option<&str> {
+        self.plugins.get(name).map(String::as_str)
+    }
+
+    /// Iterates registered plugin names in deterministic order.
+    pub fn plugin_names(&self) -> impl Iterator<Item = &str> {
+        self.plugins.keys().map(String::as_str)
     }
 
     /// Registers or replaces a renderer factory by name.
@@ -307,6 +339,7 @@ impl PluginRegistry {
     /// registered with `name`.
     pub fn build_renderer(&self, name: &str, config: &RenderConfig) -> Result<Box<dyn DynRenderer>, PluginError> {
         let factory = self.renderer(name).ok_or_else(|| PluginError::RendererNotFound(String::from(name)))?;
+        factory.validate_config(config)?;
         Ok(factory.build(config))
     }
 
@@ -454,6 +487,8 @@ mod tests {
 
         let encoder = registry.build_encoder("length", &EncodeConfig::new()).unwrap();
         assert_eq!(encoder.encode(b"abcd").unwrap(), EncodedOutput::Bytes(b"4".to_vec()));
+        assert_eq!(registry.plugin_version("demo"), Some("0.1.0"));
+        assert_eq!(registry.plugin_names().collect::<Vec<_>>(), ["demo"]);
     }
 
     #[test]
@@ -507,5 +542,10 @@ mod tests {
             registry.process_modules(&mut grid),
             Err(super::PluginError::PostProcessFailed(message)) if message == "boom"
         ));
+    }
+
+    #[test]
+    fn module_grid_rejects_dimension_multiplication_overflow() {
+        assert_eq!(ModuleGrid::new(alloc::vec![], usize::MAX, 2), Err(super::PluginError::InvalidModuleGrid));
     }
 }

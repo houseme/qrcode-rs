@@ -68,10 +68,18 @@ pub struct PlainTextRendererFactory;
 
 impl RendererFactory for PlainTextRendererFactory {
     fn build(&self, config: &RenderConfig) -> Box<dyn DynRenderer> {
-        let dark = config_char(config, "dark", '#');
-        let light = config_char(config, "light", ' ');
-        let quiet_zone = config_u32(config, "quiet_zone", 4);
-        Box::new(PlainTextRenderer { dark, light, quiet_zone })
+        let config_valid = self.validate_config(config).is_ok();
+        let dark = config_char(config, "dark", '#').unwrap_or('#');
+        let light = config_char(config, "light", ' ').unwrap_or(' ');
+        let quiet_zone = config_u32(config, "quiet_zone", 4).unwrap_or(4);
+        Box::new(PlainTextRenderer { dark, light, quiet_zone, config_valid })
+    }
+
+    fn validate_config(&self, config: &RenderConfig) -> Result<(), PluginError> {
+        config_char(config, "dark", '#')?;
+        config_char(config, "light", ' ')?;
+        config_u32(config, "quiet_zone", 4)?;
+        Ok(())
     }
 }
 
@@ -81,6 +89,7 @@ pub struct PlainTextRenderer {
     dark: char,
     light: char,
     quiet_zone: u32,
+    config_valid: bool,
 }
 
 impl DynRenderer for PlainTextRenderer {
@@ -97,8 +106,11 @@ where
     type Error = PluginError;
 
     fn render(&self, code: &Code) -> Result<Self::Output, Self::Error> {
+        if !self.config_valid {
+            return Err(PluginError::InvalidConfig("plain-text renderer configuration is invalid".into()));
+        }
         validate_module_source(code)?;
-        Ok(render_plain_text(code, self.dark, self.light, self.quiet_zone))
+        render_plain_text(code, self.dark, self.light, self.quiet_zone)
     }
 }
 
@@ -114,38 +126,61 @@ where
     }
 }
 
-fn render_plain_text<Code>(code: &Code, dark: char, light: char, quiet_zone: u32) -> String
+fn render_plain_text<Code>(code: &Code, dark: char, light: char, quiet_zone: u32) -> Result<String, PluginError>
 where
     Code: ModuleSource + ?Sized,
 {
     let width = code.width();
-    let quiet_zone = quiet_zone as usize;
-    let total_width = width + 2 * quiet_zone;
-    let mut output = String::with_capacity(total_width * total_width + total_width.saturating_sub(1));
+    let quiet_zone = usize::try_from(quiet_zone)
+        .map_err(|_| PluginError::InvalidConfig("quiet_zone does not fit in platform dimensions".into()))?;
+    let border =
+        quiet_zone.checked_mul(2).ok_or_else(|| PluginError::InvalidConfig("quiet_zone dimensions overflow".into()))?;
+    let total_width = width
+        .checked_add(border)
+        .ok_or_else(|| PluginError::InvalidConfig("plain-text output dimensions overflow".into()))?;
+    let module_end = quiet_zone
+        .checked_add(width)
+        .ok_or_else(|| PluginError::InvalidConfig("plain-text module dimensions overflow".into()))?;
+    let capacity = total_width
+        .checked_mul(total_width)
+        .and_then(|area| area.checked_add(total_width.saturating_sub(1)))
+        .ok_or_else(|| PluginError::InvalidConfig("plain-text output size overflow".into()))?;
+    let mut output = String::with_capacity(capacity);
 
     for y in 0..total_width {
         if y > 0 {
             output.push('\n');
         }
 
-        let row = (quiet_zone..quiet_zone + width).contains(&y).then(|| code.row(y - quiet_zone));
+        let row = (quiet_zone..module_end).contains(&y).then(|| code.row(y - quiet_zone));
         for x in 0..total_width {
-            let color = row
-                .filter(|_| (quiet_zone..quiet_zone + width).contains(&x))
-                .map_or(Color::Light, |row| row[x - quiet_zone]);
+            let color =
+                row.filter(|_| (quiet_zone..module_end).contains(&x)).map_or(Color::Light, |row| row[x - quiet_zone]);
             output.push(color.select(dark, light));
         }
     }
 
-    output
+    Ok(output)
 }
 
-fn config_char(config: &RenderConfig, key: &str, default: char) -> char {
-    config.option(key).and_then(|value| value.chars().next()).unwrap_or(default)
+fn config_char(config: &RenderConfig, key: &str, default: char) -> Result<char, PluginError> {
+    let Some(value) = config.option(key) else {
+        return Ok(default);
+    };
+    let mut chars = value.chars();
+    let Some(character) = chars.next() else {
+        return Err(PluginError::InvalidConfig(alloc::format!("{key} must contain exactly one character")));
+    };
+    if chars.next().is_some() {
+        return Err(PluginError::InvalidConfig(alloc::format!("{key} must contain exactly one character")));
+    }
+    Ok(character)
 }
 
-fn config_u32(config: &RenderConfig, key: &str, default: u32) -> u32 {
-    config.option(key).and_then(|value| value.parse().ok()).unwrap_or(default)
+fn config_u32(config: &RenderConfig, key: &str, default: u32) -> Result<u32, PluginError> {
+    config.option(key).map_or(Ok(default), |value| {
+        value.parse().map_err(|_| PluginError::InvalidConfig(alloc::format!("{key} must be a valid u32")))
+    })
 }
 
 #[cfg(test)]
@@ -217,7 +252,7 @@ mod tests {
     #[test]
     fn plain_text_core_renderer_matches_dyn_renderer() {
         let modules = ModuleGrid::new(alloc::vec![Color::Dark, Color::Light, Color::Light, Color::Dark], 2, 2).unwrap();
-        let renderer = super::PlainTextRenderer { dark: 'X', light: '.', quiet_zone: 0 };
+        let renderer = super::PlainTextRenderer { dark: 'X', light: '.', quiet_zone: 0, config_valid: true };
 
         let core_output = CoreRenderer::render(&renderer, &modules).unwrap();
         let dyn_output = qrcode_core::DynRenderer::render(&renderer, &modules).unwrap();
@@ -231,5 +266,41 @@ mod tests {
         let renderer = PlainTextRendererFactory.build(&RenderConfig::new());
 
         assert_eq!(renderer.render(&BadSource { modules: [Color::Dark; 4] }), Err(PluginError::InvalidModuleGrid));
+    }
+
+    #[test]
+    fn plain_text_factory_rejects_invalid_configuration_before_building() {
+        let factory = PlainTextRendererFactory;
+
+        assert!(matches!(
+            factory.validate_config(&RenderConfig::new().with_option("quiet_zone", "not-a-number")),
+            Err(PluginError::InvalidConfig(_))
+        ));
+        assert!(matches!(
+            factory.validate_config(&RenderConfig::new().with_option("dark", "XX")),
+            Err(PluginError::InvalidConfig(_))
+        ));
+    }
+
+    #[test]
+    fn plain_text_registry_reports_invalid_configuration() {
+        let mut registry = PluginRegistry::new();
+        PlainTextRendererPlugin.register(&mut registry);
+
+        assert!(matches!(
+            registry.build_renderer(
+                PlainTextRendererPlugin::RENDERER_NAME,
+                &RenderConfig::new().with_option("quiet_zone", "-1")
+            ),
+            Err(PluginError::InvalidConfig(_))
+        ));
+    }
+
+    #[test]
+    fn plain_text_renderer_checks_dimensions_before_arithmetic() {
+        let renderer = super::PlainTextRenderer { dark: 'X', light: '.', quiet_zone: u32::MAX, config_valid: true };
+        let modules = ModuleGrid::new(alloc::vec![Color::Dark], 1, 1).unwrap();
+
+        assert!(matches!(CoreRenderer::render(&renderer, &modules), Err(PluginError::InvalidConfig(_))));
     }
 }
