@@ -15,6 +15,8 @@ fn bench_render(c: &mut Criterion) {
     g.bench_function("borrowed_symbol_string", |b| {
         b.iter(|| Renderer::<char>::from_symbol(&borrowed).dark_color('#').light_color(' ').build())
     });
+    g.bench_function("unicode_dense1x2", |b| b.iter(|| code.render::<qrcode_rs::render::unicode::Dense1x2>().build()));
+    g.bench_function("ansi", |b| b.iter(|| code.render::<qrcode_rs::render::ansi::Color>().build()));
 
     #[cfg(feature = "svg")]
     {
@@ -32,6 +34,25 @@ fn bench_render(c: &mut Criterion) {
     {
         use qrcode_rs::render::eps;
         g.bench_function("eps", |b| b.iter(|| code.render::<eps::Color>().build()));
+    }
+
+    #[cfg(feature = "html")]
+    {
+        use qrcode_rs::render::html;
+        g.bench_function("html_table", |b| b.iter(|| code.render::<html::Color>().build()));
+    }
+
+    #[cfg(feature = "pic")]
+    {
+        use qrcode_rs::render::pic;
+        g.bench_function("pic", |b| b.iter(|| code.render::<pic::Color>().build()));
+    }
+
+    #[cfg(feature = "pdf")]
+    {
+        use qrcode_rs::render::pdf;
+        g.bench_function("pdf_rgb", |b| b.iter(|| code.render::<pdf::Color>().build()));
+        g.bench_function("pdf_cmyk", |b| b.iter(|| code.render::<pdf::CmykColor>().build()));
     }
 
     g.finish();

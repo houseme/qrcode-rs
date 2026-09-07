@@ -53,14 +53,16 @@ impl Color {
         Self { r, g, b }
     }
 
-    /// ANSI escape sequence for this color as a foreground color.
-    fn fg_ansi(self) -> String {
-        format!("\x1b[38;2;{};{};{}m", self.r, self.g, self.b)
+    fn push_fg_ansi(self, out: &mut String) {
+        use core::fmt::Write as _;
+
+        write!(out, "\x1b[38;2;{};{};{}m", self.r, self.g, self.b).expect("writing to String cannot fail");
     }
 
-    /// ANSI escape sequence for this color as a background color.
-    fn bg_ansi(self) -> String {
-        format!("\x1b[48;2;{};{};{}m", self.r, self.g, self.b)
+    fn push_bg_ansi(self, out: &mut String) {
+        use core::fmt::Write as _;
+
+        write!(out, "\x1b[48;2;{};{};{}m", self.r, self.g, self.b).expect("writing to String cannot fail");
     }
 }
 
@@ -122,59 +124,64 @@ impl RenderCanvas for CanvasAnsi {
         let w = self.width as usize;
         let dark = 1u8;
         let reset = "\x1b[0m";
+        let row_count = self.canvas.len() / w;
+        let output_rows = row_count.div_ceil(2);
+        let mut out = String::with_capacity(output_rows * (w * 40 + reset.len() + 1));
 
-        self.canvas
-            .chunks_exact(w)
-            .collect::<Vec<&[u8]>>()
-            .chunks(2)
-            .map(|rows| {
-                let top_row = rows[0];
-                let bot_row = rows.get(1).map_or(&[][..], |r| *r);
+        for group_start in (0..row_count).step_by(2) {
+            if group_start > 0 {
+                out.push('\n');
+            }
 
-                let mut line = String::with_capacity(w * 40);
-                let mut last_fg = None;
-                let mut last_bg = None;
+            let top_start = group_start * w;
+            let top_row = &self.canvas[top_start..top_start + w];
+            let bot_row = if group_start + 1 < row_count {
+                let bot_start = (group_start + 1) * w;
+                &self.canvas[bot_start..bot_start + w]
+            } else {
+                &[][..]
+            };
 
-                for col in 0..w {
-                    let top = top_row.get(col).copied().unwrap_or(0);
-                    let bot = bot_row.get(col).copied().unwrap_or(0);
+            let mut last_fg = None;
+            let mut last_bg = None;
 
-                    let (fg, bg) = if top == dark && bot == dark {
-                        (self.dark_color, self.dark_color)
-                    } else if top == dark && bot != dark {
-                        (self.dark_color, self.light_color)
-                    } else if top != dark && bot == dark {
-                        (self.light_color, self.dark_color)
-                    } else {
-                        (self.light_color, self.light_color)
-                    };
+            for col in 0..w {
+                let top = top_row.get(col).copied().unwrap_or(0);
+                let bot = bot_row.get(col).copied().unwrap_or(0);
 
-                    // Only emit escape codes when colors change.
-                    if last_bg != Some(bg) {
-                        line.push_str(&bg.bg_ansi());
-                        last_bg = Some(bg);
-                    }
-                    if last_fg != Some(fg) {
-                        line.push_str(&fg.fg_ansi());
-                        last_fg = Some(fg);
-                    }
+                let (fg, bg) = if top == dark && bot == dark {
+                    (self.dark_color, self.dark_color)
+                } else if top == dark && bot != dark {
+                    (self.dark_color, self.light_color)
+                } else if top != dark && bot == dark {
+                    (self.light_color, self.dark_color)
+                } else {
+                    (self.light_color, self.light_color)
+                };
 
-                    if top == dark && bot == dark {
-                        line.push('█');
-                    } else if top == dark {
-                        line.push('▀');
-                    } else if bot == dark {
-                        line.push('▄');
-                    } else {
-                        line.push(' ');
-                    }
+                if last_bg != Some(bg) {
+                    bg.push_bg_ansi(&mut out);
+                    last_bg = Some(bg);
+                }
+                if last_fg != Some(fg) {
+                    fg.push_fg_ansi(&mut out);
+                    last_fg = Some(fg);
                 }
 
-                line.push_str(reset);
-                line
-            })
-            .collect::<Vec<String>>()
-            .join("\n")
+                if top == dark && bot == dark {
+                    out.push('█');
+                } else if top == dark {
+                    out.push('▀');
+                } else if bot == dark {
+                    out.push('▄');
+                } else {
+                    out.push(' ');
+                }
+            }
+
+            out.push_str(reset);
+        }
+        out
     }
 }
 

@@ -33,6 +33,12 @@ use qrcode_core::Color as ModuleColor;
 use qrcode_render::colors::{CmykColor as SharedCmykColor, ColorSpace, RgbColor};
 use qrcode_render::{Canvas as RenderCanvas, Pixel, StyledPixel};
 
+const MAX_STREAM_PREALLOC: usize = 8 * 1024 * 1024;
+
+fn stream_capacity(width: u32, height: u32, bytes_per_rect: usize) -> usize {
+    (width as usize).saturating_mul(height as usize).saturating_mul(bytes_per_rect).min(MAX_STREAM_PREALLOC)
+}
+
 /// A PDF color (`[R, G, B]`).
 ///
 /// Each value must be in the range of 0.0 to 1.0.
@@ -147,7 +153,7 @@ impl RenderCanvas for Canvas {
 
     fn new(width: u32, height: u32, dark_pixel: Color, _light_pixel: Color) -> Self {
         Canvas {
-            stream: String::new(),
+            stream: String::with_capacity(stream_capacity(width, height, 48)),
             width,
             height,
             fg_r: dark_pixel.0[0],
@@ -283,7 +289,7 @@ impl RenderCanvas for CmykCanvas {
 
     fn new(width: u32, height: u32, dark_pixel: CmykColor, _light_pixel: CmykColor) -> Self {
         CmykCanvas {
-            stream: String::new(),
+            stream: String::with_capacity(stream_capacity(width, height, 56)),
             width,
             height,
             fg_c: dark_pixel.0[0],
@@ -447,5 +453,11 @@ mod tests {
 
         assert!(content.contains("1 0 0 0.25 k"));
         assert!(!content.contains(" rg"));
+    }
+
+    #[test]
+    fn pdf_stream_preallocation_is_bounded() {
+        assert_eq!(stream_capacity(u32::MAX, u32::MAX, 64), MAX_STREAM_PREALLOC);
+        assert_eq!(stream_capacity(2, 3, 48), 288);
     }
 }

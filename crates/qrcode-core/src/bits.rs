@@ -34,17 +34,125 @@ use crate::types::{EcLevel, Mode, QrError, QrResult, Version};
 //------------------------------------------------------------------------------
 //{{{ Bits
 
+/// Set of QR data modes used by an encoded bit stream.
+///
+/// This records which payload modes were emitted, without retaining input bytes
+/// or every segment boundary. Use [`iter`](Self::iter) when call sites need the
+/// modes in a stable QR mode order.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct EncodingModes {
+    bits: u8,
+}
+
+impl EncodingModes {
+    /// Creates an empty mode set.
+    #[must_use]
+    pub const fn empty() -> Self {
+        Self { bits: 0 }
+    }
+
+    /// Creates a mode set containing one mode.
+    #[must_use]
+    pub const fn from_mode(mode: Mode) -> Self {
+        Self { bits: mode_bit(mode) }
+    }
+
+    /// Returns `true` when `mode` was used by the encoded bit stream.
+    #[must_use]
+    pub const fn contains(self, mode: Mode) -> bool {
+        self.bits & mode_bit(mode) != 0
+    }
+
+    /// Returns `true` when no data modes have been recorded.
+    #[must_use]
+    pub const fn is_empty(self) -> bool {
+        self.bits == 0
+    }
+
+    /// Number of distinct data modes recorded.
+    #[must_use]
+    pub const fn len(self) -> usize {
+        (self.contains(Mode::Numeric) as usize)
+            + (self.contains(Mode::Alphanumeric) as usize)
+            + (self.contains(Mode::Byte) as usize)
+            + (self.contains(Mode::Kanji) as usize)
+    }
+
+    /// Returns an iterator over the recorded modes in stable QR mode order:
+    /// Numeric, Alphanumeric, Byte, Kanji.
+    pub const fn iter(self) -> EncodingModesIter {
+        EncodingModesIter { modes: self, index: 0 }
+    }
+
+    fn insert(&mut self, mode: Mode) {
+        self.bits |= mode_bit(mode);
+    }
+}
+
+/// Iterator returned by [`EncodingModes::iter`].
+#[derive(Clone, Debug)]
+pub struct EncodingModesIter {
+    modes: EncodingModes,
+    index: u8,
+}
+
+impl Iterator for EncodingModesIter {
+    type Item = Mode;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.index < 4 {
+            let mode = match self.index {
+                0 => Mode::Numeric,
+                1 => Mode::Alphanumeric,
+                2 => Mode::Byte,
+                _ => Mode::Kanji,
+            };
+            self.index += 1;
+            if self.modes.contains(mode) {
+                return Some(mode);
+            }
+        }
+        None
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.modes.iter().skip(self.index as usize).count();
+        (remaining, Some(remaining))
+    }
+}
+
+impl ExactSizeIterator for EncodingModesIter {}
+impl core::iter::FusedIterator for EncodingModesIter {}
+
+const fn mode_bit(mode: Mode) -> u8 {
+    match mode {
+        Mode::Numeric => 1 << 0,
+        Mode::Alphanumeric => 1 << 1,
+        Mode::Byte => 1 << 2,
+        Mode::Kanji => 1 << 3,
+    }
+}
+
 /// The `Bits` structure stores the encoded data for a QR code.
 pub struct Bits {
     data: Vec<u8>,
     bit_offset: usize,
     version: Version,
+    encoding_modes: EncodingModes,
+    payload_bits_len: Option<usize>,
 }
 
 impl Bits {
     /// Constructs a new, empty bits structure.
     pub const fn new(version: Version) -> Self {
-        Self { data: Vec::new(), bit_offset: 0, version }
+        Self {
+            data: Vec::new(),
+            bit_offset: 0,
+            version,
+            encoding_modes: EncodingModes::empty(),
+            payload_bits_len: None,
+        }
     }
 
     /// Pushes an N-bit big-endian integer to the end of the bits.
@@ -131,6 +239,34 @@ impl Bits {
     pub fn version(&self) -> Version {
         self.version
     }
+
+    /// Data modes recorded while payload segments were pushed.
+    #[must_use]
+    pub const fn encoding_modes(&self) -> EncodingModes {
+        self.encoding_modes
+    }
+
+    /// Number of payload bits before terminator and padding bits were added.
+    ///
+    /// If [`push_terminator`](Self::push_terminator) has not been called, this
+    /// returns the current bit length.
+    #[must_use]
+    pub fn payload_bits_len(&self) -> usize {
+        match self.payload_bits_len {
+            Some(len) => len,
+            None => self.len(),
+        }
+    }
+
+    /// Remaining data capacity, in bits, before terminator and padding bits.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QrError::InvalidVersion`] when the stored version is
+    /// incompatible with `ec_level`.
+    pub fn remaining_capacity_bits(&self, ec_level: EcLevel) -> QrResult<usize> {
+        Ok(self.max_len(ec_level)?.saturating_sub(self.payload_bits_len()))
+    }
 }
 
 #[test]
@@ -161,6 +297,45 @@ fn test_push_number() {
             0b1_0000000,  // 128
         ]
     );
+}
+
+#[cfg(test)]
+mod metadata_tests {
+    use crate::bits::{Bits, EncodingModes};
+    use crate::types::{EcLevel, Mode, Version};
+
+    #[test]
+    fn encoding_modes_iterates_in_stable_mode_order() {
+        let modes = EncodingModes::from_mode(Mode::Byte);
+        let mut modes_with_numeric = modes;
+        modes_with_numeric.insert(Mode::Numeric);
+
+        assert_eq!(modes_with_numeric.iter().collect::<Vec<_>>(), vec![Mode::Numeric, Mode::Byte]);
+    }
+
+    #[test]
+    fn bits_records_successful_payload_modes() {
+        let mut bits = Bits::new(Version::Normal(1));
+
+        bits.push_numeric_data(b"012").unwrap();
+        bits.push_byte_data(b"abc").unwrap();
+
+        assert!(bits.encoding_modes().contains(Mode::Numeric));
+        assert!(bits.encoding_modes().contains(Mode::Byte));
+        assert!(!bits.encoding_modes().contains(Mode::Kanji));
+    }
+
+    #[test]
+    fn remaining_capacity_uses_payload_len_before_padding() {
+        let mut bits = Bits::new(Version::Normal(1));
+
+        bits.push_numeric_data(b"01234567").unwrap();
+        bits.push_terminator(EcLevel::M).unwrap();
+
+        assert_eq!(bits.len(), 128);
+        assert_eq!(bits.payload_bits_len(), 41);
+        assert_eq!(bits.remaining_capacity_bits(EcLevel::M), Ok(87));
+    }
 }
 
 //}}}
@@ -347,6 +522,8 @@ impl Bits {
             let length = chunk.len() * 3 + 1;
             self.push_number(length, number);
         }
+        self.encoding_modes.insert(Mode::Numeric);
+        self.payload_bits_len = None;
         Ok(())
     }
 }
@@ -443,6 +620,8 @@ impl Bits {
             let length = chunk.len() * 5 + 1;
             self.push_number(length, number);
         }
+        self.encoding_modes.insert(Mode::Alphanumeric);
+        self.payload_bits_len = None;
         Ok(())
     }
 }
@@ -487,6 +666,8 @@ impl Bits {
         for b in data {
             self.push_number(8, u16::from(*b));
         }
+        self.encoding_modes.insert(Mode::Byte);
+        self.payload_bits_len = None;
         Ok(())
     }
 }
@@ -554,6 +735,8 @@ impl Bits {
             let number = (bytes >> 8) * 0xc0 + (bytes & 0xff);
             self.push_number(13, number);
         }
+        self.encoding_modes.insert(Mode::Kanji);
+        self.payload_bits_len = None;
         Ok(())
     }
 }
@@ -907,6 +1090,7 @@ impl Bits {
         if cur_length > data_length {
             return Err(QrError::DataTooLong);
         }
+        self.payload_bits_len = Some(cur_length);
 
         let terminator_size = min(terminator_size, data_length - cur_length);
         if terminator_size > 0 {

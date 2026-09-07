@@ -36,6 +36,9 @@
 
 extern crate alloc;
 
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+pub mod batch;
 pub mod render;
 pub mod structured_append;
 
@@ -44,8 +47,8 @@ pub mod structured_append;
 pub use qrcode_core::ConstVersion;
 pub use qrcode_core::{
     AlphanumericMode, ByteMode, DynEncoder, DynRenderer, EncodeConfig, EncodedOutput, EncoderFactory, EncodingMode,
-    KanjiMode, ModuleGrid, NumericMode, PluginError, PluginRegistry, PostProcessor, QrPlugin, RenderConfig,
-    RenderOutput, RendererFactory, ResourceLimits, StaticVersion,
+    EncodingModes, KanjiMode, ModuleGrid, NumericMode, PluginError, PluginRegistry, PostProcessor, QrPlugin,
+    RenderConfig, RenderOutput, RendererFactory, ResourceLimits, StaticVersion,
 };
 pub use qrcode_core::{bits, canvas, ec, optimize, plugin, traits, types};
 pub use qrcode_decode as decode;
@@ -85,6 +88,10 @@ pub struct QrCode {
     version: Version,
     ec_level: EcLevel,
     width: usize,
+    mask_pattern: Option<canvas::MaskPattern>,
+    mask_penalty_score: Option<u16>,
+    encoding_modes: EncodingModes,
+    remaining_capacity_bits: Option<usize>,
 }
 
 /// Borrowed plugin view for a QR code.
@@ -146,6 +153,22 @@ impl QrCode {
         AutoEncoder::default().encode(data.as_ref())
     }
 
+    /// Constructs a new QR code through the explicit deterministic API.
+    ///
+    /// The encoder is deterministic by design: it uses no random seed or
+    /// process-global state when selecting versions, modes, masks, or rendered
+    /// modules. This feature-gated helper gives audit-sensitive callers a
+    /// stable, named entry point for that contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the QR code cannot be constructed, e.g. when the data
+    /// is too long.
+    #[cfg(feature = "deterministic")]
+    pub fn new_deterministic<D: AsRef<[u8]>>(data: D) -> QrResult<Self> {
+        Self::new(data)
+    }
+
     /// Constructs a new QR code which automatically encodes the given data at a
     /// specific error correction level.
     ///
@@ -180,6 +203,8 @@ impl QrCode {
     /// module dimensions exceed `max_render_size`.
     pub fn with_limits<D: AsRef<[u8]>>(data: D, limits: ResourceLimits) -> QrResult<Self> {
         limits.validate()?;
+        #[cfg(feature = "std")]
+        let started_at = std::time::Instant::now();
         let data = data.as_ref();
         if data.len() > limits.max_data_length {
             return Err(QrError::DataTooLong);
@@ -191,7 +216,21 @@ impl QrCode {
             Version::Micro(_) => return Err(QrError::InvalidResourceLimits),
         };
         let bits = bits::encode_auto_with_max_version(data, EcLevel::M, max_version)?;
+        #[cfg(feature = "std")]
+        if limits
+            .encoding_timeout
+            .is_some_and(|timeout_ms| started_at.elapsed() > std::time::Duration::from_millis(timeout_ms))
+        {
+            return Err(QrError::EncodingTimeout);
+        }
         let code = Self::with_bits(bits, EcLevel::M)?;
+        #[cfg(feature = "std")]
+        if limits
+            .encoding_timeout
+            .is_some_and(|timeout_ms| started_at.elapsed() > std::time::Duration::from_millis(timeout_ms))
+        {
+            return Err(QrError::EncodingTimeout);
+        }
         let width = u32::try_from(code.width).map_err(|_| QrError::RenderSizeExceeded {
             width: u32::MAX,
             height: u32::MAX,
@@ -340,6 +379,8 @@ impl QrCode {
     /// incompatible.
     pub fn with_bits(bits: bits::Bits, ec_level: EcLevel) -> QrResult<Self> {
         let version = bits.version();
+        let encoding_modes = bits.encoding_modes();
+        let remaining_capacity_bits = bits.remaining_capacity_bits(ec_level)?;
         #[cfg(feature = "log")]
         log::debug!("qrcode_rs: encoding at version {version:?}, ec {ec_level:?}");
         let data = bits.into_bytes();
@@ -347,11 +388,20 @@ impl QrCode {
         let mut canvas = canvas::Canvas::new(version, ec_level);
         canvas.draw_all_functional_patterns();
         canvas.draw_data(&encoded_data, &ec_data);
-        let canvas = canvas.apply_best_mask();
+        let (canvas, mask_pattern, mask_penalty_score) = canvas.apply_best_mask_with_score();
         let width = version.width().as_usize();
         #[cfg(feature = "log")]
         log::info!("qrcode_rs: encoded version {version:?} ec {ec_level:?} ({} modules)", width * width);
-        Ok(Self { content: canvas.into_colors(), version, ec_level, width })
+        Ok(Self {
+            content: canvas.into_colors(),
+            version,
+            ec_level,
+            width,
+            mask_pattern: Some(mask_pattern),
+            mask_penalty_score: Some(mask_penalty_score),
+            encoding_modes,
+            remaining_capacity_bits: Some(remaining_capacity_bits),
+        })
     }
 
     /// Encodes many inputs at once at the given error-correction level, stopping
@@ -371,6 +421,89 @@ impl QrCode {
         D: AsRef<[u8]>,
     {
         Self::stream_with_error_correction_level(inputs, ec_level).collect()
+    }
+
+    /// Creates a library-level batch builder for encoding, rendering, and
+    /// packaging named outputs.
+    ///
+    /// This convenience entry point is available with the `std` feature. It is
+    /// useful when callers want stable output names plus helpers such as ZIP
+    /// archives or PNG contact sheets without invoking the CLI.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use qrcode_rs::QrCode;
+    ///
+    /// let rendered = QrCode::batch_builder(["alpha", "beta"])
+    ///     .file_extension("txt")
+    ///     .render::<char>()
+    ///     .unwrap();
+    ///
+    /// assert_eq!(rendered.entries()[0].name(), "qr-0001.txt");
+    /// ```
+    #[cfg(feature = "std")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+    pub fn batch_builder<I>(inputs: I) -> batch::QrBatchBuilder<I> {
+        batch::QrBatchBuilder::new(inputs)
+    }
+
+    /// Creates a builder for rendering an already encoded batch into stable,
+    /// named in-memory outputs.
+    ///
+    /// This keeps existing encoded symbols reusable when callers need multiple
+    /// render styles or want to decide packaging separately with the
+    /// [`batch`](crate::batch) module.
+    ///
+    /// ```
+    /// use qrcode_rs::{EcLevel, QrCode};
+    ///
+    /// let codes = QrCode::batch(["alpha", "beta"], EcLevel::M)?;
+    /// let rendered = QrCode::batch_render(&codes)
+    ///     .extension("txt")
+    ///     .build::<char>();
+    ///
+    /// assert_eq!(rendered[0].name(), "qr-0001.txt");
+    /// # Ok::<(), qrcode_rs::QrError>(())
+    /// ```
+    #[must_use]
+    pub fn batch_render(codes: &[Self]) -> BatchRender<'_> {
+        BatchRender::new(codes)
+    }
+
+    /// Encodes many inputs in parallel at the given error-correction level.
+    ///
+    /// This method is available with the `parallel` feature. It preserves input
+    /// order in the returned vector and returns the first encoding error in
+    /// that same order. Small batches should continue to use
+    /// [`batch`](Self::batch); this is intended for larger, CPU-bound batches.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "parallel")]
+    /// # {
+    /// use qrcode_rs::{EcLevel, QrCode};
+    ///
+    /// let codes = QrCode::par_batch(vec!["alpha", "beta", "gamma"], EcLevel::M).unwrap();
+    /// assert_eq!(codes.len(), 3);
+    /// # }
+    /// ```
+    #[cfg(feature = "parallel")]
+    pub fn par_batch<I, D>(inputs: I, ec_level: EcLevel) -> QrResult<Vec<Self>>
+    where
+        I: rayon::iter::IntoParallelIterator<Item = D>,
+        I::Iter: rayon::iter::IndexedParallelIterator,
+        D: AsRef<[u8]> + Send,
+    {
+        use rayon::prelude::*;
+
+        inputs
+            .into_par_iter()
+            .map(|data| Self::with_error_correction_level(data, ec_level))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .collect()
     }
 
     /// Lazily encodes inputs into QR codes with the default error-correction level.
@@ -458,6 +591,10 @@ impl QrCode {
             module_count: self.width * self.width,
             max_allowed_errors: self.max_allowed_errors(),
             data_capacity_bytes: bits::data_capacity_bits(self.version, self.ec_level).map(|b| b / 8).unwrap_or(0),
+            mask_pattern: self.mask_pattern,
+            mask_penalty_score: self.mask_penalty_score,
+            encoding_modes: self.encoding_modes,
+            remaining_capacity_bits: self.remaining_capacity_bits,
         }
     }
 
@@ -1396,13 +1533,163 @@ where
 
 //}}}
 //------------------------------------------------------------------------------
+//{{{ Batch render
+
+/// A named output produced by [`BatchRender`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BatchRendered<T> {
+    name: String,
+    image: T,
+}
+
+impl<T> BatchRendered<T> {
+    /// Creates a named batch-rendered output.
+    #[must_use]
+    pub fn new(name: impl Into<String>, image: T) -> Self {
+        Self { name: name.into(), image }
+    }
+
+    /// Stable output name for this rendered item.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Borrow the rendered image payload.
+    #[must_use]
+    pub const fn image(&self) -> &T {
+        &self.image
+    }
+
+    /// Consume this item and return only the rendered image payload.
+    #[must_use]
+    pub fn into_image(self) -> T {
+        self.image
+    }
+
+    /// Consume this item into `(name, image)`.
+    #[must_use]
+    pub fn into_parts(self) -> (String, T) {
+        (self.name, self.image)
+    }
+}
+
+/// Builder for rendering a slice of [`QrCode`] values into stable, named
+/// in-memory outputs.
+#[derive(Clone)]
+pub struct BatchRender<'a> {
+    codes: &'a [QrCode],
+    prefix: String,
+    extension: String,
+    start_index: usize,
+    index_width: usize,
+    quiet_zone: bool,
+    module_dimensions: Option<(u32, u32)>,
+}
+
+impl<'a> BatchRender<'a> {
+    /// Creates a batch-render builder for `codes`.
+    #[must_use]
+    pub fn new(codes: &'a [QrCode]) -> Self {
+        Self {
+            codes,
+            prefix: "qr-".into(),
+            extension: "bin".into(),
+            start_index: 1,
+            index_width: 4,
+            quiet_zone: true,
+            module_dimensions: None,
+        }
+    }
+
+    /// Sets the output name prefix.
+    #[must_use]
+    pub fn prefix(mut self, prefix: impl Into<String>) -> Self {
+        self.prefix = prefix.into();
+        self
+    }
+
+    /// Sets the output extension. A leading dot is accepted and stripped.
+    ///
+    /// Pass an empty string to omit the extension.
+    #[must_use]
+    pub fn extension(mut self, extension: impl Into<String>) -> Self {
+        self.extension = extension.into();
+        self
+    }
+
+    /// Sets the first numeric index used in generated names.
+    #[must_use]
+    pub const fn start_index(mut self, start_index: usize) -> Self {
+        self.start_index = start_index;
+        self
+    }
+
+    /// Sets the minimum zero-padded index width.
+    #[must_use]
+    pub const fn index_width(mut self, index_width: usize) -> Self {
+        self.index_width = index_width;
+        self
+    }
+
+    /// Sets whether rendered symbols include their quiet zone.
+    #[must_use]
+    pub const fn quiet_zone(mut self, quiet_zone: bool) -> Self {
+        self.quiet_zone = quiet_zone;
+        self
+    }
+
+    /// Sets fixed module dimensions for every rendered output.
+    #[must_use]
+    pub const fn module_dimensions(mut self, width: u32, height: u32) -> Self {
+        self.module_dimensions = Some((width, height));
+        self
+    }
+
+    /// Clears fixed module dimensions, returning to the renderer default.
+    #[must_use]
+    pub const fn default_module_dimensions(mut self) -> Self {
+        self.module_dimensions = None;
+        self
+    }
+
+    /// Render every code in order.
+    #[must_use]
+    pub fn build<P: Pixel>(&self) -> Vec<BatchRendered<P::Image>> {
+        self.codes
+            .iter()
+            .enumerate()
+            .map(|(offset, code)| {
+                let mut renderer = code.render::<P>();
+                renderer.quiet_zone(self.quiet_zone);
+                if let Some((width, height)) = self.module_dimensions {
+                    renderer.module_dimensions(width, height);
+                }
+                BatchRendered::new(self.name_for(offset), renderer.build())
+            })
+            .collect()
+    }
+
+    fn name_for(&self, offset: usize) -> String {
+        let index = self.start_index.saturating_add(offset);
+        let mut name = format!("{}{:0width$}", self.prefix, index, width = self.index_width);
+        let extension = self.extension.trim_start_matches('.');
+        if !extension.is_empty() {
+            name.push('.');
+            name.push_str(extension);
+        }
+        name
+    }
+}
+
+//}}}
+//------------------------------------------------------------------------------
 //{{{ Info
 
 /// Metadata about a constructed [`QrCode`], returned by [`QrCode::info`].
 ///
-/// Fields that require retaining the input data or the chosen mask (e.g.
-/// `encoding_modes`, `mask_pattern`, `remaining_capacity`) are intentionally
-/// omitted to keep `QrCode` zero-overhead; they may be added in a later version.
+/// `encoding_modes` records the set of data modes used by the encoder. It does
+/// not retain input bytes or expose every segment boundary.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
@@ -1413,6 +1700,10 @@ pub struct Info {
     module_count: usize,
     max_allowed_errors: usize,
     data_capacity_bytes: usize,
+    mask_pattern: Option<canvas::MaskPattern>,
+    mask_penalty_score: Option<u16>,
+    encoding_modes: EncodingModes,
+    remaining_capacity_bits: Option<usize>,
 }
 
 impl Info {
@@ -1451,6 +1742,52 @@ impl Info {
     pub const fn data_capacity_bytes(&self) -> usize {
         self.data_capacity_bytes
     }
+
+    /// Distinct data modes used by the encoded payload.
+    ///
+    /// Codes rebuilt from legacy [`QrCodeData`] do not contain encoding-time
+    /// metadata and return an empty set.
+    #[must_use]
+    pub const fn encoding_modes(&self) -> EncodingModes {
+        self.encoding_modes
+    }
+
+    /// Remaining payload capacity in bits before terminator and padding bits.
+    ///
+    /// Codes rebuilt from legacy [`QrCodeData`] do not contain encoding-time
+    /// metadata and return `None`.
+    #[must_use]
+    pub const fn remaining_capacity(&self) -> Option<usize> {
+        self.remaining_capacity_bits
+    }
+
+    /// Alias for [`remaining_capacity`](Self::remaining_capacity), making the
+    /// unit explicit at call sites.
+    #[must_use]
+    pub const fn remaining_capacity_bits(&self) -> Option<usize> {
+        self.remaining_capacity_bits
+    }
+
+    /// The selected mask pattern, when this code was produced by an encoder
+    /// path that records it.
+    ///
+    /// Serializable legacy payloads do not contain this metadata, so codes
+    /// rebuilt from [`QrCodeData`] return `None`.
+    #[must_use]
+    pub const fn mask_pattern(&self) -> Option<canvas::MaskPattern> {
+        self.mask_pattern
+    }
+
+    /// The penalty score of the selected mask, when this code was produced by
+    /// an encoder path that records it.
+    ///
+    /// Lower scores indicate a visually better matrix according to the QR mask
+    /// evaluation rules. Serializable legacy payloads do not contain this
+    /// metadata, so codes rebuilt from [`QrCodeData`] return `None`.
+    #[must_use]
+    pub const fn mask_penalty_score(&self) -> Option<u16> {
+        self.mask_penalty_score
+    }
 }
 
 //}}}
@@ -1488,7 +1825,16 @@ impl QrCode {
     #[must_use]
     pub fn from_serializable(data: QrCodeData) -> Self {
         debug_assert_eq!(data.content.len(), data.width * data.width, "malformed QrCodeData");
-        Self { content: data.content, version: data.version, ec_level: data.ec_level, width: data.width }
+        Self {
+            content: data.content,
+            version: data.version,
+            ec_level: data.ec_level,
+            width: data.width,
+            mask_pattern: None,
+            mask_penalty_score: None,
+            encoding_modes: EncodingModes::empty(),
+            remaining_capacity_bits: None,
+        }
     }
 }
 
@@ -1546,6 +1892,67 @@ pub struct QrTemplate {
     pub quiet_zone: bool,
 }
 
+/// Optional overrides applied to a parent [`QrTemplate`].
+///
+/// `None` means the value is inherited from the parent template. Module size
+/// uses a nested option so a patch can either inherit, set, or explicitly clear
+/// the parent's size.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct QrTemplatePatch {
+    /// Optional dark module color override.
+    pub dark_color: Option<String>,
+    /// Optional light module color override.
+    pub light_color: Option<String>,
+    /// Optional module-size override; `Some(None)` clears the inherited size.
+    pub module_size: Option<Option<(u32, u32)>>,
+    /// Optional quiet-zone override.
+    pub quiet_zone: Option<bool>,
+}
+
+impl QrTemplatePatch {
+    /// Creates an empty patch that inherits every value.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { dark_color: None, light_color: None, module_size: None, quiet_zone: None }
+    }
+
+    /// Sets the dark module color override.
+    #[must_use]
+    pub fn dark_color(mut self, color: impl Into<String>) -> Self {
+        self.dark_color = Some(color.into());
+        self
+    }
+
+    /// Sets the light module color override.
+    #[must_use]
+    pub fn light_color(mut self, color: impl Into<String>) -> Self {
+        self.light_color = Some(color.into());
+        self
+    }
+
+    /// Sets the module-size override.
+    #[must_use]
+    pub const fn module_size(mut self, width: u32, height: u32) -> Self {
+        self.module_size = Some(Some((width, height)));
+        self
+    }
+
+    /// Clears an inherited module-size override.
+    #[must_use]
+    pub const fn clear_module_size(mut self) -> Self {
+        self.module_size = Some(None);
+        self
+    }
+
+    /// Sets the quiet-zone override.
+    #[must_use]
+    pub const fn quiet_zone(mut self, quiet_zone: bool) -> Self {
+        self.quiet_zone = Some(quiet_zone);
+        self
+    }
+}
+
 impl QrTemplate {
     /// Black on white, default size, with quiet zone — the standard look.
     #[must_use]
@@ -1569,6 +1976,114 @@ impl QrTemplate {
     #[must_use]
     pub fn corporate() -> Self {
         Self { dark_color: "#003366".into(), light_color: "#ffffff".into(), module_size: None, quiet_zone: true }
+    }
+
+    /// Returns a copy of this template with a different dark module color.
+    #[must_use]
+    pub fn with_dark_color(mut self, color: impl Into<String>) -> Self {
+        self.dark_color = color.into();
+        self
+    }
+
+    /// Returns a copy of this template with a different light module color.
+    #[must_use]
+    pub fn with_light_color(mut self, color: impl Into<String>) -> Self {
+        self.light_color = color.into();
+        self
+    }
+
+    /// Returns a copy of this template with fixed module dimensions.
+    #[must_use]
+    pub const fn with_module_size(mut self, width: u32, height: u32) -> Self {
+        self.module_size = Some((width, height));
+        self
+    }
+
+    /// Returns a copy of this template without fixed module dimensions.
+    #[must_use]
+    pub const fn without_module_size(mut self) -> Self {
+        self.module_size = None;
+        self
+    }
+
+    /// Returns a copy of this template with the requested quiet-zone setting.
+    #[must_use]
+    pub const fn with_quiet_zone(mut self, quiet_zone: bool) -> Self {
+        self.quiet_zone = quiet_zone;
+        self
+    }
+
+    /// Applies optional overrides to this template, inheriting unspecified
+    /// fields from `self`.
+    #[must_use]
+    pub fn extend(&self, patch: &QrTemplatePatch) -> Self {
+        Self {
+            dark_color: patch.dark_color.clone().unwrap_or_else(|| self.dark_color.clone()),
+            light_color: patch.light_color.clone().unwrap_or_else(|| self.light_color.clone()),
+            module_size: patch.module_size.unwrap_or(self.module_size),
+            quiet_zone: patch.quiet_zone.unwrap_or(self.quiet_zone),
+        }
+    }
+
+    /// Parses a template from a JSON string.
+    ///
+    /// This helper is available with the `template-json` feature. It preserves
+    /// the dependency-light default build while offering a stable JSON entry
+    /// point for applications that store style presets outside Rust code.
+    ///
+    /// # Errors
+    ///
+    /// Returns the underlying `serde_json` error when the JSON is malformed or
+    /// does not match the [`QrTemplate`] schema.
+    #[cfg(feature = "template-json")]
+    pub fn from_json_str(input: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(input)
+    }
+
+    /// Serializes this template to a compact JSON string.
+    ///
+    /// This helper is available with the `template-json` feature.
+    ///
+    /// # Errors
+    ///
+    /// Returns the underlying `serde_json` error if serialization fails.
+    #[cfg(feature = "template-json")]
+    pub fn to_json_string(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+}
+
+impl QrTemplatePatch {
+    /// Parses a template patch from a JSON string.
+    ///
+    /// This helper is available with the `template-json` feature. Missing fields
+    /// inherit from the parent template when passed to [`QrTemplate::extend`].
+    ///
+    /// # Errors
+    ///
+    /// Returns the underlying `serde_json` error when the JSON is malformed or
+    /// does not match the [`QrTemplatePatch`] schema.
+    #[cfg(feature = "template-json")]
+    pub fn from_json_str(input: &str) -> Result<Self, serde_json::Error> {
+        let value: serde_json::Value = serde_json::from_str(input)?;
+        let clears_module_size = value.get("module_size").is_some_and(serde_json::Value::is_null);
+        let mut patch: Self = serde_json::from_value(value)?;
+        if clears_module_size {
+            patch.module_size = Some(None);
+        }
+        Ok(patch)
+    }
+
+    /// Serializes this patch to a compact JSON string.
+    ///
+    /// This helper is available with the `template-json` feature.
+    ///
+    /// # Errors
+    ///
+    /// Returns the underlying `serde_json` error if serialization fails.
+    #[cfg(feature = "template-json")]
+    pub fn to_json_string(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
     }
 }
 
@@ -1868,6 +2383,21 @@ mod api_tests {
 
         let invalid_dimensions = ResourceLimits::new(1, Version::Normal(1), (0, 1));
         assert!(matches!(QrCode::with_limits(b"x", invalid_dimensions), Err(QrError::InvalidResourceLimits)));
+
+        let invalid_timeout = ResourceLimits::new(1, Version::Normal(1), (1, 1)).with_encoding_timeout_millis(0);
+        assert!(matches!(QrCode::with_limits(b"x", invalid_timeout), Err(QrError::InvalidResourceLimits)));
+    }
+
+    #[cfg(feature = "deterministic")]
+    #[test]
+    fn deterministic_constructor_matches_default_constructor() {
+        let input = b"https://example.com/deterministic";
+        let default = QrCode::new(input).unwrap();
+        let deterministic = QrCode::new_deterministic(input).unwrap();
+
+        assert_eq!(deterministic.version(), default.version());
+        assert_eq!(deterministic.error_correction_level(), default.error_correction_level());
+        assert_eq!(deterministic.colors(), default.colors());
     }
 
     #[test]
@@ -2177,9 +2707,35 @@ mod api_tests {
         assert_eq!(info.width(), code.width());
         assert_eq!(info.module_count(), code.width() * code.width());
         assert!(info.data_capacity_bytes() > 0);
+        assert!(info.mask_pattern().is_some());
+        assert!(info.mask_penalty_score().is_some());
+        assert!(info.encoding_modes().contains(Mode::Numeric));
+        assert!(!info.encoding_modes().contains(Mode::Byte));
+        assert_eq!(info.remaining_capacity(), Some(87));
+        assert_eq!(info.remaining_capacity_bits(), Some(87));
         // higher EC level => fewer data bytes for the same version
         let code_h = QrCode::with_version(b"01234567", Version::Normal(1), crate::EcLevel::H).unwrap();
         assert!(info.data_capacity_bytes() > code_h.info().data_capacity_bytes());
+    }
+
+    #[test]
+    fn info_reports_forced_encoding_mode() {
+        let code = QrCode::builder(b"01234567").version(Version::Normal(1)).encoding_mode(Mode::Byte).build().unwrap();
+
+        assert!(code.info().encoding_modes().contains(Mode::Byte));
+        assert!(!code.info().encoding_modes().contains(Mode::Numeric));
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn info_reports_unknown_mask_for_serialized_legacy_data() {
+        let data = QrCode::new(b"legacy").unwrap().to_serializable();
+        let code = QrCode::from_serializable(data);
+
+        assert_eq!(code.info().mask_pattern(), None);
+        assert_eq!(code.info().mask_penalty_score(), None);
+        assert!(code.info().encoding_modes().is_empty());
+        assert_eq!(code.info().remaining_capacity(), None);
     }
 
     #[test]
@@ -2346,6 +2902,62 @@ mod api_tests {
         assert!(QrCode::batch(mixed, crate::EcLevel::L).is_err());
     }
 
+    #[test]
+    fn batch_render_builds_stably_named_outputs() {
+        let codes = QrCode::batch(["alpha", "beta"], crate::EcLevel::M).unwrap();
+        let rendered = QrCode::batch_render(&codes)
+            .prefix("ticket-")
+            .extension(".txt")
+            .start_index(7)
+            .index_width(3)
+            .quiet_zone(false)
+            .build::<char>();
+
+        assert_eq!(rendered[0].name(), "ticket-007.txt");
+        assert_eq!(rendered[1].name(), "ticket-008.txt");
+        assert_eq!(rendered[0].image(), &codes[0].render::<char>().quiet_zone(false).build());
+    }
+
+    #[test]
+    fn batch_render_can_omit_extension_and_apply_dimensions() {
+        let codes = QrCode::batch(["alpha"], crate::EcLevel::M).unwrap();
+        let rendered =
+            QrCode::batch_render(&codes).extension("").index_width(0).module_dimensions(1, 1).build::<char>();
+
+        assert_eq!(rendered[0].name(), "qr-1");
+        let (_, image) = rendered.into_iter().next().unwrap().into_parts();
+        assert!(!image.is_empty());
+    }
+
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn par_batch_preserves_order_and_matches_batch() {
+        let inputs = vec!["alpha", "beta", "gamma", "delta"];
+        let sequential = QrCode::batch(inputs.clone(), crate::EcLevel::Q).unwrap();
+        let parallel = QrCode::par_batch(inputs, crate::EcLevel::Q).unwrap();
+
+        assert_eq!(parallel.iter().map(colors).collect::<Vec<_>>(), sequential.iter().map(colors).collect::<Vec<_>>());
+    }
+
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn par_batch_returns_first_ordered_error() {
+        let too_large_for_v1 = vec![b'x'; 32];
+        let too_large_for_any_qr = vec![b'y'; qrcode_core::DEFAULT_MAX_DATA_LENGTH + 1];
+        let inputs: Vec<&[u8]> = vec![b"ok", &too_large_for_v1, &too_large_for_any_qr];
+
+        let sequential = match QrCode::batch(inputs.clone(), crate::EcLevel::H) {
+            Ok(_) => panic!("sequential batch should reject the oversized input"),
+            Err(error) => error,
+        };
+        let parallel = match QrCode::par_batch(inputs, crate::EcLevel::H) {
+            Ok(_) => panic!("parallel batch should reject the oversized input"),
+            Err(error) => error,
+        };
+
+        assert_eq!(parallel, sequential);
+    }
+
     #[cfg(feature = "eps")]
     #[test]
     fn template_applies_colors() {
@@ -2356,6 +2968,61 @@ mod api_tests {
         assert!(minimal.contains("0 0 0 setrgbcolor"), "minimal should use a black foreground");
         assert!(!dark.contains("0 0 0 setrgbcolor"), "dark_mode should change the foreground");
         assert_ne!(minimal, dark);
+    }
+
+    #[test]
+    fn template_patch_inherits_unspecified_values() {
+        let base = crate::QrTemplate::corporate().with_module_size(8, 9).with_quiet_zone(false);
+        let patch = crate::QrTemplatePatch::new().dark_color("#112233").quiet_zone(true);
+        let extended = base.extend(&patch);
+
+        assert_eq!(extended.dark_color, "#112233");
+        assert_eq!(extended.light_color, base.light_color);
+        assert_eq!(extended.module_size, Some((8, 9)));
+        assert!(extended.quiet_zone);
+    }
+
+    #[test]
+    fn template_patch_can_clear_inherited_module_size() {
+        let base = crate::QrTemplate::minimal().with_module_size(4, 4);
+        let extended = base.extend(&crate::QrTemplatePatch::new().clear_module_size());
+
+        assert_eq!(extended.module_size, None);
+    }
+
+    #[cfg(feature = "template-json")]
+    #[test]
+    fn template_json_helpers_round_trip_templates_and_patches() {
+        let template = crate::QrTemplate::from_json_str(
+            r##"{
+                "dark_color":"#112233",
+                "light_color":"#ffffff",
+                "module_size":[4,5],
+                "quiet_zone":false
+            }"##,
+        )
+        .unwrap();
+        assert_eq!(template.dark_color, "#112233");
+        assert_eq!(template.module_size, Some((4, 5)));
+        assert!(!template.quiet_zone);
+
+        let encoded = template.to_json_string().unwrap();
+        assert_eq!(crate::QrTemplate::from_json_str(&encoded).unwrap(), template);
+
+        let patch = crate::QrTemplatePatch::from_json_str(r##"{"dark_color":"#445566","module_size":null}"##).unwrap();
+        let extended = template.extend(&patch);
+        assert_eq!(extended.dark_color, "#445566");
+        assert_eq!(extended.light_color, template.light_color);
+        assert_eq!(extended.module_size, None);
+        assert!(!extended.quiet_zone);
+        assert!(patch.to_json_string().unwrap().contains("#445566"));
+    }
+
+    #[cfg(feature = "template-json")]
+    #[test]
+    fn template_json_helpers_report_malformed_input() {
+        assert!(crate::QrTemplate::from_json_str("{").is_err());
+        assert!(crate::QrTemplatePatch::from_json_str(r#"{"quiet_zone":"yes"}"#).is_err());
     }
 
     #[test]

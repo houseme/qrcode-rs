@@ -394,14 +394,11 @@ impl<'a, P: Pixel> Renderer<'a, P> {
         let real_height = width * mh;
 
         let mut canvas = P::Canvas::new(real_width, real_height, self.dark_color, self.light_color);
-        let mut i = 0;
-        for y in 0..width {
-            for x in 0..width {
-                if qz <= x && x < w + qz && qz <= y && y < w + qz {
-                    if self.content[i] != Color::Light {
-                        canvas.draw_dark_rect(x * mw, y * mh, mw, mh);
-                    }
-                    i += 1;
+        for (y, row) in self.content.chunks_exact(w as usize).enumerate() {
+            let top = (y as u32 + qz) * mh;
+            for (x, &module) in row.iter().enumerate() {
+                if module != Color::Light {
+                    canvas.draw_dark_rect((x as u32 + qz) * mw, top, mw, mh);
                 }
             }
         }
@@ -556,6 +553,15 @@ mod tests {
         let expected = renderer.build();
 
         assert_eq!(qrcode_core::Builder::build(&renderer), Ok(expected));
+    }
+
+    #[test]
+    fn build_keeps_quiet_zone_while_scanning_only_source_modules() {
+        let modules = [Color::Dark, Color::Light, Color::Light, Color::Dark];
+        let mut renderer = Renderer::<char>::new(&modules, 2, 1);
+        renderer.dark_color('#').light_color('.').module_dimensions(1, 1);
+
+        assert_eq!(renderer.build(), "....\n.#..\n..#.\n....");
     }
 
     #[test]

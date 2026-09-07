@@ -20,6 +20,7 @@ use alloc::{
 };
 
 use crate::types::{Mode, Version};
+use core::marker::PhantomData;
 use core::slice::Iter;
 
 //------------------------------------------------------------------------------
@@ -263,40 +264,24 @@ mod parse_tests {
 //------------------------------------------------------------------------------
 //{{{ Optimizer
 
-/// Iterator that greedily merges consecutive segments to minimize the total
+/// Iterator that merges consecutive parser segments to minimize the total
 /// encoded length for a given [`Version`]. Created via [`Parser::optimize`].
 pub struct Optimizer<I> {
-    parser: I,
-    last_segment: Segment,
-    last_segment_size: usize,
-    version: Version,
-    ended: bool,
+    optimized: Vec<Segment>,
+    index: usize,
+    _source: PhantomData<I>,
 }
 
 impl<I: Iterator<Item = Segment>> Optimizer<I> {
-    /// Optimize the segments by combining adjacent segments when possible.
+    /// Optimize the segments by combining adjacent segments when beneficial.
     ///
-    /// Currently this method uses a greedy algorithm by combining segments from
-    /// left to right until the new segment is longer than before. This method
-    /// does *not* use Annex J from the ISO standard.
+    /// This uses dynamic programming over the parser's segment boundaries. It
+    /// finds the minimum-size contiguous merge plan for those boundaries, but
+    /// does not split a parser segment into smaller pieces.
     ///
-    pub fn new(mut segments: I, version: Version) -> Self {
-        match segments.next() {
-            None => Self {
-                parser: segments,
-                last_segment: Segment { mode: Mode::Numeric, begin: 0, end: 0 },
-                last_segment_size: 0,
-                version,
-                ended: true,
-            },
-            Some(segment) => Self {
-                parser: segments,
-                last_segment: segment,
-                last_segment_size: segment.encoded_len(version),
-                version,
-                ended: false,
-            },
-        }
+    pub fn new(segments: I, version: Version) -> Self {
+        let segments = segments.collect::<Vec<_>>();
+        Self { optimized: optimize_segments(&segments, version), index: 0, _source: PhantomData }
     }
 }
 
@@ -312,49 +297,84 @@ impl<I: Iterator<Item = Segment>> Iterator for Optimizer<I> {
     type Item = Segment;
 
     fn next(&mut self) -> Option<Segment> {
-        if self.ended {
-            return None;
+        let segment = self.optimized.get(self.index).copied();
+        if segment.is_some() {
+            self.index += 1;
         }
+        segment
+    }
 
-        loop {
-            match self.parser.next() {
-                None => {
-                    self.ended = true;
-                    return Some(self.last_segment);
-                }
-                Some(segment) => {
-                    let seg_size = segment.encoded_len(self.version);
-
-                    let new_segment = Segment {
-                        mode: self.last_segment.mode.max(segment.mode),
-                        begin: self.last_segment.begin,
-                        end: segment.end,
-                    };
-                    let new_size = new_segment.encoded_len(self.version);
-
-                    if self.last_segment_size + seg_size >= new_size {
-                        self.last_segment = new_segment;
-                        self.last_segment_size = new_size;
-                    } else {
-                        let old_segment = self.last_segment;
-                        self.last_segment = segment;
-                        self.last_segment_size = seg_size;
-                        return Some(old_segment);
-                    }
-                }
-            }
-        }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.optimized.len().saturating_sub(self.index);
+        (remaining, Some(remaining))
     }
 }
+
+impl<I: Iterator<Item = Segment>> ExactSizeIterator for Optimizer<I> {}
+impl<I: Iterator<Item = Segment>> core::iter::FusedIterator for Optimizer<I> {}
 
 /// Computes the total encoded length of all segments.
 pub fn total_encoded_len(segments: &[Segment], version: Version) -> usize {
     segments.iter().map(|seg| seg.encoded_len(version)).sum()
 }
 
+/// Computes the minimum-size merge plan for parser segments.
+///
+/// Segment boundaries are preserved; adjacent segments may be merged into the
+/// smallest common data mode that can encode the merged range.
+#[must_use]
+pub fn optimize_segments(segments: &[Segment], version: Version) -> Vec<Segment> {
+    let len = segments.len();
+    if len == 0 {
+        return Vec::new();
+    }
+
+    let mut best_bits = vec![usize::MAX; len + 1];
+    let mut best_count = vec![usize::MAX; len + 1];
+    let mut previous = vec![0_usize; len + 1];
+    let mut previous_mode = vec![Mode::Byte; len + 1];
+    best_bits[0] = 0;
+    best_count[0] = 0;
+
+    for end in 1..=len {
+        let mut mode = segments[end - 1].mode;
+        for start in (0..end).rev() {
+            if start + 1 < end {
+                mode = segments[start].mode.max(mode);
+            }
+            let merged = Segment { mode, begin: segments[start].begin, end: segments[end - 1].end };
+            let Some(candidate_bits) = best_bits[start].checked_add(merged.encoded_len(version)) else {
+                continue;
+            };
+            let candidate_count = best_count[start] + 1;
+            if candidate_bits < best_bits[end] || candidate_bits == best_bits[end] && candidate_count < best_count[end]
+            {
+                best_bits[end] = candidate_bits;
+                best_count[end] = candidate_count;
+                previous[end] = start;
+                previous_mode[end] = mode;
+            }
+        }
+    }
+
+    let mut cursor = len;
+    let mut optimized = Vec::with_capacity(best_count[len]);
+    while cursor > 0 {
+        let start = previous[cursor];
+        optimized.push(Segment {
+            mode: previous_mode[cursor],
+            begin: segments[start].begin,
+            end: segments[cursor - 1].end,
+        });
+        cursor = start;
+    }
+    optimized.reverse();
+    optimized
+}
+
 #[cfg(test)]
 mod optimize_tests {
-    use crate::optimize::{Optimizer, Segment, total_encoded_len};
+    use crate::optimize::{Optimizer, Segment, optimize_segments, total_encoded_len};
     use crate::types::{Mode, Version};
 
     fn test_optimization_result(given: &[Segment], expected: &[Segment], version: Version) {
@@ -464,6 +484,29 @@ mod optimize_tests {
             ],
             &[Segment { mode: Mode::Alphanumeric, begin: 0, end: 4 }],
             Version::Micro(3),
+        );
+    }
+
+    #[test]
+    fn dynamic_programming_can_skip_a_local_merge_for_a_better_total() {
+        let given = [
+            Segment { mode: Mode::Numeric, begin: 0, end: 7 },
+            Segment { mode: Mode::Alphanumeric, begin: 7, end: 8 },
+            Segment { mode: Mode::Numeric, begin: 8, end: 9 },
+        ];
+
+        let optimized = optimize_segments(&given, Version::Normal(1));
+
+        assert_eq!(
+            optimized,
+            vec![
+                Segment { mode: Mode::Numeric, begin: 0, end: 7 },
+                Segment { mode: Mode::Alphanumeric, begin: 7, end: 9 },
+            ]
+        );
+        assert!(
+            total_encoded_len(&optimized, Version::Normal(1))
+                < total_encoded_len(&[Segment { mode: Mode::Alphanumeric, begin: 0, end: 9 }], Version::Normal(1))
         );
     }
 }

@@ -47,7 +47,7 @@ Enable only the pieces you need:
 
 ```toml
 [dependencies]
-qrcode-rs = { version = "2.0", default-features = false, features = ["std", "svg", "serde"] }
+qrcode-rs = { version = "2.1", default-features = false, features = ["std", "svg", "serde"] }
 ```
 
 ### Feature Flags
@@ -59,7 +59,11 @@ qrcode-rs = { version = "2.0", default-features = false, features = ["std", "svg
 | `image` | Raster image rendering, including PNG workflows. |
 | `svg`, `pic`, `eps`, `html`, `pdf` | Individual renderer backends. |
 | `serde` | `Serialize` / `Deserialize` support for core QR data types. |
+| `template-json` | JSON load/export helpers for `QrTemplate` and `QrTemplatePatch`. |
 | `log` | Emits encoder diagnostics through the `log` crate. |
+| `deterministic` | Exposes explicit deterministic construction helpers for audit-sensitive call sites. |
+| `parallel` | Enables Rayon-backed `QrCode::par_batch` for ordered parallel batch encoding. |
+| `batch-zip-deflate` | Enables DEFLATE compression for library-level ZIP batch packaging. |
 | `async` | Enables Tokio-backed async rendering helpers. |
 | `cli` | Builds the `qrencodes` command-line tool. |
 | `decode-rqrr` | Enables decoding through `rqrr`. |
@@ -169,6 +173,7 @@ Preview:
 - `QrCode::for_gs1(...)`
 - `QrCode::new_micro(...)`
 - `QrCode::batch(inputs, ec_level)`
+- `QrCode::batch_builder(inputs)` with `std`
 
 Example:
 
@@ -183,6 +188,28 @@ fn main() {
     println!("contact width = {}", contact.width());
 }
 ```
+
+## Batch Rendering And Packaging
+
+Applications can build named in-memory outputs directly from the library:
+
+```rust
+use qrcode_rs::QrCode;
+
+let files = QrCode::batch_builder(["alpha", "beta"])
+    .file_extension("txt")
+    .render_bytes(|code, _| Ok::<_, qrcode_rs::QrError>(
+        code.render::<char>().quiet_zone(false).build().into_bytes()
+    ))
+    .unwrap();
+
+let zip_bytes = files.to_zip().unwrap();
+assert!(zip_bytes.starts_with(b"PK\x03\x04"));
+```
+
+With `image`, `BatchOutput<RgbaImage>::to_png_grid(...)` builds a PNG contact
+sheet; with `batch-zip-deflate`, `to_zip_with(ZipCompression::Deflated)` writes
+compressed ZIP entries.
 
 ## Structured Payload Parsing
 
@@ -265,6 +292,23 @@ qrencodes -f svg -o out.svg "https://example.com"
 qrencodes -f png -o out.png --size 12 --dark '#1a1a2e' --light '#f5f5dc' "Hello"
 printf 'piped input' | qrencodes -f unicode
 qrencodes --batch ./payloads.txt -f svg -o ./out
+qrencodes --batch ./payloads.csv --batch-format csv --batch-column 2 --parallel -f png -o ./out
+qrencodes --batch ./payloads.json --batch-format json --batch-key payload -f svg -o ./out
+qrencodes --batch ./payloads.txt --batch-pack zip -f svg -o payloads.zip
+qrencodes --batch ./payloads.txt --batch-pack grid --grid-columns 3 -f png -o payloads.png
+qrencodes validate out.png --expect "Hello"
+```
+
+Library callers can also render an encoded batch into stable, named in-memory
+outputs and decide how to package them:
+
+```rust
+use qrcode_rs::{EcLevel, QrCode};
+
+let codes = QrCode::batch(["alpha", "beta"], EcLevel::M)?;
+let rendered = QrCode::batch_render(&codes).extension("txt").build::<char>();
+assert_eq!(rendered[0].name(), "qr-0001.txt");
+# Ok::<(), qrcode_rs::QrError>(())
 ```
 
 Supported output formats:

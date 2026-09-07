@@ -81,6 +81,9 @@ pub enum QrError {
         /// Configured maximum height.
         max_height: u32,
     },
+
+    /// Encoding exceeded the configured synchronous timeout budget.
+    EncodingTimeout,
 }
 
 impl Display for QrError {
@@ -104,6 +107,7 @@ impl Display for QrError {
             QrError::RenderSizeExceeded { width, height, max_width, max_height } => {
                 write!(fmt, "rendered symbol size {width}x{height} exceeds configured maximum {max_width}x{max_height}")
             }
+            QrError::EncodingTimeout => fmt.write_str("encoding exceeded configured timeout"),
         }
     }
 }
@@ -145,6 +149,7 @@ impl QrError {
                 Some("use a normal QR version from 1..=40 and non-zero render dimensions")
             }
             QrError::RenderSizeExceeded { .. } => Some("increase max_render_size or use a lower maximum QR version"),
+            QrError::EncodingTimeout => Some("increase encoding_timeout or run encoding in a cancellable worker"),
         }
     }
 }
@@ -557,6 +562,7 @@ mod parse_tests {
         assert!(QrError::InvalidEciDesignator { value: 1_000_000 }.suggestion().is_some());
         assert!(QrError::InvalidCharacter { position: 0, byte: 0 }.suggestion().is_some());
         assert!(QrError::InvalidStructuredAppend { value: 17 }.suggestion().is_some());
+        assert!(QrError::EncodingTimeout.suggestion().is_some());
     }
 }
 

@@ -13,7 +13,8 @@ readme = "README.md"
 
 [dependencies]
 clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
-qrcode-rs = { workspace = true, features = ["std"] }
+rayon = "1"
+qrcode-rs = { workspace = true, features = ["std", "parallel", "decode-rqrr"] }
 qrcode-render = { workspace = true, features = ["std"] }
 qrcode-image = { workspace = true, features = ["image"] }
 qrcode-svg = { workspace = true, features = ["std"] }
@@ -21,6 +22,7 @@ qrcode-eps = { workspace = true, features = ["std"] }
 qrcode-pic = { workspace = true, features = ["std"] }
 qrcode-html = { workspace = true, features = ["std"] }
 qrcode-pdf = { workspace = true, features = ["std"] }
+serde_json = "1"
 
 [[bin]]
 name = "qrencodes"

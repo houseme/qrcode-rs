@@ -1501,7 +1501,8 @@ mod draw_codewords_test {
 
 /// The mask patterns. Since QR code and Micro QR code do not use the same
 /// pattern number, we name them according to their shape instead of the number.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MaskPattern {
     /// QR code pattern 000: `(x + y) % 2 == 0`.
     Checkerboard = 0b000,
@@ -1859,21 +1860,23 @@ fn write_module_bytes(modules: &[Module], output: &mut Vec<u8>) {
 fn count_dark_modules(modules: &[u8]) -> usize {
     #[cfg(target_arch = "aarch64")]
     {
-        // AArch64 guarantees NEON support; the helper only performs guarded
-        // unaligned loads within the input slice.
+        // SAFETY: AArch64 guarantees NEON support; the helper only performs
+        // guarded unaligned loads within the input slice.
         unsafe { count_dark_modules_neon(modules) }
     }
 
     #[cfg(target_arch = "x86_64")]
     {
         if avx2_available() {
-            // The helper only reads inside the slice bounds with unaligned
+            // SAFETY: runtime feature detection ensures AVX2 is available;
+            // the helper only reads inside the slice bounds with unaligned
             // 32-byte loads.
             return unsafe { count_dark_modules_avx2(modules) };
         }
 
         if sse2_available() {
-            // The helper only reads inside the slice bounds with unaligned
+            // SAFETY: runtime feature detection ensures SSE2 is available;
+            // the helper only reads inside the slice bounds with unaligned
             // 16-byte loads.
             return unsafe { count_dark_modules_sse2(modules) };
         }
@@ -2076,21 +2079,23 @@ fn line_range_has_dark(line: &[u8], start: usize, end: usize) -> bool {
 fn compute_block_penalty_score(width: usize, modules: &[u8]) -> u16 {
     #[cfg(target_arch = "aarch64")]
     {
-        // AArch64 guarantees NEON support; the helper only performs guarded
-        // unaligned loads within each row pair.
+        // SAFETY: AArch64 guarantees NEON support; the helper only performs
+        // guarded unaligned loads within each row pair.
         unsafe { compute_block_penalty_score_neon(width, modules) }
     }
 
     #[cfg(target_arch = "x86_64")]
     {
         if avx2_available() {
-            // The helper only performs guarded unaligned vector loads within
+            // SAFETY: runtime feature detection ensures AVX2 is available;
+            // the helper only performs guarded unaligned vector loads within
             // each row pair.
             return unsafe { compute_block_penalty_score_avx2(width, modules) };
         }
 
         if sse2_available() {
-            // The helper only performs guarded unaligned vector loads within
+            // SAFETY: runtime feature detection ensures SSE2 is available;
+            // the helper only performs guarded unaligned vector loads within
             // each row pair.
             return unsafe { compute_block_penalty_score_sse2(width, modules) };
         }
@@ -2157,8 +2162,8 @@ unsafe fn count_dark_modules_neon(modules: &[u8]) -> usize {
     let zero = vdupq_n_u8(0);
 
     while offset + 16 <= modules.len() {
-        // The loop guard ensures the full 16-byte vector is in bounds for this
-        // slice.
+        // SAFETY: the loop guard ensures the full 16-byte vector is in bounds
+        // for this slice.
         let chunk = unsafe { vld1q_u8(modules.as_ptr().wrapping_add(offset)) };
         let nonzero_lanes = vmvnq_u8(vceqq_u8(chunk, zero));
         count += (vaddvq_u8(vcntq_u8(nonzero_lanes)) / 8) as usize;
@@ -2181,8 +2186,8 @@ unsafe fn count_dark_modules_avx2(modules: &[u8]) -> usize {
 
     while offset + 32 <= modules.len() {
         let ptr = modules.as_ptr().wrapping_add(offset).cast::<__m256i>();
-        // `_mm256_loadu_si256` accepts unaligned input; the loop guard ensures
-        // the full 32-byte vector is in bounds for this slice.
+        // SAFETY: `_mm256_loadu_si256` accepts unaligned input; the loop guard
+        // ensures the full 32-byte vector is in bounds for this slice.
         let chunk = unsafe { _mm256_loadu_si256(ptr) };
         let zero_lanes = _mm256_movemask_epi8(_mm256_cmpeq_epi8(chunk, zero)) as u32;
         count += 32 - zero_lanes.count_ones() as usize;
@@ -2209,8 +2214,8 @@ fn count_dark_modules_sse2_remainder(modules: &[u8]) -> usize {
 
     while offset + 16 <= modules.len() {
         let ptr = modules.as_ptr().wrapping_add(offset).cast::<__m128i>();
-        // `_mm_loadu_si128` accepts unaligned input; the loop guard ensures the
-        // full 16-byte vector is in bounds for this slice.
+        // SAFETY: `_mm_loadu_si128` accepts unaligned input; the loop guard
+        // ensures the full 16-byte vector is in bounds for this slice.
         let chunk = unsafe { _mm_loadu_si128(ptr) };
         let zero_lanes = _mm_movemask_epi8(_mm_cmpeq_epi8(chunk, zero)) as u32;
         count += 16 - zero_lanes.count_ones() as usize;
@@ -2232,12 +2237,16 @@ unsafe fn compute_block_penalty_score_neon(width: usize, modules: &[u8]) -> u16 
         let mut x = 0;
 
         while x + 16 < width {
-            // The loop guard ensures all four 16-byte windows stay inside
-            // their row slices.
-            let row_chunk = unsafe { vld1q_u8(row.as_ptr().wrapping_add(x)) };
-            let row_right_chunk = unsafe { vld1q_u8(row.as_ptr().wrapping_add(x + 1)) };
-            let next_chunk = unsafe { vld1q_u8(next_row.as_ptr().wrapping_add(x)) };
-            let next_right_chunk = unsafe { vld1q_u8(next_row.as_ptr().wrapping_add(x + 1)) };
+            // SAFETY: the loop guard ensures all four 16-byte windows stay
+            // inside their row slices.
+            let (row_chunk, row_right_chunk, next_chunk, next_right_chunk) = unsafe {
+                (
+                    vld1q_u8(row.as_ptr().wrapping_add(x)),
+                    vld1q_u8(row.as_ptr().wrapping_add(x + 1)),
+                    vld1q_u8(next_row.as_ptr().wrapping_add(x)),
+                    vld1q_u8(next_row.as_ptr().wrapping_add(x + 1)),
+                )
+            };
 
             let horizontal = vceqq_u8(row_chunk, row_right_chunk);
             let vertical = vceqq_u8(row_chunk, next_chunk);
@@ -2270,12 +2279,17 @@ unsafe fn compute_block_penalty_score_avx2(width: usize, modules: &[u8]) -> u16 
             let next_ptr = next_row.as_ptr().wrapping_add(x).cast::<__m256i>();
             let next_right_ptr = next_row.as_ptr().wrapping_add(x + 1).cast::<__m256i>();
 
-            // `_mm256_loadu_si256` accepts unaligned input; the loop guard
-            // ensures all four 32-byte windows stay inside their row slices.
-            let row_chunk = unsafe { _mm256_loadu_si256(row_ptr) };
-            let row_right_chunk = unsafe { _mm256_loadu_si256(row_right_ptr) };
-            let next_chunk = unsafe { _mm256_loadu_si256(next_ptr) };
-            let next_right_chunk = unsafe { _mm256_loadu_si256(next_right_ptr) };
+            // SAFETY: `_mm256_loadu_si256` accepts unaligned input; the loop
+            // guard ensures all four 32-byte windows stay inside their row
+            // slices.
+            let (row_chunk, row_right_chunk, next_chunk, next_right_chunk) = unsafe {
+                (
+                    _mm256_loadu_si256(row_ptr),
+                    _mm256_loadu_si256(row_right_ptr),
+                    _mm256_loadu_si256(next_ptr),
+                    _mm256_loadu_si256(next_right_ptr),
+                )
+            };
 
             let horizontal = _mm256_cmpeq_epi8(row_chunk, row_right_chunk);
             let vertical = _mm256_cmpeq_epi8(row_chunk, next_chunk);
@@ -2308,12 +2322,16 @@ unsafe fn compute_block_penalty_score_sse2(width: usize, modules: &[u8]) -> u16 
             let next_ptr = next_row.as_ptr().wrapping_add(x).cast::<__m128i>();
             let next_right_ptr = next_row.as_ptr().wrapping_add(x + 1).cast::<__m128i>();
 
-            // `_mm_loadu_si128` accepts unaligned input; the loop guard ensures
-            // all four 16-byte windows stay inside their row slices.
-            let row_chunk = unsafe { _mm_loadu_si128(row_ptr) };
-            let row_right_chunk = unsafe { _mm_loadu_si128(row_right_ptr) };
-            let next_chunk = unsafe { _mm_loadu_si128(next_ptr) };
-            let next_right_chunk = unsafe { _mm_loadu_si128(next_right_ptr) };
+            // SAFETY: `_mm_loadu_si128` accepts unaligned input; the loop guard
+            // ensures all four 16-byte windows stay inside their row slices.
+            let (row_chunk, row_right_chunk, next_chunk, next_right_chunk) = unsafe {
+                (
+                    _mm_loadu_si128(row_ptr),
+                    _mm_loadu_si128(row_right_ptr),
+                    _mm_loadu_si128(next_ptr),
+                    _mm_loadu_si128(next_right_ptr),
+                )
+            };
 
             let horizontal = _mm_cmpeq_epi8(row_chunk, row_right_chunk);
             let vertical = _mm_cmpeq_epi8(row_chunk, next_chunk);
@@ -2631,12 +2649,28 @@ impl Canvas {
     /// penalty score.
     #[must_use]
     pub fn apply_best_mask(&self) -> Self {
+        self.apply_best_mask_with_score().0
+    }
+
+    /// Construct a new canvas with the best mask and return the selected mask
+    /// pattern alongside it.
+    #[must_use]
+    pub fn apply_best_mask_with_pattern(&self) -> (Self, MaskPattern) {
+        let (canvas, pattern, _) = self.apply_best_mask_with_score();
+        (canvas, pattern)
+    }
+
+    /// Construct a new canvas with the best mask and return the selected mask
+    /// pattern and its penalty score.
+    #[must_use]
+    pub fn apply_best_mask_with_score(&self) -> (Self, MaskPattern, u16) {
         let patterns: &[MaskPattern] = match self.version {
             Version::Normal(_) => &ALL_PATTERNS_QR,
             Version::Micro(_) => &ALL_PATTERNS_MICRO_QR,
         };
         let mut scratch = Vec::with_capacity(self.modules.len());
         let mut best_canvas = None;
+        let mut best_pattern = patterns[0];
         let mut best_score = u16::MAX;
 
         for &pattern in patterns {
@@ -2645,11 +2679,12 @@ impl Canvas {
             let score = c.compute_total_penalty_scores_with_scratch(&mut scratch);
             if score < best_score {
                 best_score = score;
+                best_pattern = pattern;
                 best_canvas = Some(c);
             }
         }
 
-        best_canvas.expect("at least one pattern")
+        (best_canvas.expect("at least one pattern"), best_pattern, best_score)
     }
 
     /// Convert the modules into a vector of colors.

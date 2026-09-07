@@ -23,7 +23,7 @@
 ### OSS-Fuzz
 - `projects/qrcode-rs/` 集成;Dockerfile + build.sh;持续 24/7。
 
-## 彞响文件
+## 影响文件
 
 - `fuzz/Cargo.toml` + `fuzz/fuzz_targets/*.rs`(新增)。
 - `tests/property.rs`(新增)。

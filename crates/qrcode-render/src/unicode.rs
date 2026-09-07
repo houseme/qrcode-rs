@@ -44,22 +44,21 @@ macro_rules! impl_bit_canvas {
                 let data = &self.canvas;
                 let row_group = $row_group;
                 let empty: &[u8] = &[];
-                let rows: Vec<&[u8]> = data.chunks_exact(w).collect();
                 let col_step: usize = $col_step;
-                let mut out = String::with_capacity(rows.len() / row_group * (w / col_step + 1));
+                let row_count = data.len() / w;
+                let output_rows = row_count.div_ceil(row_group);
+                let output_cols = w.div_ceil(col_step);
+                let mut out = String::with_capacity(output_rows * (output_cols + 1));
 
-                for group in rows.chunks(row_group) {
-                    let actual = group.len();
+                for group_start in (0..row_count).step_by(row_group) {
+                    let actual = row_group.min(row_count - group_start);
+                    let mut group: [&[u8]; $row_group] = [empty; $row_group];
+                    for i in 0..actual {
+                        let row_start = (group_start + i) * w;
+                        group[i] = &data[row_start..row_start + w];
+                    }
                     for col in (0..w).step_by(col_step) {
-                        if actual == row_group {
-                            out.push_str($encode(group, col));
-                        } else {
-                            let mut padded: [&[u8]; $row_group] = [empty; $row_group];
-                            for i in 0..actual {
-                                padded[i] = group[i];
-                            }
-                            out.push_str($encode(&padded, col));
-                        }
+                        out.push_str($encode(&group, col));
                     }
                     out.push('\n');
                 }

@@ -1024,6 +1024,8 @@ dependencies = [
  "qrcode-render",
  "qrcode-rs",
  "qrcode-svg",
+ "rayon",
+ "serde_json",
 ]
 
 [[package]]
@@ -1108,6 +1110,7 @@ version = "2.1.0"
 dependencies = [
  "clap",
  "criterion",
+ "flate2",
  "image",
  "log",
  "proptest",
@@ -1122,6 +1125,7 @@ dependencies = [
  "qrcode-pic",
  "qrcode-render",
  "qrcode-svg",
+ "rayon",
  "serde",
  "serde_json",
  "tokio",

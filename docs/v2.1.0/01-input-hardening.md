@@ -13,7 +13,12 @@
 3. **边界**: 切片索引全部经范围检查;`find_min_version`/canvas 坐标 clamp。
 4. **资源限制**(§4.1):
    ```rust
-   pub struct ResourceLimits { pub max_data_length: usize, pub max_version: Version, pub max_render_size: (u32,u32) }
+   pub struct ResourceLimits {
+       pub max_data_length: usize,
+       pub max_version: Version,
+       pub max_render_size: (u32,u32),
+       pub encoding_timeout: Option<u64>,
+   }
    impl QrCode { pub fn with_limits(data: &[u8], limits: ResourceLimits) -> QrResult<Self> }
    ```
    默认:max_data=7089(V40 Byte)、max_version=V40、render≤4096²。
@@ -46,4 +51,4 @@
 
 ## 当前实施状态
 
-已落地 `qrcode_core::ResourceLimits`、`QrCode::with_limits`、默认输入长度上限、最大版本/模块尺寸检查，以及 Structured Append alphanumeric 越界返回 `MalformedStream` 的回归测试。Miri、ASAN 和跨平台字节级复现仍由 CI/专用主机负责。
+已落地 `qrcode_core::ResourceLimits`、`QrCode::with_limits`、默认输入长度上限、最大版本/模块尺寸检查、同步构造 `encoding_timeout` 软预算检查、显式 `deterministic` feature/API，以及 Structured Append alphanumeric 越界返回 `MalformedStream` 的回归测试。`encoding_timeout` 在构造阶段的边界点检查耗时,不承诺抢占式取消;Miri、ASAN 和跨平台字节级复现仍由 CI/专用主机负责。

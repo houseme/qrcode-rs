@@ -63,8 +63,11 @@ debug = false
 image = { version = "0.25.10", default-features = false, optional = true }
 clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"], optional = true }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
+serde_json = { version = "1", default-features = false, features = ["alloc"], optional = true }
 log = { version = "0.4", default-features = false, optional = true }
 tokio = { version = "1", default-features = false, features = ["rt"], optional = true }
+rayon = { version = "1", optional = true }
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"], optional = true }
 qrcode-core = { workspace = true }
 qrcode-decode = { workspace = true }
 qrcode-eps = { workspace = true, optional = true }
@@ -109,13 +112,21 @@ html = ["dep:qrcode-html"]
 pdf = ["dep:qrcode-pdf"]
 # Enables serde Serialize/Deserialize on the core types and a QrCodeData wrapper.
 serde = ["dep:serde", "qrcode-core/serde"]
+# Adds dependency-light JSON helpers for QrTemplate and QrTemplatePatch.
+template-json = ["serde", "dep:serde_json"]
 # Emits log::debug!/info! at the encode chokepoint (no behavior without a logger).
 log = ["dep:log"]
+# Exposes explicit deterministic construction helpers for audit-sensitive callers.
+deterministic = []
+# Enables parallel batch encoding with rayon while keeping the default profile lean.
+parallel = ["std", "dep:rayon"]
+# Enables DEFLATE compression for library-level ZIP batch packaging.
+batch-zip-deflate = ["std", "dep:flate2"]
 # Enables async rendering helpers backed by tokio::task::spawn_blocking.
 async = ["std", "dep:tokio"]
 # Enables the `qrencodes` CLI binary (pulls in clap + all render backends).
 # The library stays zero-dependency when this feature is off.
-cli = ["dep:clap", "image", "svg", "eps", "pic", "html", "pdf"]
+cli = ["dep:clap", "dep:serde_json", "parallel", "image", "svg", "eps", "pic", "html", "pdf", "decode-rqrr"]
 # Enables the `rqrr`-backed `RqrrDecoder` (decoding QR codes back to data).
 # Pulls in `rqrr` + the `image` renderer (used to feed grayscale into the decoder).
 decode-rqrr = ["image", "qrcode-decode/rqrr"]

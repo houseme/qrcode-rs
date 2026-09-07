@@ -8,11 +8,38 @@
   installable `qrcode-cli` (`qrencodes`) package.
 - Added the shared `Builder` implementation for borrowed renderers and plugin
   registry metadata queries (`plugin_names` / `plugin_version`).
+- Added the `deterministic` feature with `QrCode::new_deterministic` as an
+  explicit construction entry point for audit-sensitive callers.
+- Added `Info::mask_pattern()`, `Info::mask_penalty_score()`, and core
+  `Canvas::apply_best_mask_with_pattern()` / `apply_best_mask_with_score()` so
+  callers can inspect the selected QR mask when the encoder records it.
+- Added `EncodingModes`, `Info::encoding_modes()`,
+  `Info::remaining_capacity()` / `remaining_capacity_bits()`, and
+  encoding-time metadata retention for generated `QrCode` values.
+- Added `ResourceLimits::encoding_timeout` with a
+  `with_encoding_timeout_millis()` helper and coarse synchronous timeout checks
+  when the facade is built with `std`.
+- Added the optional `parallel` feature with ordered `QrCode::par_batch`
+  encoding, `QrCode::batch_render` and `QrCode::batch_builder` for stable named
+  in-memory batch outputs, template inheritance patches, CSV/JSON/JSONL CLI
+  batch input, parallel CLI batch rendering, library/CLI ZIP batch packaging,
+  library/CLI PNG contact sheet batch packaging, optional DEFLATE ZIP
+  compression through `batch-zip-deflate`, and the `qrencodes validate` decode
+  check.
+- Added `template-json` helpers for loading/exporting `QrTemplate` and
+  `QrTemplatePatch` values without making JSON part of the default dependency
+  profile.
 
 ### Fixed
 
 - Hardened plugin module-grid dimension checks and plain-text renderer
   configuration/output arithmetic against malformed or overflowing input.
+- Replaced parser-segment mode optimization with a dynamic-programming merge
+  plan, avoiding local greedy merges that produce a larger final bit stream.
+- Reduced intermediate allocations in common renderer hot paths, including
+  quiet-zone drawing, Unicode/ANSI text output, and PDF content streams.
+- Expanded rendering benchmarks to cover Unicode, ANSI, HTML, PIC, and PDF
+  backends in addition to the existing string/SVG/image/EPS cases.
 - Expanded property and differential coverage across arbitrary byte payloads,
   automatic version selection, fixed versions, error-correction levels, and
   forced encoding modes.
@@ -215,7 +242,11 @@
 
 ### Notes / deferred
 
-- `par_batch` (rayon), batch render-to-files / grid / packaging, streaming / CSV / JSON data sources, brand customization (logo / captions / color-scheme), and template inheritance / TOML-YAML loading are deferred (external crates / image-heavy / couple to deferred features).
+- Brand customization (logo / captions / color-scheme) and TOML/YAML template
+  loading remain deferred. `par_batch`, library-level named batch rendering,
+  JSON template helpers, CSV/JSON/JSONL batch data sources, ZIP/grid batch
+  packaging, and in-code template inheritance are available in the Unreleased
+  line.
 - Templates don't cover the borrowing `svg`/`html` backends (their color borrows the input) — apply those colors manually.
 
 ## [1.1.0] - 2026-07-01
@@ -274,8 +305,11 @@ changes will require a new major version.
 
 ### Notes
 
-- Deferred (external deps conflict with zero-dependency): `SmallVec`, `bumpalo` arena, `rayon` parallel (a future `parallel` feature).
-- Deferred (breaking/complex): 1-bit-per-module storage, `unsafe new_unchecked`, DP segmentation.
+- Deferred (external deps conflict with the lean default profile): `SmallVec`
+  and `bumpalo` arena. `rayon` parallel support is available behind the
+  Unreleased `parallel` feature.
+- Deferred (breaking/complex): 1-bit-per-module storage, `unsafe new_unchecked`.
+  Parser-boundary DP segmentation is available in the Unreleased line.
 - Deferred (infra): CI bench regression detection, memory profiling, compile-time/monomorphization opts.
 
 ## [0.5.0] - 2026-07-01
@@ -296,7 +330,7 @@ changes will require a new major version.
 
 ### Notes
 
-- Deferred to later versions (need external decoder/scanner verification or a larger refactor): Structured Append (§1), custom Finder/Alignment patterns (§2), encoding stats (§4.2), and `Info` fields requiring input/mask retention (encoding_modes, mask_pattern, remaining_capacity)
+- Deferred to later versions (need external decoder/scanner verification or a larger refactor): Structured Append (§1), custom Finder/Alignment patterns (§2), and full segment-boundary traces for encoding stats (§4.2). `Info` mask, encoding-mode, and remaining-capacity metadata are available in the Unreleased line.
 
 ## [0.4.0] - 2026-07-01
 
@@ -337,9 +371,9 @@ changes will require a new major version.
 
 ### Notes
 
-- WASM playground and `validate` subcommand (roadmap §5) are deferred to their
-  scheduled versions (v1.1.0 / v1.4.0); i18n error messages are deferred in
-  favor of the enriched English `Display`
+- WASM playground is deferred to its scheduled version (v1.1.0); i18n error
+  messages are deferred in favor of the enriched English `Display`. The
+  `qrencodes validate` image decode check is available in the Unreleased line.
 
 ## [0.3.0] - 2026-06-11
 

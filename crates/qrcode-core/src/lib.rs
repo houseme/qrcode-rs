@@ -25,6 +25,7 @@ pub mod traits;
 pub mod types;
 pub mod version;
 
+pub use bits::EncodingModes;
 pub use cast::{As, Truncate};
 pub use limits::{DEFAULT_MAX_DATA_LENGTH, DEFAULT_MAX_RENDER_SIZE, ResourceLimits};
 pub use mode::{AlphanumericMode, ByteMode, EncodingMode, KanjiMode, NumericMode};
