@@ -2,7 +2,7 @@
 name = "qrcode-cli"
 description = "Command-line QR code generator for qrcode-rs."
 license = "MIT OR Apache-2.0"
-version = "2.0.0"
+version = "2.1.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["houseme <housemecn@gmail.com>"]
@@ -13,14 +13,14 @@ readme = "README.md"
 
 [dependencies]
 clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
-qrcode-rs = { path = "../..", version = "2.0.0", default-features = false, features = ["std"] }
-qrcode-render = { path = "../qrcode-render", version = "2.0.0", default-features = false, features = ["std"] }
-qrcode-image = { path = "../qrcode-image", version = "2.0.0", default-features = false, features = ["image"] }
-qrcode-svg = { path = "../qrcode-svg", version = "2.0.0", default-features = false, features = ["std"] }
-qrcode-eps = { path = "../qrcode-eps", version = "2.0.0", default-features = false, features = ["std"] }
-qrcode-pic = { path = "../qrcode-pic", version = "2.0.0", default-features = false, features = ["std"] }
-qrcode-html = { path = "../qrcode-html", version = "2.0.0", default-features = false, features = ["std"] }
-qrcode-pdf = { path = "../qrcode-pdf", version = "2.0.0", default-features = false, features = ["std"] }
+qrcode-rs = { path = "../..", version = "2.1.0", default-features = false, features = ["std"] }
+qrcode-render = { path = "../qrcode-render", version = "2.1.0", default-features = false, features = ["std"] }
+qrcode-image = { path = "../qrcode-image", version = "2.1.0", default-features = false, features = ["image"] }
+qrcode-svg = { path = "../qrcode-svg", version = "2.1.0", default-features = false, features = ["std"] }
+qrcode-eps = { path = "../qrcode-eps", version = "2.1.0", default-features = false, features = ["std"] }
+qrcode-pic = { path = "../qrcode-pic", version = "2.1.0", default-features = false, features = ["std"] }
+qrcode-html = { path = "../qrcode-html", version = "2.1.0", default-features = false, features = ["std"] }
+qrcode-pdf = { path = "../qrcode-pdf", version = "2.1.0", default-features = false, features = ["std"] }
 
 [[bin]]
 name = "qrencodes"

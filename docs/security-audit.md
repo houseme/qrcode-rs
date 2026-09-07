@@ -7,7 +7,7 @@ future dependency and configuration is risk-free.
 
 ## Review status
 
-The current repository is version 2.0.0 and contains the v2.1 security-plan
+The current repository is version 2.1.0 and contains the v2.1 security-plan
 hardening work that is available in the source tree. The v2.1 release gates
 that require long-running fuzzing, sanitizers, Miri, supply-chain attestations,
 or an external audit are not evidenced by this summary and remain follow-up

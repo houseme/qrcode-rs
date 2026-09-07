@@ -203,18 +203,18 @@ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
 name = "qrcode-core"
-version = "2.0.0"
+version = "2.1.0"
 
 [[package]]
 name = "qrcode-decode"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "qrcode-core",
 ]
 
 [[package]]
 name = "qrcode-eps"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "qrcode-core",
  "qrcode-render",
@@ -222,7 +222,7 @@ dependencies = [
 
 [[package]]
 name = "qrcode-html"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "qrcode-core",
  "qrcode-render",
@@ -230,7 +230,7 @@ dependencies = [
 
 [[package]]
 name = "qrcode-image"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "image",
  "qrcode-core",
@@ -239,11 +239,11 @@ dependencies = [
 
 [[package]]
 name = "qrcode-parse"
-version = "2.0.0"
+version = "2.1.0"
 
 [[package]]
 name = "qrcode-pdf"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "qrcode-core",
  "qrcode-render",
@@ -251,7 +251,7 @@ dependencies = [
 
 [[package]]
 name = "qrcode-pic"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "qrcode-core",
  "qrcode-render",
@@ -259,7 +259,7 @@ dependencies = [
 
 [[package]]
 name = "qrcode-render"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "image",
  "qrcode-core",
@@ -267,7 +267,7 @@ dependencies = [
 
 [[package]]
 name = "qrcode-rs"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "qrcode-core",
  "qrcode-decode",
@@ -292,7 +292,7 @@ dependencies = [
 
 [[package]]
 name = "qrcode-svg"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "qrcode-core",
  "qrcode-render",

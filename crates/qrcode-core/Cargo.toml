@@ -2,7 +2,7 @@
 name = "qrcode-core"
 description = "Zero-dependency QR code encoding core (no_std + alloc) — the encoding primitive layer of qrcode-rs."
 license = "MIT OR Apache-2.0"
-version = "2.0.0"
+version = "2.1.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["houseme <housemecn@gmail.com>"]

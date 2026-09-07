@@ -2,7 +2,7 @@
 name = "qrcode-image"
 description = "Image rendering backend and image helpers for qrcode-rs."
 license = "MIT OR Apache-2.0"
-version = "2.0.0"
+version = "2.1.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["houseme <housemecn@gmail.com>"]
@@ -13,8 +13,8 @@ readme = "README.md"
 
 [dependencies]
 image = { version = "0.25.10", default-features = false, optional = true }
-qrcode-core = { path = "../qrcode-core", version = "2.0.0", default-features = false }
-qrcode-render = { path = "../qrcode-render", version = "2.0.0", default-features = false }
+qrcode-core = { path = "../qrcode-core", version = "2.1.0", default-features = false }
+qrcode-render = { path = "../qrcode-render", version = "2.1.0", default-features = false }
 
 [features]
 default = []

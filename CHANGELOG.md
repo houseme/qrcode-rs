@@ -21,8 +21,30 @@
 
 - Long-running OSS-Fuzz/ClusterFuzz infrastructure and sanitizer campaigns
   remain follow-up work tracked for the v2.1 security plan; the repository CI
-  continues to provide compile and short smoke coverage for the five fuzz
+  continues to provide compile and short smoke coverage for the seven fuzz
   targets.
+
+## [2.1.0] - 2026-09-07
+
+### Added
+
+- Resource limits for bounded input, version selection, and rendered module size.
+- Additional image and Structured Append parser fuzz targets with fixed-seed
+  security property coverage.
+- Cargo deny/vet policy, minimal dependency checks, SBOM generation, and
+  keyless release attestation workflows.
+- Public security policy, audit summary, and contributor security guidance.
+
+### Fixed
+
+- Structured Append alphanumeric decoding now rejects invalid base-45 values
+  instead of indexing beyond the reverse alphabet table.
+
+### Notes
+
+- Long-running fuzz campaigns, Miri/ASAN/UBSAN, OSS-Fuzz acceptance, and actual
+  release signing remain separately evidenced release operations; bounded CI
+  smoke and reproducible local checks are not substituted for those claims.
 
 ## [2.0.0] - 2026-07-15
 

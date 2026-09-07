@@ -2,7 +2,7 @@
 name = "qrcode-eps"
 description = "Pure Rust Encapsulated PostScript rendering backend for qrcode-rs."
 license = "MIT OR Apache-2.0"
-version = "2.0.0"
+version = "2.1.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["houseme <housemecn@gmail.com>"]
@@ -12,8 +12,8 @@ categories = ["encoding", "multimedia::images", "no-std"]
 readme = "README.md"
 
 [dependencies]
-qrcode-core = { path = "../qrcode-core", version = "2.0.0", default-features = false }
-qrcode-render = { path = "../qrcode-render", version = "2.0.0", default-features = false }
+qrcode-core = { path = "../qrcode-core", version = "2.1.0", default-features = false }
+qrcode-render = { path = "../qrcode-render", version = "2.1.0", default-features = false }
 
 [features]
 default = []

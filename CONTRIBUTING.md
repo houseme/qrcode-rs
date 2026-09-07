@@ -172,7 +172,7 @@ Releases follow [SemVer](https://semver.org). The flow:
    before publishing crates that depend on it:
 
    ```bash
-   version=2.0.0
+   version=2.1.0
    for crate in \
      qrcode-core qrcode-render qrcode-parse qrcode-decode \
      qrcode-svg qrcode-eps qrcode-pic qrcode-html qrcode-pdf qrcode-rs

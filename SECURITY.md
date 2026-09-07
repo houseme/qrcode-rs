@@ -10,7 +10,7 @@ Security fixes are provided according to the following policy:
 | 1.x | Critical security fixes when practical; migrate to 2.x for ongoing maintenance |
 | 0.x | Not supported |
 
-The repository currently declares version 2.0.0. Support status follows the
+The repository currently declares version 2.1.0. Support status follows the
 version line in the published release, not a branch name or a local checkout.
 
 ## Reporting a vulnerability

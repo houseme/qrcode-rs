@@ -302,7 +302,7 @@ jobs:
             fi
           }
 
-          version="2.0.0"
+          version="2.1.0"
           publish_crate qrcode-core "${version}"
           publish_crate qrcode-render "${version}"
           publish_crate qrcode-image "${version}"
