@@ -91,7 +91,7 @@ be called complete:
 | --- | --- | --- |
 | Long-running fuzzing / OSS-Fuzz | Local fuzz targets and short CI smoke runs | Published campaign or OSS-Fuzz integration results |
 | Miri and ASAN/UBSAN | Not part of the current repository CI evidence | Reproducible sanitizer and Miri runs for supported targets |
-| cargo-deny / cargo-vet | Checked policy configuration; local deny licenses/bans/sources pass, while full online vet remains CI-scoped | Green CI results with current advisory data and audit imports |
+| cargo-deny / cargo-vet | Local deny licenses/bans/sources and `cargo vet check` pass with the locked baseline; fresh advisory data remains CI-scoped | Green CI results with current advisory data and audit imports |
 | SBOM and release signing | Release workflow and verification instructions are present but no release artifact was produced in this review | Release-attached SBOM and verifiable signing/attestation evidence |
 | External security audit | Not performed as part of this work | Public scope, report, and remediation record |
 

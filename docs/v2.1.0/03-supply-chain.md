@@ -41,4 +41,4 @@ CI 自动化依赖审计、SBOM 生成、发布签名、依赖最小化。
 
 ## 当前实施状态
 
-已新增 `deny.toml`、`supply-chain/` 审计基线、security workflow，以及带 SBOM、auditable CLI、Sigstore 和 provenance attestation 的 release workflow；`minimal` feature 已加入并验证仅选择 workspace crate。完整在线 vet、SBOM 发布和签名结果需在 GitHub runner/release tag 上复核。
+已新增 `deny.toml`、`supply-chain/` 审计基线、security workflow，以及带 SBOM、auditable CLI、Sigstore 和 provenance attestation 的 release workflow；`minimal` feature 已加入并验证仅选择 workspace crate。本地 `cargo vet check` 已在锁定基线上通过；在线 advisory 数据、SBOM 发布和签名结果仍需在 GitHub runner/release tag 上复核。
