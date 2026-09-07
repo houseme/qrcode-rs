@@ -47,6 +47,61 @@ audit-as-crates-io = false
 version = "2.0.1"
 criteria = "safe-to-deploy"
 notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions."allocator-api2"]]
+version = "0.2.21"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions."equivalent"]]
+version = "1.0.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions."foldhash"]]
+version = "0.2.0"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions."g2gen"]]
+version = "1.2.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions."g2p"]]
+version = "1.2.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions."g2poly"]]
+version = "1.2.2"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions."hashbrown"]]
+version = "0.16.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions."lru"]]
+version = "0.16.4"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions."pin-project-lite"]]
+version = "0.2.17"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions."rqrr"]]
+version = "0.10.1"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
+
+[[exemptions."tokio"]]
+version = "1.52.3"
+criteria = "safe-to-deploy"
+notes = "Baseline exemption for the locked v2.1.0 dependency graph; replace with a reviewed audit."
 [[exemptions."aho-corasick"]]
 version = "1.1.4"
 criteria = "safe-to-deploy"
