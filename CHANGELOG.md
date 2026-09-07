@@ -2,9 +2,27 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added the focused `qrcode-image` backend crate and the independently
+  installable `qrcode-cli` (`qrencodes`) package.
+- Added the shared `Builder` implementation for borrowed renderers and plugin
+  registry metadata queries (`plugin_names` / `plugin_version`).
+
+### Fixed
+
+- Hardened plugin module-grid dimension checks and plain-text renderer
+  configuration/output arithmetic against malformed or overflowing input.
+- Expanded property and differential coverage across arbitrary byte payloads,
+  automatic version selection, fixed versions, error-correction levels, and
+  forced encoding modes.
+
 ### Notes
 
-- No unreleased changes yet.
+- Long-running OSS-Fuzz/ClusterFuzz infrastructure and sanitizer campaigns
+  remain follow-up work tracked for the v2.1 security plan; the repository CI
+  continues to provide compile and short smoke coverage for the five fuzz
+  targets.
 
 ## [2.0.0] - 2026-07-15
 
