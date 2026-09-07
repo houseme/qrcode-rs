@@ -73,6 +73,26 @@ All public API must be documented (`#![deny(missing_docs)]` is set in
 `src/lib.rs`). New features should include unit tests and/or doctests, and an
 example where useful.
 
+## Security-sensitive changes
+
+Please read [SECURITY.md](SECURITY.md) before reporting or discussing a
+vulnerability. Keep vulnerability details, credentials, personal data, and
+production inputs out of public issues, pull requests, test fixtures, logs, and
+fuzz corpora. Use GitHub Security Advisories for suspected vulnerabilities.
+
+Changes that touch `unsafe`, CPU intrinsics, indexing, dimensions, parsers,
+decoders, image allocation, or CLI input must include a short safety rationale
+and focused boundary tests. SIMD code must retain feature guards, prove vector
+loads are within the slice, and preserve a scalar fallback for unsupported
+targets. Prefer checked arithmetic and typed errors at public boundaries over
+panic-based validation.
+
+When adding or upgrading a dependency, keep it feature-gated when practical,
+explain why it is needed, review its transitive impact, and update
+`Cargo.lock`. Run the repository's available advisory check before opening a
+PR. New fuzz targets should accept arbitrary bytes without panicking and
+should document any intentionally bounded input or resource budget.
+
 ## Property, differential, and fuzz testing
 
 The v2 test architecture includes three layers beyond ordinary integration

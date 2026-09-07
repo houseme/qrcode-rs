@@ -5,6 +5,7 @@
 [![docs.rs](https://docs.rs/qrcode-rs/badge.svg)](https://docs.rs/qrcode-rs/)
 [![License](https://img.shields.io/crates/l/qrcode-rs)](./LICENSE-APACHE)
 [![Crates.io](https://img.shields.io/crates/d/qrcode-rs)](https://crates.io/crates/qrcode-rs)
+[![Security audit](https://github.com/houseme/qrcode-rs/actions/workflows/audit.yml/badge.svg)](https://github.com/houseme/qrcode-rs/actions/workflows/audit.yml)
 
 `qrcode-rs` is a Rust crate for generating QR Code and Micro QR Code symbols, rendering them in multiple output formats, and optionally decoding them back through [`rqrr`](https://crates.io/crates/rqrr).
 
@@ -299,6 +300,46 @@ The [`examples/`](examples) directory covers the main workflows in this crate:
 ## Migration
 
 For the 1.x to 2.0 upgrade path, see [MIGRATION-1.x-to-2.0.md](MIGRATION-1.x-to-2.0.md). The `compat-1x` feature keeps the legacy facade available while call sites move to the builder, module-view, streaming, and split-crate APIs. Plugin authors can follow [PLUGIN_GUIDE.md](PLUGIN_GUIDE.md).
+
+## Supply-chain verification
+
+The repository checks its locked dependency graph with `cargo deny` and
+`cargo vet` in CI. The `minimal` feature is an explicit dependency-free
+profile; SVG can be added without enabling raster/image dependencies:
+
+```sh
+cargo check --locked --no-default-features --features minimal
+cargo check --locked --no-default-features --features minimal,svg
+cargo tree --locked --no-default-features --features minimal --edges normal
+```
+
+Tagged releases include CycloneDX SBOM archives and Sigstore keyless
+signatures. Install [cosign](https://docs.sigstore.dev/cosign/system_config/installation/)
+and verify an asset with the certificate emitted alongside it:
+
+```sh
+cosign verify-blob release-artifact \
+  --signature release-artifact.sig \
+  --certificate release-artifact.pem \
+  --certificate-identity-regexp '^https://github.com/houseme/qrcode-rs/.github/workflows/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+GitHub provenance attestations for crate assets can be verified with:
+
+```sh
+gh attestation verify qrcode-rs-2.1.0.crate --repo houseme/qrcode-rs
+```
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for supported versions and the private
+vulnerability-reporting process. The repository runs a scheduled RustSec
+dependency advisory check; the badge above reflects that workflow, not a
+security certification. The encoder does not provide encryption or
+authentication, so applications must validate untrusted payloads and protect
+generated files and logs. The current verification boundary and deferred
+security gates are summarized in [docs/security-audit.md](docs/security-audit.md).
 
 ## License
 
