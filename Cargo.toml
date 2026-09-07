@@ -1,12 +1,12 @@
 [package]
 name = "qrcode-rs"
 description = "QR code encoder in Rust，Generate QR Code matrices and images in RAW, PNG and SVG formats."
-license = "MIT OR Apache-2.0"
-version = "2.1.0"
-edition = "2024"
-rust-version = "1.85"
-authors = ["houseme <housemecn@gmail.com>"]
-repository = "https://github.com/houseme/qrcode-rs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 homepage = "https://houseme.github.io/qrcode-rs"
 documentation = "https://docs.rs/qrcode-rs/"
 keywords = ["qrcode", "generate", "encoder", "image", "barcode"]
@@ -32,6 +32,28 @@ members = [
 ]
 resolver = "2"
 
+[workspace.package]
+version = "2.1.0"
+edition = "2024"
+rust-version = "1.85"
+authors = ["houseme <housemecn@gmail.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/houseme/qrcode-rs"
+
+[workspace.dependencies]
+qrcode-rs = { path = ".", version = "2.1.0", default-features = false }
+qrcode-core = { path = "crates/qrcode-core", version = "2.1.0", default-features = false }
+qrcode-decode = { path = "crates/qrcode-decode", version = "2.1.0", default-features = false }
+qrcode-eps = { path = "crates/qrcode-eps", version = "2.1.0", default-features = false }
+qrcode-html = { path = "crates/qrcode-html", version = "2.1.0", default-features = false }
+qrcode-image = { path = "crates/qrcode-image", version = "2.1.0", default-features = false }
+qrcode-pdf = { path = "crates/qrcode-pdf", version = "2.1.0", default-features = false }
+qrcode-pic = { path = "crates/qrcode-pic", version = "2.1.0", default-features = false }
+qrcode-parse = { path = "crates/qrcode-parse", version = "2.1.0", default-features = false }
+qrcode-render = { path = "crates/qrcode-render", version = "2.1.0", default-features = false }
+qrcode-svg = { path = "crates/qrcode-svg", version = "2.1.0", default-features = false }
+rqrr = { version = "0.11.0", default-features = false }
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [profile.release]
 opt-level = 3
@@ -43,16 +65,16 @@ clap = { version = "4.6", default-features = false, features = ["std", "derive",
 serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
 log = { version = "0.4", default-features = false, optional = true }
 tokio = { version = "1", default-features = false, features = ["rt"], optional = true }
-qrcode-core = { path = "crates/qrcode-core", version = "2.1.0", default-features = false }
-qrcode-decode = { path = "crates/qrcode-decode", version = "2.1.0", default-features = false }
-qrcode-eps = { path = "crates/qrcode-eps", version = "2.1.0", default-features = false, optional = true }
-qrcode-html = { path = "crates/qrcode-html", version = "2.1.0", default-features = false, optional = true }
-qrcode-image = { path = "crates/qrcode-image", version = "2.1.0", default-features = false, optional = true }
-qrcode-pdf = { path = "crates/qrcode-pdf", version = "2.1.0", default-features = false, optional = true }
-qrcode-pic = { path = "crates/qrcode-pic", version = "2.1.0", default-features = false, optional = true }
-qrcode-parse = { path = "crates/qrcode-parse", version = "2.1.0", default-features = false }
-qrcode-render = { path = "crates/qrcode-render", version = "2.1.0", default-features = false }
-qrcode-svg = { path = "crates/qrcode-svg", version = "2.1.0", default-features = false, optional = true }
+qrcode-core = { workspace = true }
+qrcode-decode = { workspace = true }
+qrcode-eps = { workspace = true, optional = true }
+qrcode-html = { workspace = true, optional = true }
+qrcode-image = { workspace = true, optional = true }
+qrcode-pdf = { workspace = true, optional = true }
+qrcode-pic = { workspace = true, optional = true }
+qrcode-parse = { workspace = true }
+qrcode-render = { workspace = true }
+qrcode-svg = { workspace = true, optional = true }
 
 [dev-dependencies]
 image = "0.25.10"

@@ -2,7 +2,7 @@
 name = "qrcode-compat"
 description = "1.x compatibility facade for qrcode-rs 2.0 migrations."
 license = "MIT OR Apache-2.0"
-version = "2.1.0"
+version.workspace = true
 edition = "2024"
 rust-version = "1.85"
 authors = ["houseme <housemecn@gmail.com>"]
@@ -15,7 +15,7 @@ readme = "README.md"
 publish = false
 
 [dependencies]
-qrcode-rs = { path = "../..", version = "2.1.0", default-features = false, features = ["compat-1x"] }
+qrcode-rs = { workspace = true, features = ["compat-1x"] }
 
 [features]
 default = ["std", "image", "svg", "pic", "eps", "html", "pdf"]
