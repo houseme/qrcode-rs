@@ -50,7 +50,7 @@ struct Cli {
     batch: Option<PathBuf>,
 }
 
-#[derive(Copy, Clone, Debug, ValueEnum)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
 enum Format {
     String,
     Unicode,
@@ -63,7 +63,7 @@ enum Format {
     Pdf,
 }
 
-#[derive(Copy, Clone, Debug, ValueEnum)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
 enum UnicodeMode {
     #[value(name = "dense1x2")]
     Dense1x2,
@@ -94,7 +94,20 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
+    if cli.batch.is_some() && cli.text.is_some() {
+        return Err("--batch cannot be used together with TEXT".into());
+    }
+    if cli.batch.is_some() && cli.output.as_deref() == Some("-") {
+        return Err("batch mode requires --output to name a directory".into());
+    }
+    if matches!(cli.format, Format::Png) && cli.size == 0 {
+        return Err("--size must be greater than zero for PNG output".into());
+    }
+
     let inputs = read_inputs(&cli)?;
+    if inputs.is_empty() {
+        return Err("no non-empty input records found".into());
+    }
     let quiet_zone = !cli.no_quiet_zone;
     let batch = cli.batch.is_some();
     if batch && cli.output.is_none() {
@@ -213,7 +226,9 @@ fn to_unit(&(r, g, b): &(u8, u8, u8)) -> [f64; 3] {
 
 fn write_output(cli: &Cli, bytes: &[u8], index: usize, batch: bool) -> Result<(), Box<dyn Error>> {
     if batch {
-        let dir = cli.output.as_ref().expect("batch requires --output, checked in run()");
+        let Some(dir) = cli.output.as_ref() else {
+            return Err("batch mode requires --output <DIR>".into());
+        };
         std::fs::create_dir_all(dir)?;
         let path = Path::new(dir).join(format!("qr-{:04}.{}", index + 1, ext_for(cli.format)));
         std::fs::write(&path, bytes)?;
@@ -237,5 +252,111 @@ fn ext_for(format: Format) -> &'static str {
         Format::Html => "html",
         Format::Pic => "pic",
         Format::String | Format::Unicode | Format::Ansi => "txt",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn cli_with_text(text: Option<&str>) -> Cli {
+        Cli {
+            text: text.map(str::to_owned),
+            output: None,
+            format: Format::Unicode,
+            ec_level: EcLevel::M,
+            qr_version: None,
+            size: 10,
+            no_quiet_zone: false,
+            dark: "#000000".to_owned(),
+            light: "#ffffff".to_owned(),
+            invert: false,
+            unicode_mode: UnicodeMode::Dense1x2,
+            batch: None,
+        }
+    }
+
+    fn temporary_path(name: &str) -> PathBuf {
+        let nanos =
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("system clock must be after UNIX_EPOCH").as_nanos();
+        std::env::temp_dir().join(format!("qrcode-cli-{name}-{}-{nanos}", std::process::id()))
+    }
+
+    #[test]
+    fn parse_rgb_accepts_short_and_long_hex() {
+        assert_eq!(parse_rgb("#abc", "dark").unwrap(), (170, 187, 204));
+        assert_eq!(parse_rgb("#123456", "light").unwrap(), (18, 52, 86));
+    }
+
+    #[test]
+    fn parse_rgb_reports_the_color_name_for_invalid_input() {
+        let error = parse_rgb("not-a-color", "light").unwrap_err().to_string();
+        assert!(error.contains("invalid light color"));
+    }
+
+    #[test]
+    fn output_extensions_match_formats() {
+        assert_eq!(ext_for(Format::Png), "png");
+        assert_eq!(ext_for(Format::Svg), "svg");
+        assert_eq!(ext_for(Format::Unicode), "txt");
+    }
+
+    #[test]
+    fn read_inputs_skips_blank_batch_records() {
+        let path = temporary_path("batch-input");
+        fs::write(&path, " first\n\n  \nsecond\r\n").unwrap();
+        let mut cli = cli_with_text(None);
+        cli.batch = Some(path.clone());
+
+        let inputs = read_inputs(&cli).unwrap();
+        assert_eq!(inputs, vec![" first".to_owned(), "second".to_owned()]);
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn run_rejects_conflicting_batch_and_text_inputs() {
+        let mut cli = cli_with_text(Some("payload"));
+        cli.batch = Some(PathBuf::from("unused"));
+
+        let error = run(cli).unwrap_err().to_string();
+        assert!(error.contains("cannot be used together"));
+    }
+
+    #[test]
+    fn run_rejects_zero_png_size() {
+        let mut cli = cli_with_text(Some("payload"));
+        cli.format = Format::Png;
+        cli.size = 0;
+
+        let error = run(cli).unwrap_err().to_string();
+        assert!(error.contains("greater than zero"));
+    }
+
+    #[test]
+    fn run_rejects_empty_batch() {
+        let input = temporary_path("empty-batch");
+        let output = temporary_path("empty-output");
+        fs::write(&input, "\n  \r\n").unwrap();
+        let mut cli = cli_with_text(None);
+        cli.batch = Some(input.clone());
+        cli.output = Some(output.to_string_lossy().into_owned());
+
+        let error = run(cli).unwrap_err().to_string();
+        assert!(error.contains("no non-empty input records"));
+        fs::remove_file(input).unwrap();
+    }
+
+    #[test]
+    fn write_output_uses_stable_batch_names() {
+        let output = temporary_path("batch-output");
+        let mut cli = cli_with_text(Some("payload"));
+        cli.output = Some(output.to_string_lossy().into_owned());
+
+        write_output(&cli, b"qr", 2, true).unwrap();
+        let file = output.join("qr-0003.txt");
+        assert_eq!(fs::read(file).unwrap(), b"qr");
+        fs::remove_dir_all(output).unwrap();
     }
 }
