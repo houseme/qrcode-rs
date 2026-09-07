@@ -22,4 +22,4 @@ default = []
 # no_std + alloc feature shape.
 std = ["qrcode-core/std", "qrcode-render/std"]
 # Enables image-backed pixels and PNG/JPEG helper functions.
-image = ["std", "dep:image", "qrcode-render/image"]
+image = ["std", "dep:image", "image/png", "image/jpeg", "qrcode-render/image"]
