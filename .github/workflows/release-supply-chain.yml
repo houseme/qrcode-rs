@@ -1,0 +1,82 @@
+name: Release supply chain
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  artifacts:
+    name: Package, SBOM, and attest release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-cyclonedx
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-auditable
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Package publishable crates
+        run: cargo package --workspace --locked --no-verify --allow-dirty
+
+      - name: Generate CycloneDX SBOMs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo cyclonedx --workspace --all-features --format json
+          mkdir -p dist/sbom
+          found=0
+          while IFS= read -r -d '' bom; do
+            found=1
+            relative="${bom#./}"
+            package_name="${relative%/bom.json}"
+            package_name="${package_name//\//-}"
+            test -n "$package_name" || package_name=workspace
+            cp "$bom" "dist/sbom/${package_name}.cdx.json"
+          done < <(find . -name bom.json -not -path './dist/*' -print0)
+          test "$found" -eq 1
+          tar -czf "dist/qrcode-rs-${GITHUB_REF_NAME}-sbom.tar.gz" -C dist sbom
+
+      - name: Build auditable CLI binary
+        run: |
+          cargo auditable build --locked --release -p qrcode-cli
+          tar -czf "dist/qrcode-rs-${GITHUB_REF_NAME}-cli-linux-x86_64.tar.gz" \
+            -C target/release qrencodes
+
+      - name: Sign release artifacts with Sigstore
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for artifact in dist/*.crate dist/*.tar.gz; do
+            cosign sign-blob --yes \
+              --output-signature "${artifact}.sig" \
+              --output-certificate "${artifact}.pem" \
+              "$artifact"
+          done
+
+      - name: Attest packaged crates
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "dist/*.crate"
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/*.crate
+            dist/*.tar.gz
+            dist/*.sig
+            dist/*.pem

@@ -1,0 +1,53 @@
+name: Supply-chain security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-deny:
+    name: cargo deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - name: Check dependency policy
+        run: cargo deny check
+
+  cargo-vet:
+    name: cargo vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-vet
+      - name: Verify the locked audit store
+        run: cargo vet check
+
+  minimal-feature:
+    name: Minimal feature dependency check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build the dependency-free facade
+        run: cargo check --locked --no-default-features --features minimal
+      - name: Assert no registry dependencies are selected
+        shell: bash
+        run: |
+          set -euo pipefail
+          if cargo tree --locked --no-default-features --features minimal --edges normal \
+            | grep -E '^[^ ]+ v[^ ]+ \(registry\+'; then
+            echo "minimal unexpectedly selected a registry dependency" >&2
+            exit 1
+          fi

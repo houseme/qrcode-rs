@@ -1,0 +1,7 @@
+# Local audit set. Third-party audit records are kept in config.toml as
+# exact-version exemptions until a maintainer performs a source audit. Each
+# exemption is intentionally tied to Cargo.lock and should be removed when a
+# corresponding audit is recorded here or imported from a trusted peer.
+
+[criteria.qrcode-rs-review]
+description = "qrcode-rs maintainers reviewed the dependency for the release policy in effect."

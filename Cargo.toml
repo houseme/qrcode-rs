@@ -62,6 +62,9 @@ proptest = "1"
 reference-qrcode = { package = "qrcode", version = "0.14" }
 
 [features]
+# A dependency-free profile for the core, string, and optional SVG crates.
+# Enable SVG explicitly when it is needed: `--features minimal,svg`.
+minimal = []
 default = ["std", "image", "svg", "pic", "eps", "html", "pdf"]
 # Links the `std` crate (enabled by default). Disable for `no_std` + `alloc`.
 std = [
