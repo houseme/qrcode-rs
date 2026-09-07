@@ -34,17 +34,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo cyclonedx --workspace --all-features --format json
+          cargo cyclonedx --all-features --format json
           mkdir -p dist/sbom
           found=0
           while IFS= read -r -d '' bom; do
             found=1
-            relative="${bom#./}"
-            package_name="${relative%/bom.json}"
-            package_name="${package_name//\//-}"
-            test -n "$package_name" || package_name=workspace
+            package_name="$(basename "$bom" .cdx.json)"
             cp "$bom" "dist/sbom/${package_name}.cdx.json"
-          done < <(find . -name bom.json -not -path './dist/*' -print0)
+          done < <(find . -name '*.cdx.json' -not -path './dist/*' -print0)
           test "$found" -eq 1
           tar -czf "dist/qrcode-rs-${GITHUB_REF_NAME}-sbom.tar.gz" -C dist sbom
 
