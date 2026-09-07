@@ -109,10 +109,14 @@ jobs:
           cargo run -p qrcode-cli -- --help
       - name: Run property and differential tests
         run: |
+          cargo test --test property --all-features
+          cargo test --test property --no-default-features
           cargo test --test proptest --all-features
           cargo test --test proptest --no-default-features
           cargo test --test differential --all-features
           cargo test --test differential --no-default-features
+        env:
+          PROPTEST_RNG_SEED: "20260907"
   compat_test:
     name: Run compat-1x tests
     runs-on: ubuntu-latest
@@ -212,11 +216,13 @@ jobs:
           RUSTUP_TOOLCHAIN: nightly
       - name: Run short fuzz targets
         run: |
-          cargo fuzz run encode -- -runs=16
-          cargo fuzz run encode_with_version -- -runs=16
-          cargo fuzz run render_svg -- -runs=16
-          cargo fuzz run parse_payloads -- -runs=16
-          cargo fuzz run structured_append -- -runs=16
+          cargo fuzz run encode -- -runs=16 -seed=20260907 -timeout=5
+          cargo fuzz run encode_with_version -- -runs=16 -seed=20260907 -timeout=5
+          cargo fuzz run render_svg -- -runs=16 -seed=20260907 -timeout=5
+          cargo fuzz run render_image -- -runs=16 -seed=20260907 -timeout=5
+          cargo fuzz run parse_payloads -- -runs=16 -seed=20260907 -timeout=5
+          cargo fuzz run structured_append -- -runs=16 -seed=20260907 -timeout=5
+          cargo fuzz run decode_sa_parse -- -runs=16 -seed=20260907 -timeout=5
         env:
           RUSTUP_TOOLCHAIN: nightly
   publish_on_crates_io:

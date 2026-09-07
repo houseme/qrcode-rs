@@ -1,0 +1,47 @@
+name: Fuzz smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz_smoke:
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - encode
+          - encode_with_version
+          - render_svg
+          - render_image
+          - parse_payloads
+          - structured_append
+          - decode_sa_parse
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            fuzz/target
+          key: ${{ runner.os }}-cargo-fuzz-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: Install cargo-fuzz
+        run: cargo +nightly install cargo-fuzz --locked
+      - name: Check fuzz targets
+        run: cargo check --manifest-path fuzz/Cargo.toml --bins --locked
+        env:
+          RUSTUP_TOOLCHAIN: nightly
+      - name: Run bounded fuzz smoke
+        run: cargo +nightly fuzz run "${{ matrix.target }}" -- -runs=64 -seed=20260907 -timeout=5
+        env:
+          RUSTUP_TOOLCHAIN: nightly
