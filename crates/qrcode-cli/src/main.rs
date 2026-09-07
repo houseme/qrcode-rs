@@ -45,7 +45,7 @@ struct Cli {
     /// Unicode renderer sub-mode.
     #[arg(long, value_enum, default_value_t = UnicodeMode::Dense1x2)]
     unicode_mode: UnicodeMode,
-    /// Generate one QR code per non-empty line of `<FILE>`.
+    /// Generate one QR code per non-empty line of `<FILE>` (`-` reads stdin).
     #[arg(long, value_name = "FILE")]
     batch: Option<PathBuf>,
 }
@@ -122,8 +122,15 @@ fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
 
 fn read_inputs(cli: &Cli) -> Result<Vec<String>, Box<dyn Error>> {
     if let Some(path) = &cli.batch {
-        let content = std::fs::read_to_string(path)?;
-        return Ok(content.lines().filter(|line| !line.trim().is_empty()).map(String::from).collect());
+        let content = if path == Path::new("-") {
+            if std::io::stdin().is_terminal() {
+                return Err("batch input '-' requires piped data via stdin".into());
+            }
+            read_stdin()?
+        } else {
+            std::fs::read_to_string(path)?
+        };
+        return Ok(non_empty_lines(&content));
     }
     if let Some(text) = &cli.text {
         return Ok(vec![text.clone()]);
@@ -131,6 +138,10 @@ fn read_inputs(cli: &Cli) -> Result<Vec<String>, Box<dyn Error>> {
     if std::io::stdin().is_terminal() {
         return Err("no input: pass TEXT or pipe data via stdin".into());
     }
+    Ok(vec![read_stdin()?])
+}
+
+fn read_stdin() -> Result<String, Box<dyn Error>> {
     let mut buf = String::new();
     std::io::stdin().lock().read_to_string(&mut buf)?;
     if buf.ends_with('\n') {
@@ -139,7 +150,11 @@ fn read_inputs(cli: &Cli) -> Result<Vec<String>, Box<dyn Error>> {
     if buf.ends_with('\r') {
         buf.pop();
     }
-    Ok(vec![buf])
+    Ok(buf)
+}
+
+fn non_empty_lines(content: &str) -> Vec<String> {
+    content.lines().filter(|line| !line.trim().is_empty()).map(String::from).collect()
 }
 
 fn render_one(text: &str, cli: &Cli, quiet_zone: bool) -> Result<Vec<u8>, Box<dyn Error>> {
@@ -313,6 +328,11 @@ mod tests {
         let inputs = read_inputs(&cli).unwrap();
         assert_eq!(inputs, vec![" first".to_owned(), "second".to_owned()]);
         fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn non_empty_lines_preserves_payload_whitespace() {
+        assert_eq!(non_empty_lines(" first\n\n  \nsecond\n"), vec![" first", "second"]);
     }
 
     #[test]
