@@ -17,6 +17,7 @@ pub mod bits;
 pub mod canvas;
 pub mod cast;
 pub mod ec;
+pub mod limits;
 pub mod mode;
 pub mod optimize;
 pub mod plugin;
@@ -25,6 +26,7 @@ pub mod types;
 pub mod version;
 
 pub use cast::{As, Truncate};
+pub use limits::{DEFAULT_MAX_DATA_LENGTH, DEFAULT_MAX_RENDER_SIZE, ResourceLimits};
 pub use mode::{AlphanumericMode, ByteMode, EncodingMode, KanjiMode, NumericMode};
 pub use plugin::{
     DynEncoder, DynRenderer, EncodeConfig, EncodedOutput, EncoderFactory, ModuleGrid, PluginError, PluginRegistry,

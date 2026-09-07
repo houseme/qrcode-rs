@@ -66,6 +66,21 @@ pub enum QrError {
         /// The out-of-range symbol count or position.
         value: u8,
     },
+
+    /// The supplied resource budget is malformed.
+    InvalidResourceLimits,
+
+    /// The generated symbol exceeds its configured rendering budget.
+    RenderSizeExceeded {
+        /// Generated symbol width in modules.
+        width: u32,
+        /// Generated symbol height in modules.
+        height: u32,
+        /// Configured maximum width.
+        max_width: u32,
+        /// Configured maximum height.
+        max_height: u32,
+    },
 }
 
 impl Display for QrError {
@@ -84,6 +99,10 @@ impl Display for QrError {
             }
             QrError::InvalidStructuredAppend { value } => {
                 write!(fmt, "invalid Structured Append parameter {value} (symbols must be 2..=16, position 1..=total)")
+            }
+            QrError::InvalidResourceLimits => fmt.write_str("invalid resource limits"),
+            QrError::RenderSizeExceeded { width, height, max_width, max_height } => {
+                write!(fmt, "rendered symbol size {width}x{height} exceeds configured maximum {max_width}x{max_height}")
             }
         }
     }
@@ -122,6 +141,10 @@ impl QrError {
             QrError::InvalidStructuredAppend { .. } => {
                 Some("Structured Append requires 2..=16 symbols and each position in 1..=total")
             }
+            QrError::InvalidResourceLimits => {
+                Some("use a normal QR version from 1..=40 and non-zero render dimensions")
+            }
+            QrError::RenderSizeExceeded { .. } => Some("increase max_render_size or use a lower maximum QR version"),
         }
     }
 }

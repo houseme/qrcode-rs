@@ -45,7 +45,7 @@ pub use qrcode_core::ConstVersion;
 pub use qrcode_core::{
     AlphanumericMode, ByteMode, DynEncoder, DynRenderer, EncodeConfig, EncodedOutput, EncoderFactory, EncodingMode,
     KanjiMode, ModuleGrid, NumericMode, PluginError, PluginRegistry, PostProcessor, QrPlugin, RenderConfig,
-    RenderOutput, RendererFactory, StaticVersion,
+    RenderOutput, RendererFactory, ResourceLimits, StaticVersion,
 };
 pub use qrcode_core::{bits, canvas, ec, optimize, plugin, traits, types};
 pub use qrcode_decode as decode;
@@ -163,6 +163,52 @@ impl QrCode {
         AutoEncoder::new(ec_level).encode(data.as_ref())
     }
 
+    /// Constructs a QR code with an explicit input, version, and symbol-size
+    /// budget.
+    ///
+    /// The default [`QrCode::new`] constructor remains source-compatible and
+    /// uses the library's bounded defaults. This method is useful at trust
+    /// boundaries where an application needs a stricter per-request budget.
+    /// Input length is checked before parser allocation; the selected version
+    /// and module dimensions are checked before returning the symbol.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QrError::InvalidResourceLimits`] for a malformed budget,
+    /// [`QrError::DataTooLong`] when the input cannot fit within the data or
+    /// version budget, and [`QrError::RenderSizeExceeded`] when the resulting
+    /// module dimensions exceed `max_render_size`.
+    pub fn with_limits<D: AsRef<[u8]>>(data: D, limits: ResourceLimits) -> QrResult<Self> {
+        limits.validate()?;
+        let data = data.as_ref();
+        if data.len() > limits.max_data_length {
+            return Err(QrError::DataTooLong);
+        }
+        let max_version = match limits.max_version {
+            Version::Normal(version) => version,
+            // `validate` above rejects Micro versions. Keeping this branch
+            // explicit makes the invariant obvious if validation changes.
+            Version::Micro(_) => return Err(QrError::InvalidResourceLimits),
+        };
+        let bits = bits::encode_auto_with_max_version(data, EcLevel::M, max_version)?;
+        let code = Self::with_bits(bits, EcLevel::M)?;
+        let width = u32::try_from(code.width).map_err(|_| QrError::RenderSizeExceeded {
+            width: u32::MAX,
+            height: u32::MAX,
+            max_width: limits.max_render_size.0,
+            max_height: limits.max_render_size.1,
+        })?;
+        if width > limits.max_render_size.0 || width > limits.max_render_size.1 {
+            return Err(QrError::RenderSizeExceeded {
+                width,
+                height: width,
+                max_width: limits.max_render_size.0,
+                max_height: limits.max_render_size.1,
+            });
+        }
+        Ok(code)
+    }
+
     /// Constructs a new Micro QR code which automatically encodes the given
     /// data.
     ///
@@ -258,6 +304,7 @@ impl QrCode {
     }
 
     fn encode_with_version(data: &[u8], version: Version, ec_level: EcLevel) -> QrResult<Self> {
+        Self::validate_input_length(data)?;
         let mut bits = bits::Bits::new(version);
         bits.push_optimal_data(data)?;
         bits.push_terminator(ec_level)?;
@@ -798,6 +845,7 @@ impl QrCode {
     /// ```
     pub fn for_gs1<D: AsRef<[u8]>>(data: D) -> QrResult<Self> {
         let data = data.as_ref();
+        Self::validate_input_length(data)?;
         for v in 1..=40 {
             let version = Version::Normal(v);
             let mut bits = bits::Bits::new(version);
@@ -890,12 +938,14 @@ impl QrCode {
     /// [`QrCodeBuilder::build`] when both a version and an encoding-mode hint
     /// are set.
     fn with_mode<D: AsRef<[u8]>>(data: D, version: Version, ec_level: EcLevel, mode: Mode) -> QrResult<Self> {
+        let data = data.as_ref();
+        Self::validate_input_length(data)?;
         let mut bits = bits::Bits::new(version);
         match mode {
-            Mode::Numeric => bits.push_numeric_data(data.as_ref())?,
-            Mode::Alphanumeric => bits.push_alphanumeric_data(data.as_ref())?,
-            Mode::Byte => bits.push_byte_data(data.as_ref())?,
-            Mode::Kanji => bits.push_kanji_data(data.as_ref())?,
+            Mode::Numeric => bits.push_numeric_data(data)?,
+            Mode::Alphanumeric => bits.push_alphanumeric_data(data)?,
+            Mode::Byte => bits.push_byte_data(data)?,
+            Mode::Kanji => bits.push_kanji_data(data)?,
         }
         bits.push_terminator(ec_level)?;
         Self::with_bits(bits, ec_level)
@@ -908,6 +958,7 @@ impl QrCode {
     /// forced mode.
     fn with_mode_auto<D: AsRef<[u8]>>(data: D, ec_level: EcLevel, mode: Mode) -> QrResult<Self> {
         let data = data.as_ref();
+        Self::validate_input_length(data)?;
         let mut last_err = QrError::DataTooLong;
         for v in 1..=40 {
             let version = Version::Normal(v);
@@ -929,6 +980,10 @@ impl QrCode {
             return Self::with_bits(bits, ec_level);
         }
         Err(last_err)
+    }
+
+    fn validate_input_length(data: &[u8]) -> QrResult<()> {
+        if data.len() > qrcode_core::DEFAULT_MAX_DATA_LENGTH { Err(QrError::DataTooLong) } else { Ok(()) }
     }
 }
 
@@ -1714,8 +1769,8 @@ mod api_tests {
     use crate::{
         AutoEncoder, Builder as CoreBuilder, Color, ConstVersion, ConstVersionEncoder, DynEncoder, DynRenderer,
         EcLevel, EncodeConfig, EncodedOutput, EncoderFactory, MicroEncoder, Mode, ModuleView, NumericMode,
-        PluginRegistry, PostProcessor, QrCode, QrError, QrSymbol, RenderConfig, RenderOutput, RendererFactory, Version,
-        VersionEncoder,
+        PluginRegistry, PostProcessor, QrCode, QrError, QrSymbol, RenderConfig, RenderOutput, RendererFactory,
+        ResourceLimits, Version, VersionEncoder,
     };
     use alloc::{
         boxed::Box,
@@ -1786,6 +1841,33 @@ mod api_tests {
         assert_eq!(colors(&direct), colors(&built));
         assert_eq!(direct.version(), built.version());
         assert_eq!(direct.error_correction_level(), built.error_correction_level());
+    }
+
+    #[test]
+    fn with_limits_rejects_input_before_encoding() {
+        let limits = ResourceLimits::new(3, Version::Normal(40), (4096, 4096));
+        assert!(matches!(QrCode::with_limits(b"abcd", limits), Err(QrError::DataTooLong)));
+    }
+
+    #[test]
+    fn with_limits_caps_version_and_render_dimensions() {
+        let version_limits = ResourceLimits::new(128, Version::Normal(1), (4096, 4096));
+        assert!(matches!(QrCode::with_limits([0_u8; 128], version_limits), Err(QrError::DataTooLong)));
+
+        let render_limits = ResourceLimits::new(128, Version::Normal(1), (20, 20));
+        assert!(matches!(
+            QrCode::with_limits(b"hello", render_limits),
+            Err(QrError::RenderSizeExceeded { width: 21, height: 21, .. })
+        ));
+    }
+
+    #[test]
+    fn with_limits_rejects_malformed_budget() {
+        let invalid_version = ResourceLimits::new(1, Version::Micro(1), (1, 1));
+        assert!(matches!(QrCode::with_limits(b"x", invalid_version), Err(QrError::InvalidResourceLimits)));
+
+        let invalid_dimensions = ResourceLimits::new(1, Version::Normal(1), (0, 1));
+        assert!(matches!(QrCode::with_limits(b"x", invalid_dimensions), Err(QrError::InvalidResourceLimits)));
     }
 
     #[test]

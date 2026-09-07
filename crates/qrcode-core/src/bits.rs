@@ -1093,13 +1093,38 @@ pub fn data_capacity_bits(version: Version, ec_level: EcLevel) -> QrResult<usize
 /// Returns `Err(QrError::DataTooLong)` if the data is too long to fit even the
 /// highest QR code version.
 pub fn encode_auto(data: &[u8], ec_level: EcLevel) -> QrResult<Bits> {
+    if data.len() > crate::limits::DEFAULT_MAX_DATA_LENGTH {
+        return Err(QrError::DataTooLong);
+    }
+    encode_auto_with_max_version(data, ec_level, 40)
+}
+
+/// Automatically encodes data while capping normal QR version selection.
+///
+/// This is the bounded counterpart to [`encode_auto`]. The maximum version is
+/// validated by the caller (`ResourceLimits`) and is kept as a small integer
+/// here so this low-level helper remains useful to the facade without adding
+/// a dependency cycle.
+pub fn encode_auto_with_max_version(data: &[u8], ec_level: EcLevel, max_version: i16) -> QrResult<Bits> {
+    if !(1..=40).contains(&max_version) {
+        return Err(QrError::InvalidResourceLimits);
+    }
     let segments = Parser::new(data).collect::<Vec<Segment>>();
-    for version in &[Version::Normal(9), Version::Normal(26), Version::Normal(40)] {
-        let opt_segments = Optimizer::new(segments.iter().copied(), *version).collect::<Vec<_>>();
-        let total_len = total_encoded_len(&opt_segments, *version);
-        let data_capacity = version.fetch(ec_level, &DATA_LENGTHS).expect("invalid DATA_LENGTHS");
+    let mut checkpoints = [0_i16; 4];
+    let mut checkpoint_count = 0;
+    for candidate in [9_i16, 26, 40, max_version] {
+        if candidate <= max_version && !checkpoints[..checkpoint_count].contains(&candidate) {
+            checkpoints[checkpoint_count] = candidate;
+            checkpoint_count += 1;
+        }
+    }
+    for candidate in checkpoints[..checkpoint_count].iter() {
+        let version = Version::Normal(*candidate);
+        let opt_segments = Optimizer::new(segments.iter().copied(), version).collect::<Vec<_>>();
+        let total_len = total_encoded_len(&opt_segments, version);
+        let data_capacity = version.fetch(ec_level, &DATA_LENGTHS)?;
         if total_len <= data_capacity {
-            let min_version = find_min_version(total_len, ec_level);
+            let min_version = find_min_version_up_to(total_len, ec_level, *candidate);
             let mut bits = Bits::new(min_version);
             bits.reserve(total_len);
             bits.push_segments(data, opt_segments.into_iter())?;
@@ -1108,6 +1133,15 @@ pub fn encode_auto(data: &[u8], ec_level: EcLevel) -> QrResult<Bits> {
         }
     }
     Err(QrError::DataTooLong)
+}
+
+fn find_min_version_up_to(length: usize, ec_level: EcLevel, max_version: i16) -> Version {
+    for version in 1..=max_version {
+        if DATA_LENGTHS[(version - 1) as usize][ec_level as usize] >= length {
+            return Version::Normal(version);
+        }
+    }
+    Version::Normal(max_version)
 }
 
 /// Automatically determines the minimum Micro QR version to store the data,
@@ -1123,6 +1157,9 @@ pub fn encode_auto(data: &[u8], ec_level: EcLevel) -> QrResult<Bits> {
 /// Returns `Err(QrError::InvalidVersion)` if the `ec_level` is not supported
 /// by any Micro QR version (e.g. `EcLevel::H`).
 pub fn encode_auto_micro(data: &[u8], ec_level: EcLevel) -> QrResult<Bits> {
+    if data.len() > crate::limits::DEFAULT_MAX_DATA_LENGTH {
+        return Err(QrError::DataTooLong);
+    }
     let segments = Parser::new(data).collect::<Vec<Segment>>();
     for micro_version in 1..=4 {
         let version = Version::Micro(micro_version);
@@ -1164,8 +1201,8 @@ pub fn find_min_version(length: usize, ec_level: EcLevel) -> Version {
 
 #[cfg(test)]
 mod encode_auto_tests {
-    use crate::bits::{encode_auto, find_min_version};
-    use crate::types::{EcLevel, Version};
+    use crate::bits::{encode_auto, encode_auto_with_max_version, find_min_version};
+    use crate::types::{EcLevel, QrError, Version};
 
     #[test]
     fn test_find_min_version() {
@@ -1194,6 +1231,12 @@ mod encode_auto_tests {
     fn test_mixed() {
         let bits = encode_auto(b"This is a mixed data test. 1234567890", EcLevel::H).unwrap();
         assert_eq!(bits.version(), Version::Normal(4));
+    }
+
+    #[test]
+    fn bounded_auto_encoding_rejects_version_overflow_and_caps_search() {
+        assert!(matches!(encode_auto_with_max_version(b"x", EcLevel::M, 0), Err(QrError::InvalidResourceLimits)));
+        assert!(matches!(encode_auto_with_max_version(&[0_u8; 128], EcLevel::M, 1), Err(QrError::DataTooLong)));
     }
 }
 

@@ -180,13 +180,15 @@ fn decode_alpha(r: &mut BitReader<'_>, version: Version, out: &mut Vec<u8>) -> R
         r.read_bits(Mode::Alphanumeric.length_bits_count(version)).ok_or(SaParseError::MalformedStream)? as usize;
     while remaining >= 2 {
         let v = r.read_bits(11).ok_or(SaParseError::MalformedStream)? as usize;
-        out.push(ALPHA_REV[v / 45]);
-        out.push(ALPHA_REV[v % 45]);
+        let first = ALPHA_REV.get(v / 45).ok_or(SaParseError::MalformedStream)?;
+        let second = ALPHA_REV.get(v % 45).ok_or(SaParseError::MalformedStream)?;
+        out.push(*first);
+        out.push(*second);
         remaining -= 2;
     }
     if remaining == 1 {
         let v = r.read_bits(6).ok_or(SaParseError::MalformedStream)? as usize;
-        out.push(ALPHA_REV[v]);
+        out.push(*ALPHA_REV.get(v).ok_or(SaParseError::MalformedStream)?);
     }
     Ok(())
 }
@@ -269,6 +271,32 @@ mod tests {
         });
         let parsed = parse_sa_datastream(&bytes, Version::Normal(1)).unwrap();
         assert_eq!(parsed.data, b"AC-42");
+    }
+
+    #[test]
+    fn invalid_alphanumeric_pair_is_rejected_without_panicking() {
+        let mut bytes = sa_bytes(1, 2, 0x00, |b| {
+            b.push_alphanumeric_data(b"AA").unwrap();
+        });
+        // The pair value starts after the 20-bit SA header, 4-bit mode, and
+        // 9-bit v1 character count. Set all 11 value bits to an invalid
+        // base-45 pair (2047 > 44 * 45 + 44).
+        for bit in 33..44 {
+            bytes[bit / 8] |= 1 << (7 - bit % 8);
+        }
+        assert_eq!(parse_sa_datastream(&bytes, Version::Normal(1)), Err(SaParseError::MalformedStream));
+    }
+
+    #[test]
+    fn invalid_alphanumeric_single_is_rejected_without_panicking() {
+        let mut bytes = sa_bytes(1, 2, 0x00, |b| {
+            b.push_alphanumeric_data(b"A").unwrap();
+        });
+        // The single-character value starts after the 33-bit prefix above.
+        for bit in 33..39 {
+            bytes[bit / 8] |= 1 << (7 - bit % 8);
+        }
+        assert_eq!(parse_sa_datastream(&bytes, Version::Normal(1)), Err(SaParseError::MalformedStream));
     }
 
     #[test]
