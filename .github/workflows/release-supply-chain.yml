@@ -25,7 +25,13 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-auditable
-      - uses: sigstore/cosign-installer@v3
+      # cosign v3 changed `sign-blob` keyless output to bundle-only format, which
+      # would drop the .sig/.pem artifacts verified via `cosign verify-blob
+      # --signature/--certificate` in README. Pin 2.x until the verification flow
+      # migrates to bundles.
+      - uses: sigstore/cosign-installer@v4
+        with:
+          cosign-release: "v2.6.5"
 
       - name: Package publishable crates
         run: cargo package --workspace --locked --no-verify --allow-dirty
@@ -64,12 +70,12 @@ jobs:
           done
 
       - name: Attest packaged crates
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: "dist/*.crate"
 
       - name: Publish release assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           files: |
