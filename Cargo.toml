@@ -33,7 +33,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "2.1.0"
+version = "2.1.1"
 edition = "2024"
 rust-version = "1.85"
 authors = ["houseme <housemecn@gmail.com>"]
@@ -41,17 +41,17 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/houseme/qrcode-rs"
 
 [workspace.dependencies]
-qrcode-rs = { path = ".", version = "2.1.0", default-features = false }
-qrcode-core = { path = "crates/qrcode-core", version = "2.1.0", default-features = false }
-qrcode-decode = { path = "crates/qrcode-decode", version = "2.1.0", default-features = false }
-qrcode-eps = { path = "crates/qrcode-eps", version = "2.1.0", default-features = false }
-qrcode-html = { path = "crates/qrcode-html", version = "2.1.0", default-features = false }
-qrcode-image = { path = "crates/qrcode-image", version = "2.1.0", default-features = false }
-qrcode-pdf = { path = "crates/qrcode-pdf", version = "2.1.0", default-features = false }
-qrcode-pic = { path = "crates/qrcode-pic", version = "2.1.0", default-features = false }
-qrcode-parse = { path = "crates/qrcode-parse", version = "2.1.0", default-features = false }
-qrcode-render = { path = "crates/qrcode-render", version = "2.1.0", default-features = false }
-qrcode-svg = { path = "crates/qrcode-svg", version = "2.1.0", default-features = false }
+qrcode-rs = { path = ".", version = "2.1.1", default-features = false }
+qrcode-core = { path = "crates/qrcode-core", version = "2.1.1", default-features = false }
+qrcode-decode = { path = "crates/qrcode-decode", version = "2.1.1", default-features = false }
+qrcode-eps = { path = "crates/qrcode-eps", version = "2.1.1", default-features = false }
+qrcode-html = { path = "crates/qrcode-html", version = "2.1.1", default-features = false }
+qrcode-image = { path = "crates/qrcode-image", version = "2.1.1", default-features = false }
+qrcode-pdf = { path = "crates/qrcode-pdf", version = "2.1.1", default-features = false }
+qrcode-pic = { path = "crates/qrcode-pic", version = "2.1.1", default-features = false }
+qrcode-parse = { path = "crates/qrcode-parse", version = "2.1.1", default-features = false }
+qrcode-render = { path = "crates/qrcode-render", version = "2.1.1", default-features = false }
+qrcode-svg = { path = "crates/qrcode-svg", version = "2.1.1", default-features = false }
 clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
 criterion = { version = "0.8", default-features = false }
 flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }

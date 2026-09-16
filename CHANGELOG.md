@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-09-16
+
 ### Added
 
 - Added the focused `qrcode-image` backend crate and the independently

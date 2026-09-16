@@ -372,7 +372,7 @@ cosign verify-blob release-artifact \
 GitHub provenance attestations for crate assets can be verified with:
 
 ```sh
-gh attestation verify qrcode-rs-2.1.0.crate --repo houseme/qrcode-rs
+gh attestation verify qrcode-rs-2.1.1.crate --repo houseme/qrcode-rs
 ```
 
 ## Security
