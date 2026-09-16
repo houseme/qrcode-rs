@@ -29,12 +29,61 @@ jobs:
       # would drop the .sig/.pem artifacts verified via `cosign verify-blob
       # --signature/--certificate` in README. Pin 2.x until the verification flow
       # migrates to bundles.
-      - uses: sigstore/cosign-installer@v4
+      - uses: sigstore/cosign-installer@v4.1.2
         with:
           cosign-release: "v2.6.5"
 
+      - name: Wait for crates.io index
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${GITHUB_REF_NAME#v}"
+          crates=(
+            qrcode-core
+            qrcode-render
+            qrcode-image
+            qrcode-parse
+            qrcode-decode
+            qrcode-svg
+            qrcode-eps
+            qrcode-pic
+            qrcode-html
+            qrcode-pdf
+            qrcode-rs
+            qrcode-cli
+          )
+
+          wait_for_crate() {
+            local crate="$1"
+            local version="$2"
+
+            for attempt in {1..80}; do
+              if cargo info "${crate}@${version}" --registry crates-io >/dev/null 2>&1; then
+                echo "${crate} ${version} is visible in the crates.io index"
+                return 0
+              fi
+
+              echo "waiting for ${crate} ${version} in crates.io index (${attempt}/80)"
+              sleep 30
+            done
+
+            echo "${crate} ${version} was not visible in the crates.io index in time" >&2
+            return 1
+          }
+
+          for crate in "${crates[@]}"; do
+            wait_for_crate "${crate}" "${version}"
+          done
+
       - name: Package publishable crates
-        run: cargo package --workspace --locked --no-verify --allow-dirty
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo package --workspace --locked --no-verify --allow-dirty --registry crates-io
+          mkdir -p dist
+          cp target/package/*.crate dist/
+          test "$(find dist -maxdepth 1 -name '*.crate' | wc -l)" -gt 0
 
       - name: Generate CycloneDX SBOMs
         shell: bash
