@@ -72,26 +72,54 @@ impl<'a> Canvas<'a> {
     }
 }
 
+fn push_escaped_attr_value(out: &mut String, value: &str) {
+    for ch in value.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            _ => out.push(ch),
+        }
+    }
+}
+
+fn is_attr_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first == '_' || first == ':' || first.is_ascii_alphabetic()) {
+        return false;
+    }
+    chars.all(|ch| ch == '_' || ch == ':' || ch == '-' || ch == '.' || ch.is_ascii_alphanumeric())
+}
+
 impl<'a> RenderCanvas for Canvas<'a> {
     type Pixel = Color<'a>;
     type Image = String;
 
     fn new(width: u32, height: u32, dark_pixel: Color<'a>, light_pixel: Color<'a>) -> Self {
         Canvas {
-            svg: format!(
-                concat!(
-                    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"#,
-                    r#"<svg xmlns="http://www.w3.org/2000/svg""#,
-                    r#" version="1.1" width="{w}" height="{h}""#,
-                    r#" viewBox="0 0 {w} {h}" shape-rendering="crispEdges">"#,
-                    r#"<path d="M0 0h{w}v{h}H0z" fill="{bg}"/>"#,
-                    r#"<path fill="{fg}" d=""#,
-                ),
-                w = width,
-                h = height,
-                fg = dark_pixel.0,
-                bg = light_pixel.0
-            ),
+            svg: {
+                let mut svg = format!(
+                    concat!(
+                        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"#,
+                        r#"<svg xmlns="http://www.w3.org/2000/svg""#,
+                        r#" version="1.1" width="{w}" height="{h}""#,
+                        r#" viewBox="0 0 {w} {h}" shape-rendering="crispEdges">"#,
+                        r#"<path d="M0 0h{w}v{h}H0z" fill=""#,
+                    ),
+                    w = width,
+                    h = height
+                );
+                push_escaped_attr_value(&mut svg, light_pixel.0);
+                svg.push_str(r#""/><path fill=""#);
+                push_escaped_attr_value(&mut svg, dark_pixel.0);
+                svg.push_str(r#"" d=""#);
+                svg
+            },
             pending_left: 0,
             pending_top: 0,
             pending_width: 0,
@@ -154,10 +182,13 @@ pub fn inject_attributes(svg: &str, attrs: &[(&str, &str)]) -> String {
     let mut result = String::with_capacity(svg.len() + attrs.iter().map(|(k, v)| k.len() + v.len() + 5).sum::<usize>());
     result.push_str(&svg[..insert_pos]);
     for (key, value) in attrs {
+        if !is_attr_name(key) {
+            continue;
+        }
         result.push(' ');
         result.push_str(key);
         result.push_str(r#"=""#);
-        result.push_str(value);
+        push_escaped_attr_value(&mut result, value);
         result.push('"');
     }
     result.push_str(&svg[insert_pos..]);
@@ -417,8 +448,10 @@ pub fn animate(svg: &str, animation: Animation) -> String {
         }
     };
 
-    // Insert the style after the opening <svg ...> tag.
-    let tag_end = svg.find('>').expect("invalid SVG: no closing '>' found") + 1;
+    // Insert the style after the opening <svg ...> tag, not after a leading
+    // XML declaration.
+    let tag_start = svg.find("<svg").expect("invalid SVG: no <svg> element");
+    let tag_end = tag_start + svg[tag_start..].find('>').expect("invalid SVG: no closing '>' found") + 1;
     let mut result = String::with_capacity(svg.len() + css.len());
     result.push_str(&svg[..tag_end]);
     result.push_str(css);
@@ -451,6 +484,37 @@ mod tests {
         let original = svg.clone();
         let svg = inject_attributes(&svg, &[]);
         assert_eq!(svg, original);
+    }
+
+    #[test]
+    fn colors_are_xml_escaped() {
+        let modules = [ModuleColor::Dark, ModuleColor::Light, ModuleColor::Light, ModuleColor::Dark];
+        let svg = qrcode_render::Renderer::<Color>::new(&modules, 2, 1)
+            .dark_color(Color(r##"black"/><script>alert(1)</script><path fill="red"##))
+            .light_color(Color(r#"" onload="alert(1)"#))
+            .build();
+
+        assert!(!svg.contains("<script>"));
+        assert!(!svg.contains(" onload=\""));
+        assert!(svg.contains("&lt;script&gt;"));
+        assert!(svg.contains("&quot;"));
+    }
+
+    #[test]
+    fn injected_attribute_values_are_xml_escaped() {
+        let svg = aria_label(&sample_svg(), r#"QR "><script>alert(1)</script>"#);
+
+        assert!(!svg.contains("<script>"));
+        assert!(svg.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
+        assert!(svg.contains("&quot;&gt;"));
+    }
+
+    #[test]
+    fn invalid_attribute_names_are_skipped() {
+        let svg = inject_attributes(&sample_svg(), &[(r#"x" onload="alert(1)"#, "bad"), ("data-ok", "yes")]);
+
+        assert!(!svg.contains("onload"));
+        assert!(svg.contains(r#"data-ok="yes""#));
     }
 
     #[test]
@@ -517,7 +581,8 @@ mod tests {
         let animated = animate(&svg, Animation::FadeIn);
         // Style is inserted after the opening <svg> tag, before the paths.
         let style_pos = animated.find("<style>").unwrap();
-        let svg_tag_end = animated.find('>').unwrap();
+        let svg_start = animated.find("<svg").unwrap();
+        let svg_tag_end = svg_start + animated[svg_start..].find('>').unwrap();
         assert!(style_pos > svg_tag_end);
         assert!(animated.contains("<path"));
     }

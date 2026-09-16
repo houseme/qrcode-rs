@@ -152,6 +152,10 @@ pub enum RenderError {
         /// Source width in modules.
         width: usize,
     },
+
+    /// The requested quiet zone, module size, or final canvas dimensions
+    /// overflow this renderer's `u32` coordinate space.
+    OutputTooLarge,
 }
 
 impl fmt::Display for RenderError {
@@ -161,6 +165,7 @@ impl fmt::Display for RenderError {
                 write!(f, "invalid module source dimensions: width={width}, height={height}, len={len}")
             }
             RenderError::ModuleSourceTooWide { width } => write!(f, "module source width {width} exceeds u32::MAX"),
+            RenderError::OutputTooLarge => f.write_str("rendered output dimensions exceed u32::MAX"),
         }
     }
 }
@@ -383,15 +388,21 @@ impl<'a, P: Pixel> Renderer<'a, P> {
         self.min_dimensions(size, size)
     }
 
-    /// Renders the QR code into an image.
-    pub fn build(&self) -> P::Image {
+    /// Tries to render the QR code into an image.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RenderError::OutputTooLarge`] if the configured quiet zone or
+    /// module size would overflow the renderer's coordinate space.
+    pub fn try_build(&self) -> Result<P::Image, RenderError> {
         let w = self.modules_count;
         let qz = if self.has_quiet_zone { self.quiet_zone } else { 0 };
-        let width = w + 2 * qz;
+        let quiet = qz.checked_mul(2).ok_or(RenderError::OutputTooLarge)?;
+        let width = w.checked_add(quiet).ok_or(RenderError::OutputTooLarge)?;
 
         let (mw, mh) = self.module_size;
-        let real_width = width * mw;
-        let real_height = width * mh;
+        let real_width = width.checked_mul(mw).ok_or(RenderError::OutputTooLarge)?;
+        let real_height = width.checked_mul(mh).ok_or(RenderError::OutputTooLarge)?;
 
         let mut canvas = P::Canvas::new(real_width, real_height, self.dark_color, self.light_color);
         for (y, row) in self.content.chunks_exact(w as usize).enumerate() {
@@ -403,7 +414,17 @@ impl<'a, P: Pixel> Renderer<'a, P> {
             }
         }
 
-        canvas.into_image()
+        Ok(canvas.into_image())
+    }
+
+    /// Renders the QR code into an image.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the configured quiet zone or module size would overflow the
+    /// renderer's coordinate space.
+    pub fn build(&self) -> P::Image {
+        self.try_build().unwrap_or_else(|err| panic!("{err}"))
     }
 }
 
@@ -421,7 +442,7 @@ where
         renderer.dark_color = self.dark_color;
         renderer.light_color = self.light_color;
         renderer.has_quiet_zone = self.has_quiet_zone;
-        Ok(renderer.build())
+        renderer.try_build()
     }
 }
 
@@ -553,6 +574,15 @@ mod tests {
         let expected = renderer.build();
 
         assert_eq!(qrcode_core::Builder::build(&renderer), Ok(expected));
+    }
+
+    #[test]
+    fn try_build_rejects_overflowing_dimensions() {
+        let modules = [Color::Dark];
+        let mut renderer = Renderer::<char>::new(&modules, 1, u32::MAX);
+        renderer.module_dimensions(u32::MAX, 1);
+
+        assert_eq!(renderer.try_build(), Err(RenderError::OutputTooLarge));
     }
 
     #[test]

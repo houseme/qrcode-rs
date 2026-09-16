@@ -78,6 +78,30 @@ impl<'a> Canvas<'a> {
     }
 }
 
+fn push_escaped_attr_value(out: &mut String, value: &str) {
+    for ch in value.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(ch),
+        }
+    }
+}
+
+fn is_attr_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first == '_' || first == ':' || first.is_ascii_alphabetic()) {
+        return false;
+    }
+    chars.all(|ch| ch == '_' || ch == ':' || ch == '-' || ch == '.' || ch.is_ascii_alphanumeric())
+}
+
 impl<'a> RenderCanvas for Canvas<'a> {
     type Pixel = Color<'a>;
     type Image = String;
@@ -121,7 +145,7 @@ impl<'a> Canvas<'a> {
                 let idx = (y * self.width + x).as_usize();
                 let color = if self.dark_pixels[idx] { self.dark_color } else { self.light_color };
                 html.push_str(r#"<td style="width:1px;height:1px;background:"#);
-                html.push_str(color);
+                push_escaped_attr_value(&mut html, color);
                 html.push_str(r#""></td>"#);
             }
             html.push_str("</tr>");
@@ -143,7 +167,7 @@ impl<'a> Canvas<'a> {
                 let idx = (y * self.width + x).as_usize();
                 let color = if self.dark_pixels[idx] { self.dark_color } else { self.light_color };
                 html.push_str(r#"<div style="width:1px;height:1px;background:"#);
-                html.push_str(color);
+                push_escaped_attr_value(&mut html, color);
                 html.push_str(r#""></div>"#);
             }
         }
@@ -181,10 +205,13 @@ pub fn inject_attributes(html: &str, attrs: &[(&str, &str)]) -> String {
     let mut result = String::with_capacity(html.len() + attrs.len() * 16);
     result.push_str(&html[..close]);
     for (key, value) in attrs {
+        if !is_attr_name(key) {
+            continue;
+        }
         result.push(' ');
         result.push_str(key);
         result.push_str(r#"=""#);
-        result.push_str(value);
+        push_escaped_attr_value(&mut result, value);
         result.push('"');
     }
     result.push_str(&html[close..]);
@@ -252,5 +279,37 @@ mod tests {
         let tag_end = start + html[start..].find('>').unwrap();
         assert!(html[start..tag_end].contains(r#"role="img""#));
         assert!(html[start..tag_end].contains(r#"aria-label="a QR code""#));
+    }
+
+    #[test]
+    fn colors_are_html_escaped() {
+        let modules =
+            [qrcode_core::Color::Dark, qrcode_core::Color::Light, qrcode_core::Color::Light, qrcode_core::Color::Dark];
+        let html = qrcode_render::Renderer::<Color>::new(&modules, 2, 1)
+            .dark_color(Color(r##"red"><script>alert(1)</script><span style="color:red"##))
+            .light_color(Color(r#"" onload="alert(1)"#))
+            .build();
+
+        assert!(!html.contains("<script>"));
+        assert!(!html.contains(" onload=\""));
+        assert!(html.contains("&lt;script&gt;"));
+        assert!(html.contains("&quot;"));
+    }
+
+    #[test]
+    fn injected_attribute_values_are_html_escaped() {
+        let html = super::aria_label(&sample_html(), r#"QR "><script>alert(1)</script>"#);
+
+        assert!(!html.contains("<script>"));
+        assert!(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
+        assert!(html.contains("&quot;&gt;"));
+    }
+
+    #[test]
+    fn invalid_attribute_names_are_skipped() {
+        let html = super::inject_attributes(&sample_html(), &[(r#"x" onload="alert(1)"#, "bad"), ("data-ok", "yes")]);
+
+        assert!(!html.contains("onload"));
+        assert!(html.contains(r#"data-ok="yes""#));
     }
 }

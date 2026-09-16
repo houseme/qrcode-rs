@@ -11,8 +11,11 @@ use clap::{Parser, Subcommand, ValueEnum};
 use qrcode_render::{ansi, colors, unicode};
 use qrcode_rs::decode::rqrr::RqrrDecoder;
 use qrcode_rs::decode::{GrayPixels, QrDecoder};
-use qrcode_rs::{EcLevel, QrCode, Version};
+use qrcode_rs::{EcLevel, QrCode, QrSymbol, Version};
 use rayon::prelude::*;
+
+const MAX_PNG_SIDE: u64 = 65_535;
+const MAX_PNG_PIXELS: u64 = 268_435_456;
 
 #[derive(Parser)]
 #[command(name = "qrencodes", version, about = "Generate QR codes in various output formats")]
@@ -530,7 +533,8 @@ fn render_one(text: &str, cli: &Cli, quiet_zone: bool) -> Result<Vec<u8>, Box<dy
     }
     let code = builder.build()?;
     let (dark_str, light_str) = if cli.invert { (&cli.light, &cli.dark) } else { (&cli.dark, &cli.light) };
-    let needs_rgb = matches!(cli.format, Format::Ansi | Format::Png | Format::Eps | Format::Pdf);
+    let needs_rgb =
+        matches!(cli.format, Format::Ansi | Format::Svg | Format::Png | Format::Eps | Format::Html | Format::Pdf);
     let (dark_rgb, light_rgb) =
         if needs_rgb { (parse_rgb(dark_str, "dark")?, parse_rgb(light_str, "light")?) } else { ((0, 0, 0), (0, 0, 0)) };
     let bytes = match cli.format {
@@ -554,6 +558,7 @@ fn render_one(text: &str, cli: &Cli, quiet_zone: bool) -> Result<Vec<u8>, Box<dy
             .into_bytes(),
         Format::Png => {
             use qrcode_image::{DynamicImage, ImageFormat};
+            validate_png_size(&code, cli.size, quiet_zone)?;
             let image = render_png_image_with_colors(code, cli, quiet_zone, dark_rgb, light_rgb);
             qrcode_image::encode_to_format(&DynamicImage::ImageRgba8(image), ImageFormat::Png)?
         }
@@ -591,6 +596,7 @@ fn render_png_image(text: &str, cli: &Cli, quiet_zone: bool) -> Result<qrcode_im
     let (dark_str, light_str) = if cli.invert { (&cli.light, &cli.dark) } else { (&cli.dark, &cli.light) };
     let dark_rgb = parse_rgb(dark_str, "dark")?;
     let light_rgb = parse_rgb(light_str, "light")?;
+    validate_png_size(&code, cli.size, quiet_zone)?;
     Ok(render_png_image_with_colors(code, cli, quiet_zone, dark_rgb, light_rgb))
 }
 
@@ -609,6 +615,30 @@ fn render_png_image_with_colors(
         .dark_color(Rgba([dark_rgb.0, dark_rgb.1, dark_rgb.2, 255]))
         .light_color(Rgba([light_rgb.0, light_rgb.1, light_rgb.2, 255]))
         .build()
+}
+
+fn validate_png_size(code: &QrCode, module_size: u32, quiet_zone: bool) -> Result<(), Box<dyn Error>> {
+    if module_size == 0 {
+        return Err("--size must be greater than zero for PNG output".into());
+    }
+    let quiet_modules = if quiet_zone {
+        u64::from(code.quiet_zone().checked_mul(2).ok_or("quiet zone width overflows u32")?)
+    } else {
+        0
+    };
+    let modules = u64::try_from(code.width())
+        .map_err(|_| "rendered PNG module width exceeds u64::MAX")?
+        .checked_add(quiet_modules)
+        .ok_or("rendered PNG module width overflows u64")?;
+    let side = modules.checked_mul(u64::from(module_size)).ok_or("rendered PNG dimensions overflow u64")?;
+    if side > MAX_PNG_SIDE {
+        return Err(format!("rendered PNG side {side}px exceeds the {MAX_PNG_SIDE}px limit").into());
+    }
+    let pixels = side * side;
+    if pixels > MAX_PNG_PIXELS {
+        return Err(format!("rendered PNG area {pixels} pixels exceeds the {MAX_PNG_PIXELS} pixel limit").into());
+    }
+    Ok(())
 }
 
 fn encode_png_grid(images: &[qrcode_image::RgbaImage], cli: &Cli) -> Result<Vec<u8>, Box<dyn Error>> {
@@ -943,6 +973,26 @@ mod tests {
 
         let error = run(cli).unwrap_err().to_string();
         assert!(error.contains("greater than zero"));
+    }
+
+    #[test]
+    fn run_rejects_oversized_png_size() {
+        let mut cli = cli_with_text(Some("payload"));
+        cli.format = Format::Png;
+        cli.size = 1_000_000;
+
+        let error = run(cli).unwrap_err().to_string();
+        assert!(error.contains("exceeds"));
+    }
+
+    #[test]
+    fn run_rejects_invalid_svg_color() {
+        let mut cli = cli_with_text(Some("payload"));
+        cli.format = Format::Svg;
+        cli.dark = r##"black"/><script>alert(1)</script>"##.to_owned();
+
+        let error = run(cli).unwrap_err().to_string();
+        assert!(error.contains("invalid dark color"));
     }
 
     #[test]
