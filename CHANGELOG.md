@@ -30,6 +30,12 @@
   `QrTemplatePatch` values without making JSON part of the default dependency
   profile.
 
+### Changed
+
+- Centralized external workspace dependency versions and feature policy in the
+  root `Cargo.toml`, with member crates inheriting shared declarations via
+  `workspace = true`.
+
 ### Fixed
 
 - Corrected Structured Append symbol-sequence encoding and parsing to use the

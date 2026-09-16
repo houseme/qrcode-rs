@@ -52,7 +52,18 @@ qrcode-pic = { path = "crates/qrcode-pic", version = "2.1.0", default-features =
 qrcode-parse = { path = "crates/qrcode-parse", version = "2.1.0", default-features = false }
 qrcode-render = { path = "crates/qrcode-render", version = "2.1.0", default-features = false }
 qrcode-svg = { path = "crates/qrcode-svg", version = "2.1.0", default-features = false }
+clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
+criterion = { version = "0.8", default-features = false }
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
+image = { version = "0.25.10", default-features = false }
+log = { version = "0.4", default-features = false }
+proptest = "1"
+rayon = "1"
+reference-qrcode = { package = "qrcode", version = "0.14" }
 rqrr = { version = "0.11.0", default-features = false }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+serde_json = { version = "1", default-features = false, features = ["alloc"] }
+tokio = { version = "1", default-features = false, features = ["rt"] }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [profile.release]
@@ -60,14 +71,14 @@ opt-level = 3
 debug = false
 
 [dependencies]
-image = { version = "0.25.10", default-features = false, optional = true }
-clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"], optional = true }
-serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
-serde_json = { version = "1", default-features = false, features = ["alloc"], optional = true }
-log = { version = "0.4", default-features = false, optional = true }
-tokio = { version = "1", default-features = false, features = ["rt"], optional = true }
-rayon = { version = "1", optional = true }
-flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"], optional = true }
+image = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+log = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+rayon = { workspace = true, optional = true }
+flate2 = { workspace = true, optional = true }
 qrcode-core = { workspace = true }
 qrcode-decode = { workspace = true }
 qrcode-eps = { workspace = true, optional = true }
@@ -80,11 +91,11 @@ qrcode-render = { workspace = true }
 qrcode-svg = { workspace = true, optional = true }
 
 [dev-dependencies]
-image = "0.25.10"
-criterion = { version = "0.8", default-features = false }
-serde_json = "1"
-proptest = "1"
-reference-qrcode = { package = "qrcode", version = "0.14" }
+image = { workspace = true, features = ["default"] }
+criterion = { workspace = true }
+serde_json = { workspace = true }
+proptest = { workspace = true }
+reference-qrcode = { workspace = true }
 
 [features]
 # A dependency-free profile for the core, string, and optional SVG crates.

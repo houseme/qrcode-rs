@@ -12,7 +12,7 @@ categories = ["encoding", "multimedia::images"]
 readme = "README.md"
 
 [dependencies]
-image = { version = "0.25.10", default-features = false, optional = true }
+image = { workspace = true, optional = true }
 qrcode-core = { workspace = true }
 qrcode-render = { workspace = true }
 
