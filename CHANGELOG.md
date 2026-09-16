@@ -6,8 +6,8 @@
 
 ### Added
 
-- Added the focused `qrcode-image` backend crate and the independently
-  installable `qrcode-cli` (`qrencodes`) package.
+- Added the focused `qrcode-image` backend crate and the split `qrcode-cli`
+  (`qrencodes`) workspace package used by release assets and workspace builds.
 - Added the shared `Builder` implementation for borrowed renderers and plugin
   registry metadata queries (`plugin_names` / `plugin_version`).
 - Added the `deterministic` feature with `QrCode::new_deterministic` as an

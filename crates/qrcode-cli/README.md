@@ -1,14 +1,15 @@
 # qrcode-cli
 
 `qrcode-cli` packages the `qrencodes` command-line QR generator from
-[`qrcode-rs`](https://crates.io/crates/qrcode-rs) as an independently
-installable binary. It supports string, Unicode, ANSI, SVG, PNG, EPS, PIC,
-HTML, and PDF output, including stdin and batch input.
+[`qrcode-rs`](https://crates.io/crates/qrcode-rs) as a split workspace
+package used by release assets and CLI-focused builds. It supports string,
+Unicode, ANSI, SVG, PNG, EPS, PIC, HTML, and PDF output, including stdin and
+batch input.
 
 Install it with:
 
 ```bash
-cargo install qrcode-cli
+cargo install qrcode-rs --features cli --bin qrencodes
 ```
 
 Examples:
@@ -29,7 +30,7 @@ printf 'first\nsecond\n' | qrencodes --batch - -f svg -o ./out
 ```
 
 The `qrcode-rs` facade keeps its feature-gated `qrencodes` binary for
-backward compatibility. New installations can use this package directly.
+backward compatibility and for crates.io installations.
 
 Batch input ignores blank or whitespace-only payloads while preserving the exact
 contents of each non-empty payload. Use `--batch -` for a pipe; batch output is

@@ -51,7 +51,6 @@ jobs:
             qrcode-html
             qrcode-pdf
             qrcode-rs
-            qrcode-cli
           )
 
           wait_for_crate() {

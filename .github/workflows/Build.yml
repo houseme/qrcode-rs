@@ -317,7 +317,8 @@ jobs:
           publish_crate qrcode-html "${version}"
           publish_crate qrcode-pdf "${version}"
           publish_crate qrcode-rs "${version}" false
-          publish_crate qrcode-cli "${version}" false
+          # qrcode-cli is built, tested, and shipped as a release asset, but the
+          # crates.io name is not publishable by the current token.
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
           PUBLISH_COOLDOWN_SECONDS: "300"

@@ -83,7 +83,7 @@ surface:
 | `qrcode-parse` | WiFi, vCard, and GS1 payload parsing without the facade. |
 | `qrcode-decode` | Decoder traits, grayscale views, Structured Append parsing, and the optional `rqrr` adapter. |
 | `qrcode-svg`, `qrcode-eps`, `qrcode-pic`, `qrcode-html`, `qrcode-pdf` | Individual renderer backends. |
-| `qrcode-cli` | Independently installable `qrencodes` command-line binary. |
+| `qrcode-cli` | Split `qrencodes` workspace package used for release assets and CLI-focused builds. |
 
 For example:
 
