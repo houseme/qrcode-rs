@@ -97,12 +97,6 @@ impl<'a> BitReader<'a> {
     }
 }
 
-/// Decodes a 4-bit Structured Append nibble: `0` means 16, anything else is the
-/// value itself (the only encoding of 16 in four bits).
-fn nibble_to_value(nibble: u32) -> u8 {
-    if nibble == 0 { 16 } else { nibble as u8 }
-}
-
 /// Parses a Structured Append data bit stream into its header and payload.
 ///
 /// `bits` is one symbol's data region (as recovered by a decoder); `version`
@@ -124,8 +118,11 @@ pub fn parse_sa_datastream(bits: &[u8], version: Version) -> Result<SaSymbolData
         return Err(SaParseError::NotStructuredAppend);
     }
     let sequence = r.read_bits(8).ok_or(SaParseError::MalformedStream)?;
-    let position = nibble_to_value(sequence >> 4);
-    let total = nibble_to_value(sequence & 0x0f);
+    let position = ((sequence >> 4) + 1) as u8;
+    let total = ((sequence & 0x0f) + 1) as u8;
+    if total < 2 || position > total {
+        return Err(SaParseError::MalformedStream);
+    }
     let parity = r.read_bits(8).ok_or(SaParseError::MalformedStream)? as u8;
 
     let mut data = Vec::new();
@@ -239,11 +236,18 @@ mod tests {
     }
 
     #[test]
-    fn value_16_decodes_from_zero_nibble() {
+    fn value_16_decodes_from_max_nibble() {
         let bytes = sa_bytes(16, 16, 0x00, |_| {});
         let parsed = parse_sa_datastream(&bytes, Version::Normal(1)).unwrap();
         assert_eq!(parsed.position, 16);
         assert_eq!(parsed.total, 16);
+    }
+
+    #[test]
+    fn invalid_header_range_is_rejected() {
+        // Position nibble 1 means position 2, total nibble 0 means total 1.
+        let bytes = [0x31, 0x00, 0x00];
+        assert_eq!(parse_sa_datastream(&bytes, Version::Normal(1)), Err(SaParseError::MalformedStream));
     }
 
     #[test]

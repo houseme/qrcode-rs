@@ -201,10 +201,12 @@ impl ::core::error::Error for SaError {}
 
 /// One decoded Structured Append symbol's metadata, ready for [`reassemble`].
 ///
-/// Build this from whatever your decoder exposes: the position and total count
-/// (the high and low nibbles of the 8-bit symbol-sequence indicator), the
-/// parity byte, and that symbol's decoded payload bytes. The fields are public
-/// so it can be constructed with a struct literal.
+/// Build this from whatever your decoder exposes: the decoded 1-based position,
+/// decoded total count, parity byte, and that symbol's decoded payload bytes.
+/// The raw 8-bit symbol-sequence indicator stores `position - 1` in its high
+/// nibble and `total - 1` in its low nibble; convert those fields before
+/// constructing `SaSymbol`. The fields are public so it can be constructed with
+/// a struct literal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SaSymbol<'a> {
     /// 1-based position of this symbol within the sequence (`1..=total`).
