@@ -32,6 +32,16 @@
 
 ### Fixed
 
+- Corrected Structured Append symbol-sequence encoding and parsing to use the
+  ISO/IEC 18004 zero-based position and `total - 1` nibbles, with updated
+  round-trip tests for the 16-symbol boundary.
+- Escaped SVG and HTML renderer color/attribute values, skipped invalid
+  injected attribute names, and fixed SVG animation style insertion so it lands
+  inside the root `<svg>` element rather than after the XML declaration.
+- Added fallible renderer output-size checks and bounded `qrencodes` PNG
+  dimensions, while making CLI color validation consistent for SVG/HTML output.
+- Added CI coverage for `cargo test --all-features` and the split
+  `qrcode-cli` test suite so feature-gated tests are exercised.
 - Hardened plugin module-grid dimension checks and plain-text renderer
   configuration/output arithmetic against malformed or overflowing input.
 - Replaced parser-segment mode optimization with a dynamic-programming merge

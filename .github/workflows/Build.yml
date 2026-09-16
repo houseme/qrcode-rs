@@ -84,6 +84,8 @@ jobs:
           toolchain: stable
       - name: Run cargo test
         run: cargo test --features "image,svg,eps,pic"
+      - name: Run all-feature tests
+        run: cargo test --all-features
       - name: Run facade no-default tests
         run: cargo test --lib --no-default-features
       - name: Run core abstraction tests
@@ -106,6 +108,7 @@ jobs:
           cargo test -p qrcode-pic
           cargo test -p qrcode-html
           cargo test -p qrcode-pdf
+          cargo test -p qrcode-cli
           cargo run -p qrcode-cli -- --help
       - name: Run property and differential tests
         run: |
