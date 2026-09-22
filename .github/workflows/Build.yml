@@ -19,7 +19,7 @@ jobs:
       matrix:
         rustc: [ nightly, stable ]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.rustc }}
@@ -32,8 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
-      - uses: actions/cache@v6
+        uses: actions/checkout@v7.0.1
+      - uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -51,8 +51,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
-      - uses: actions/cache@v6
+        uses: actions/checkout@v7.0.1
+      - uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -70,8 +70,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
-      - uses: actions/cache@v6
+        uses: actions/checkout@v7.0.1
+      - uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -125,8 +125,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
-      - uses: actions/cache@v6
+        uses: actions/checkout@v7.0.1
+      - uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -148,8 +148,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
-      - uses: actions/cache@v6
+        uses: actions/checkout@v7.0.1
+      - uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -180,8 +180,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
-      - uses: actions/cache@v6
+        uses: actions/checkout@v7.0.1
+      - uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -200,8 +200,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
-      - uses: actions/cache@v6
+        uses: actions/checkout@v7.0.1
+      - uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -243,7 +243,7 @@ jobs:
       - fuzz_smoke
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
       - name: Install rust
         uses: dtolnay/rust-toolchain@stable
       - name: Publish workspace crates

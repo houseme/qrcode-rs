@@ -15,7 +15,7 @@ jobs:
     name: cargo deny
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-deny
@@ -26,7 +26,7 @@ jobs:
     name: cargo vet
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@v2
         with:
@@ -38,7 +38,7 @@ jobs:
     name: Minimal feature dependency check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: dtolnay/rust-toolchain@stable
       - name: Build the dependency-free facade
         run: cargo check --locked --no-default-features --features minimal
