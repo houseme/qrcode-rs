@@ -52,18 +52,18 @@ qrcode-pic = { path = "crates/qrcode-pic", version = "2.1.1", default-features =
 qrcode-parse = { path = "crates/qrcode-parse", version = "2.1.1", default-features = false }
 qrcode-render = { path = "crates/qrcode-render", version = "2.1.1", default-features = false }
 qrcode-svg = { path = "crates/qrcode-svg", version = "2.1.1", default-features = false }
-clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
-criterion = { version = "0.8", default-features = false }
+clap = { version = "4.6.7", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
+criterion = { version = "0.8.2", default-features = false }
 flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
 image = { version = "0.25.10", default-features = false }
 log = { version = "0.4", default-features = false }
 proptest = "1"
-rayon = "1"
+rayon = "1.12.0"
 reference-qrcode = { package = "qrcode", version = "0.14" }
 rqrr = { version = "0.11.0", default-features = false }
-serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+serde = { version = "1.0.229", default-features = false, features = ["derive", "alloc"] }
 serde_json = { version = "1", default-features = false, features = ["alloc"] }
-tokio = { version = "1", default-features = false, features = ["rt"] }
+tokio = { version = "1.53.1", default-features = false, features = ["rt"] }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [profile.release]
