@@ -26,6 +26,9 @@
 - Update Tokio to 1.53.2 and locked cc/libc versions, and set the serde_json
   and proptest minimum versions to the already locked 1.0.151 and 1.11.0
   releases.
+- Reuse a single Reed-Solomon scratch buffer and write error-correction bytes
+  directly into the final interleaved output instead of allocating vectors for
+  every block.
 
 ### Fixed
 
@@ -66,6 +69,8 @@
   alphanumeric, byte, Kanji, and mixed payloads.
 - Add single-segment and alternating-mode segmentation and automatic-encoding
   benchmarks.
+- Add isolated Reed-Solomon remainder and codeword-construction benchmarks
+  across normal and Micro QR variants.
 
 ## [2.1.1] - 2026-09-16
 

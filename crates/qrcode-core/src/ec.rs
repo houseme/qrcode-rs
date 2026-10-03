@@ -41,33 +41,93 @@ use crate::types::{EcLevel, QrError, QrResult, Version};
 /// in GF(2<sup>8</sup>), and then computes the polynomial modulus with a
 /// generator polynomial of degree N.
 pub fn create_error_correction_code(data: &[u8], ec_code_size: usize) -> Vec<u8> {
-    let data_len = data.len();
     let log_den = GENERATOR_POLYNOMIALS[ec_code_size];
+    let mut work = Vec::with_capacity(data.len() + ec_code_size);
+    polynomial_remainder(data, log_den, &mut work);
+    work.split_off(data.len())
+}
 
-    let target_len = ec_code_size + data_len;
-    let mut res = Vec::with_capacity(target_len);
-    res.extend_from_slice(data);
-    res.resize(target_len, 0);
+fn polynomial_remainder<'a>(data: &[u8], log_den: &[u8], work: &'a mut Vec<u8>) -> &'a [u8] {
+    let data_len = data.len();
+    work.clear();
+    work.extend_from_slice(data);
+    work.resize(data_len + log_den.len(), 0);
 
     // rust-lang-nursery/rust-clippy#2213
     for i in 0..data_len {
-        let lead_coeff = res[i] as usize;
+        let lead_coeff = work[i] as usize;
         if lead_coeff == 0 {
             continue;
         }
 
         let log_lead_coeff = usize::from(LOG_TABLE[lead_coeff]);
-        for (u, v) in res[i + 1..].iter_mut().zip(log_den.iter()) {
+        for (u, v) in work[i + 1..].iter_mut().zip(log_den.iter()) {
             *u ^= EXP_TABLE[(usize::from(*v) + log_lead_coeff) % 255];
         }
     }
 
-    res.split_off(data_len)
+    &work[data_len..]
+}
+
+#[cfg(test)]
+mod legacy {
+    use super::{DATA_BYTES_PER_BLOCK, EC_BYTES_PER_BLOCK, EXP_TABLE, GENERATOR_POLYNOMIALS, LOG_TABLE};
+    use crate::types::{EcLevel, Version};
+    use core::ops::Deref;
+
+    // Keep the original allocation and division algorithm independent of the
+    // reusable-buffer implementation so state-reset regressions are visible.
+    pub(super) fn error_correction_code(data: &[u8], ec_code_size: usize) -> Vec<u8> {
+        let log_den = GENERATOR_POLYNOMIALS[ec_code_size];
+        let mut polynomial = Vec::with_capacity(data.len() + ec_code_size);
+        polynomial.extend_from_slice(data);
+        polynomial.resize(data.len() + ec_code_size, 0);
+        for index in 0..data.len() {
+            let coefficient = usize::from(polynomial[index]);
+            if coefficient == 0 {
+                continue;
+            }
+            let log_coefficient = usize::from(LOG_TABLE[coefficient]);
+            for (value, log_generator) in polynomial[index + 1..].iter_mut().zip(log_den.iter()) {
+                *value ^= EXP_TABLE[(usize::from(*log_generator) + log_coefficient) % 255];
+            }
+        }
+        polynomial.split_off(data.len())
+    }
+
+    fn interleave<V: Deref<Target = [u8]>>(blocks: &[V]) -> Vec<u8> {
+        let max_len = blocks.last().unwrap().len();
+        let mut output = Vec::with_capacity(max_len * blocks.len());
+        for index in 0..max_len {
+            for block in blocks {
+                if index < block.len() {
+                    output.push(block[index]);
+                }
+            }
+        }
+        output
+    }
+
+    pub(super) fn construct_codewords(data: &[u8], version: Version, ec_level: EcLevel) -> (Vec<u8>, Vec<u8>) {
+        let (size_1, count_1, size_2, count_2) = version.fetch(ec_level, &DATA_BYTES_PER_BLOCK).unwrap();
+        let group_1_end = size_1 * count_1;
+        assert_eq!(data.len(), group_1_end + size_2 * count_2);
+        let mut blocks = Vec::with_capacity(count_1 + count_2);
+        blocks.extend(data[..group_1_end].chunks(size_1));
+        if size_2 > 0 {
+            blocks.extend(data[group_1_end..].chunks(size_2));
+        }
+        let degree = version.fetch(ec_level, &EC_BYTES_PER_BLOCK).unwrap();
+        let codes = blocks.iter().map(|block| error_correction_code(block, degree)).collect::<Vec<_>>();
+        (interleave(&blocks), interleave(&codes))
+    }
 }
 
 #[cfg(test)]
 mod ec_tests {
-    use crate::ec::{EXP_TABLE, LOG_TABLE, create_error_correction_code};
+    use crate::ec::{
+        EXP_TABLE, GENERATOR_POLYNOMIALS, LOG_TABLE, create_error_correction_code, legacy, polynomial_remainder,
+    };
 
     #[test]
     fn test_poly_mod_1() {
@@ -95,6 +155,25 @@ mod ec_tests {
 
         for (log, &value) in EXP_TABLE[..255].iter().enumerate() {
             assert_eq!(usize::from(LOG_TABLE[usize::from(value)]), log);
+        }
+    }
+
+    #[test]
+    fn reused_remainder_buffer_matches_legacy_for_every_supported_degree() {
+        let mut work = Vec::new();
+        for (degree, log_den) in GENERATOR_POLYNOMIALS.iter().enumerate() {
+            for len in [0, 1, 2, 3, 15, 16, 31, 123, 256] {
+                let mixed = (0..len).map(|index| ((index * 73 + 19) % 256) as u8).collect::<Vec<_>>();
+                for data in [vec![0; len], vec![0xff; len], mixed] {
+                    let expected = legacy::error_correction_code(&data, degree);
+                    assert_eq!(
+                        polynomial_remainder(&data, log_den, &mut work),
+                        expected,
+                        "degree {degree}, len {len}, data {data:?}"
+                    );
+                    assert_eq!(create_error_correction_code(&data, degree), expected);
+                }
+            }
         }
     }
 }
@@ -155,6 +234,7 @@ pub fn construct_codewords(rawbits: &[u8], version: Version, ec_level: EcLevel) 
     if rawbits.len() != total_size {
         return Err(QrError::InvalidDataLength { expected: total_size, actual: rawbits.len() });
     }
+    let ec_bytes = version.fetch(ec_level, &EC_BYTES_PER_BLOCK)?;
 
     // Divide the data into blocks.
     let mut blocks = Vec::with_capacity(blocks_count);
@@ -164,19 +244,25 @@ pub fn construct_codewords(rawbits: &[u8], version: Version, ec_level: EcLevel) 
     }
 
     // Generate EC codes.
-    let ec_bytes = version.fetch(ec_level, &EC_BYTES_PER_BLOCK)?;
-    let ec_codes = blocks.iter().map(|block| create_error_correction_code(block, ec_bytes)).collect::<Vec<Vec<u8>>>();
+    let mut ec_vec = vec![0; ec_bytes * blocks_count];
+    let mut work = Vec::with_capacity(block_1_size.max(block_2_size) + ec_bytes);
+    let log_den = GENERATOR_POLYNOMIALS[ec_bytes];
+    for (block_index, block) in blocks.iter().enumerate() {
+        let remainder = polynomial_remainder(block, log_den, &mut work);
+        for (byte_index, &byte) in remainder.iter().enumerate() {
+            ec_vec[byte_index * blocks_count + block_index] = byte;
+        }
+    }
 
     let blocks_vec = interleave(&blocks);
-    let ec_vec = interleave(&ec_codes);
 
     Ok((blocks_vec, ec_vec))
 }
 
 #[cfg(test)]
 mod construct_codewords_test {
-    use crate::bits::data_capacity_bits;
-    use crate::ec::construct_codewords;
+    use crate::bits::{Bits, data_capacity_bits};
+    use crate::ec::{DATA_BYTES_PER_BLOCK, construct_codewords, legacy};
     use crate::types::{EcLevel, QrError, Version};
 
     #[test]
@@ -203,6 +289,36 @@ mod construct_codewords_test {
         let (blocks_vec, ec_vec) = construct_codewords(msg, Version::Normal(5), EcLevel::Q).unwrap();
         assert_eq!(&*blocks_vec, &expected_blocks[..]);
         assert_eq!(&*ec_vec, &expected_ec[..]);
+    }
+
+    #[test]
+    fn codewords_match_legacy_for_every_valid_version_and_correction_level() {
+        let versions = (1..=40).map(Version::Normal).chain((1..=4).map(Version::Micro));
+        let mut checked_combinations = 0;
+        for version in versions {
+            for ec_level in [EcLevel::L, EcLevel::M, EcLevel::Q, EcLevel::H] {
+                let Ok((size_1, count_1, size_2, count_2)) = version.fetch(ec_level, &DATA_BYTES_PER_BLOCK) else {
+                    continue;
+                };
+                checked_combinations += 1;
+                let expected_len = size_1 * count_1 + size_2 * count_2;
+                let mixed = (0..expected_len).map(|index| ((index * 73 + 19) % 256) as u8).collect::<Vec<_>>();
+                let mut bits = Bits::new(version);
+                bits.push_numeric_data(b"1").unwrap();
+                bits.push_terminator(ec_level).unwrap();
+                let padded = bits.into_bytes();
+                assert_eq!(padded.len(), expected_len);
+                assert_eq!(expected_len, data_capacity_bits(version, ec_level).unwrap().div_ceil(8));
+                for data in [vec![0; expected_len], vec![0xff; expected_len], mixed, padded] {
+                    assert_eq!(
+                        construct_codewords(&data, version, ec_level).unwrap(),
+                        legacy::construct_codewords(&data, version, ec_level),
+                        "{version:?} {ec_level:?} data {data:?}"
+                    );
+                }
+            }
+        }
+        assert_eq!(checked_combinations, 168);
     }
 
     #[test]
@@ -240,7 +356,6 @@ mod construct_codewords_test {
             assert_eq!(construct_codewords(&[], version, ec_level), Err(QrError::InvalidVersion { version, ec_level }));
         }
     }
-
 }
 
 //}}}
