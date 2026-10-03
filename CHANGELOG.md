@@ -6,6 +6,9 @@
 
 - Declare Rust 1.88 across the workspace to match the image dependency,
   inherit member MSRV declarations, and gate releases on locked MSRV checks.
+- Reuse parsed segments during automatic encoding and skip dynamic-programming
+  allocations for empty or single-segment payloads while preserving the
+  optimal merge plan.
 
 ### Fixed
 
@@ -17,6 +20,8 @@
 
 - Add focused benchmarks for automatic Micro QR encoding across numeric,
   alphanumeric, byte, Kanji, and mixed payloads.
+- Add single-segment and alternating-mode segmentation and automatic-encoding
+  benchmarks.
 
 ## [2.1.1] - 2026-09-16
 

@@ -28,7 +28,7 @@ use core::cmp::min;
 
 use crate::cast::{As, Truncate};
 use crate::mode::{AlphanumericMode, EncodingMode, KanjiMode, NumericMode};
-use crate::optimize::{Optimizer, Parser, Segment, total_encoded_len};
+use crate::optimize::{Parser, Segment, optimize_segments, total_encoded_len};
 use crate::types::{EcLevel, Mode, QrError, QrResult, Version};
 
 //------------------------------------------------------------------------------
@@ -1441,7 +1441,7 @@ pub fn encode_auto_with_max_version(data: &[u8], ec_level: EcLevel, max_version:
     }
     for candidate in checkpoints[..checkpoint_count].iter() {
         let version = Version::Normal(*candidate);
-        let opt_segments = Optimizer::new(segments.iter().copied(), version).collect::<Vec<_>>();
+        let opt_segments = optimize_segments(&segments, version);
         let total_len = total_encoded_len(&opt_segments, version);
         let data_capacity = version.fetch(ec_level, &DATA_LENGTHS)?;
         if total_len <= data_capacity {
@@ -1497,7 +1497,7 @@ pub fn encode_auto_micro(data: &[u8], ec_level: EcLevel) -> QrResult<Bits> {
         }) {
             continue;
         }
-        let opt_segments = Optimizer::new(segments.iter().copied(), version).collect::<Vec<_>>();
+        let opt_segments = optimize_segments(&segments, version);
         let total_len = total_encoded_len(&opt_segments, version);
         if total_len <= data_capacity {
             let mut bits = Bits::new(version);

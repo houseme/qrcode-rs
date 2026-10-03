@@ -8,6 +8,7 @@ use qrcode_rs::canvas::Canvas;
 #[cfg(feature = "bench-internals")]
 use qrcode_rs::canvas::MaskPattern;
 use qrcode_rs::ec;
+use qrcode_rs::optimize::{Parser, optimize_segments};
 use qrcode_rs::structured_append::StructuredAppend;
 use qrcode_rs::{EcLevel, QrCode, Version};
 
@@ -148,5 +149,36 @@ fn bench_micro_encoding(c: &mut Criterion) {
     micro.finish();
 }
 
-criterion_group!(benches, bench_encode, bench_micro_encoding);
+fn bench_segmentation(c: &mut Criterion) {
+    let numeric = vec![b'1'; 1024];
+    let numeric_segments = Parser::new(&numeric).collect::<Vec<_>>();
+    let alternating = [32, 256, 1024].map(|length| (length, b"A1".repeat(length / 2))).map(|(length, payload)| {
+        let segments = Parser::new(&payload).collect::<Vec<_>>();
+        (length, payload, segments)
+    });
+
+    let mut segmentation = c.benchmark_group("segmentation");
+    segmentation.bench_function("single_numeric_1024", |b| {
+        b.iter(|| optimize_segments(std::hint::black_box(&numeric_segments), Version::Normal(10)))
+    });
+    for (length, _, segments) in &alternating {
+        segmentation.bench_function(format!("alternating_{length}"), |b| {
+            b.iter(|| optimize_segments(std::hint::black_box(segments), Version::Normal(10)))
+        });
+    }
+    segmentation.finish();
+
+    let mut automatic = c.benchmark_group("auto_encoding");
+    automatic.bench_function("single_numeric_1024", |b| {
+        b.iter(|| qrcode_rs::bits::encode_auto(std::hint::black_box(&numeric), EcLevel::L).unwrap())
+    });
+    for (length, payload, _) in &alternating {
+        automatic.bench_function(format!("alternating_{length}"), |b| {
+            b.iter(|| qrcode_rs::bits::encode_auto(std::hint::black_box(payload), EcLevel::L).unwrap())
+        });
+    }
+    automatic.finish();
+}
+
+criterion_group!(benches, bench_encode, bench_micro_encoding, bench_segmentation);
 criterion_main!(benches);

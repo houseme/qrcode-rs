@@ -325,8 +325,8 @@ pub fn total_encoded_len(segments: &[Segment], version: Version) -> usize {
 #[must_use]
 pub fn optimize_segments(segments: &[Segment], version: Version) -> Vec<Segment> {
     let len = segments.len();
-    if len == 0 {
-        return Vec::new();
+    if len <= 1 {
+        return segments.to_vec();
     }
 
     let mut best_bits = vec![usize::MAX; len + 1];
@@ -392,6 +392,19 @@ mod optimize_tests {
             total_encoded_len(expected, version),
             opt_segs
         );
+    }
+
+    #[test]
+    fn zero_or_one_segment_preserves_the_input_for_every_version_group() {
+        let versions =
+            [Version::Normal(1), Version::Normal(10), Version::Normal(27), Version::Micro(1), Version::Micro(4)];
+        for version in versions {
+            assert!(optimize_segments(&[], version).is_empty());
+            for mode in [Mode::Numeric, Mode::Alphanumeric, Mode::Byte, Mode::Kanji] {
+                let segment = Segment { mode, begin: 12, end: 30 };
+                assert_eq!(optimize_segments(&[segment], version), vec![segment]);
+            }
+        }
     }
 
     #[test]
