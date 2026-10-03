@@ -11,6 +11,9 @@
   optimal merge plan.
 - Traverse masks by contiguous rows and reuse two candidate canvases,
   preserving mask order and equal-score selection.
+- Fill image rectangles through contiguous channel rows and update converted
+  gradient images in place, removing per-pixel coordinate work and an extra
+  RGBA image copy.
 
 ### Fixed
 

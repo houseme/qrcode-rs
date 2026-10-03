@@ -58,6 +58,34 @@ impl<P: image::Pixel + 'static> Canvas for (P, ImageBuffer<P, Vec<P::Subpixel>>)
         self.1.put_pixel(x, y, self.0);
     }
 
+    fn draw_dark_rect(&mut self, left: u32, top: u32, width: u32, height: u32) {
+        if width == 0 || height == 0 {
+            return;
+        }
+
+        let (image_width, image_height) = self.1.dimensions();
+        assert!(
+            left < image_width && top < image_height && width <= image_width - left && height <= image_height - top,
+            "rectangle exceeds image dimensions"
+        );
+
+        let channels = self.0.channels();
+        let channel_count = usize::from(P::CHANNEL_COUNT);
+        let row_stride = image_width as usize * channel_count;
+        let row_width = width as usize * channel_count;
+        let row_left = left as usize * channel_count;
+        let data: &mut [P::Subpixel] = &mut self.1;
+
+        // Each row is contiguous, so avoid recomputing and checking every pixel's coordinates.
+        for y in top..top + height {
+            let start = y as usize * row_stride + row_left;
+            let row = &mut data[start..start + row_width];
+            for pixel in row.chunks_exact_mut(channel_count) {
+                pixel.copy_from_slice(channels);
+            }
+        }
+    }
+
     fn into_image(self) -> ImageBuffer<P, Vec<P::Subpixel>> {
         self.1
     }
@@ -225,51 +253,47 @@ pub struct Gradient {
 /// result.save("qr_gradient.png").unwrap();
 /// ```
 pub fn apply_gradient_background(image: &DynamicImage, gradient: &Gradient) -> DynamicImage {
-    let rgba = image.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    let mut result = rgba.clone();
+    let mut result = image.to_rgba8();
+    let (w, h) = result.dimensions();
 
     let sc = gradient.start_color.0;
     let ec = gradient.end_color.0;
 
-    for y in 0..h {
-        for x in 0..w {
-            let pixel = *rgba.get_pixel(x, y);
-            let [r, g, b, a] = pixel.0;
+    for (x, y, pixel) in result.enumerate_pixels_mut() {
+        let [r, g, b, a] = pixel.0;
 
-            // Detect light pixels: high luminance and not fully transparent.
-            let lum = (r as u32 + g as u32 + b as u32) / 3;
-            if lum > 200 && a > 0 {
-                let t = match gradient.direction {
-                    GradientDirection::Vertical => {
-                        if h <= 1 {
-                            0.0
-                        } else {
-                            y as f32 / (h - 1) as f32
-                        }
+        // Detect light pixels: high luminance and not fully transparent.
+        let lum = (r as u32 + g as u32 + b as u32) / 3;
+        if lum > 200 && a > 0 {
+            let t = match gradient.direction {
+                GradientDirection::Vertical => {
+                    if h <= 1 {
+                        0.0
+                    } else {
+                        y as f32 / (h - 1) as f32
                     }
-                    GradientDirection::Horizontal => {
-                        if w <= 1 {
-                            0.0
-                        } else {
-                            x as f32 / (w - 1) as f32
-                        }
+                }
+                GradientDirection::Horizontal => {
+                    if w <= 1 {
+                        0.0
+                    } else {
+                        x as f32 / (w - 1) as f32
                     }
-                    GradientDirection::Diagonal => {
-                        if w <= 1 || h <= 1 {
-                            0.0
-                        } else {
-                            (x as f32 / (w - 1) as f32 + y as f32 / (h - 1) as f32) / 2.0
-                        }
+                }
+                GradientDirection::Diagonal => {
+                    if w <= 1 || h <= 1 {
+                        0.0
+                    } else {
+                        (x as f32 / (w - 1) as f32 + y as f32 / (h - 1) as f32) / 2.0
                     }
-                };
-                let inv = 1.0 - t;
-                let nr = (sc[0] as f32 * inv + ec[0] as f32 * t) as u8;
-                let ng = (sc[1] as f32 * inv + ec[1] as f32 * t) as u8;
-                let nb = (sc[2] as f32 * inv + ec[2] as f32 * t) as u8;
-                let na = (sc[3] as f32 * inv + ec[3] as f32 * t) as u8;
-                result.put_pixel(x, y, Rgba([nr, ng, nb, na]));
-            }
+                }
+            };
+            let inv = 1.0 - t;
+            let nr = (sc[0] as f32 * inv + ec[0] as f32 * t) as u8;
+            let ng = (sc[1] as f32 * inv + ec[1] as f32 * t) as u8;
+            let nb = (sc[2] as f32 * inv + ec[2] as f32 * t) as u8;
+            let na = (sc[3] as f32 * inv + ec[3] as f32 * t) as u8;
+            *pixel = Rgba([nr, ng, nb, na]);
         }
     }
 
@@ -278,9 +302,162 @@ pub fn apply_gradient_background(image: &DynamicImage, gradient: &Gradient) -> D
 
 #[cfg(test)]
 mod render_tests {
-    use crate::Renderer;
-    use image::{GenericImageView, ImageBuffer, Luma, Rgba};
+    use crate::{Canvas, Renderer};
+    use image::{DynamicImage, GenericImageView, ImageBuffer, Luma, LumaA, Rgb, Rgba};
     use qrcode_core::Color;
+
+    fn assert_rectangles_match_scalar<P>(dark: P, light: P)
+    where
+        P: image::Pixel + 'static,
+        P::Subpixel: std::fmt::Debug,
+    {
+        for (image_width, image_height) in [(0, 0), (0, 5), (7, 0), (1, 5), (7, 1), (7, 5)] {
+            for left in 0..=image_width {
+                for top in 0..=image_height {
+                    for width in 0..=image_width - left {
+                        for height in 0..=image_height - top {
+                            let mut canvas = (dark, ImageBuffer::from_pixel(image_width, image_height, light));
+                            let mut expected = ImageBuffer::from_pixel(image_width, image_height, light);
+                            canvas.draw_dark_rect(left, top, width, height);
+                            for y in top..top + height {
+                                for x in left..left + width {
+                                    expected.put_pixel(x, y, dark);
+                                }
+                            }
+                            assert_eq!(
+                                canvas.into_image().as_raw(),
+                                expected.as_raw(),
+                                "image {image_width}x{image_height}, rectangle ({left}, {top}, {width}, {height})"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn rectangles_match_scalar_for_all_pixel_formats_and_primitives() {
+        macro_rules! check_primitives {
+            ($($subpixel:ty),+ $(,)?) => {
+                $(
+                    assert_rectangles_match_scalar(Luma([2 as $subpixel]), Luma([11 as $subpixel]));
+                    assert_rectangles_match_scalar(
+                        LumaA([2 as $subpixel, 3 as $subpixel]),
+                        LumaA([11 as $subpixel, 12 as $subpixel]),
+                    );
+                    assert_rectangles_match_scalar(
+                        Rgb([2 as $subpixel, 3 as $subpixel, 4 as $subpixel]),
+                        Rgb([11 as $subpixel, 12 as $subpixel, 13 as $subpixel]),
+                    );
+                    assert_rectangles_match_scalar(
+                        Rgba([2 as $subpixel, 3 as $subpixel, 4 as $subpixel, 5 as $subpixel]),
+                        Rgba([11 as $subpixel, 12 as $subpixel, 13 as $subpixel, 14 as $subpixel]),
+                    );
+                )+
+            };
+        }
+        check_primitives!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize, f32, f64);
+    }
+
+    #[test]
+    fn rectangles_reject_out_of_bounds_ranges() {
+        for (left, top, width, height) in [
+            (7, 0, 1, 1),
+            (0, 5, 1, 1),
+            (6, 0, 2, 1),
+            (0, 4, 1, 2),
+            (u32::MAX, 0, 1, 1),
+            (0, u32::MAX, 1, 1),
+            (1, 0, u32::MAX, 1),
+            (0, 1, 1, u32::MAX),
+        ] {
+            let result = std::panic::catch_unwind(|| {
+                let mut canvas = (Luma([0u8]), ImageBuffer::from_pixel(7, 5, Luma([255])));
+                canvas.draw_dark_rect(left, top, width, height);
+            });
+            assert!(result.is_err(), "rectangle ({left}, {top}, {width}, {height}) should panic");
+        }
+    }
+
+    fn scalar_gradient(image: &DynamicImage, gradient: &super::Gradient) -> DynamicImage {
+        let rgba = image.to_rgba8();
+        let (width, height) = rgba.dimensions();
+        let mut result = rgba.clone();
+        for y in 0..height {
+            for x in 0..width {
+                let [r, g, b, a] = rgba.get_pixel(x, y).0;
+                let luminance = (u32::from(r) + u32::from(g) + u32::from(b)) / 3;
+                if luminance <= 200 || a == 0 {
+                    continue;
+                }
+                let t = match gradient.direction {
+                    super::GradientDirection::Vertical if height > 1 => y as f32 / (height - 1) as f32,
+                    super::GradientDirection::Horizontal if width > 1 => x as f32 / (width - 1) as f32,
+                    super::GradientDirection::Diagonal if width > 1 && height > 1 => {
+                        (x as f32 / (width - 1) as f32 + y as f32 / (height - 1) as f32) / 2.0
+                    }
+                    _ => 0.0,
+                };
+                let mut color = [0u8; 4];
+                for (channel, value) in color.iter_mut().enumerate() {
+                    *value = (gradient.start_color.0[channel] as f32 * (1.0 - t)
+                        + gradient.end_color.0[channel] as f32 * t) as u8;
+                }
+                result.put_pixel(x, y, Rgba(color));
+            }
+        }
+        DynamicImage::ImageRgba8(result)
+    }
+
+    #[test]
+    fn gradient_matches_scalar_for_all_directions_dimensions_and_image_formats() {
+        use super::{Gradient, GradientDirection, apply_gradient_background};
+
+        let colors = [
+            Rgba([255, 255, 255, 255]),
+            Rgba([0, 0, 0, 255]),
+            Rgba([200, 200, 200, 255]),
+            Rgba([201, 200, 202, 1]),
+            Rgba([255, 255, 255, 0]),
+            Rgba([254, 247, 241, 127]),
+            Rgba([0, 255, 255, 255]),
+        ];
+        for (width, height) in [(0, 0), (0, 3), (3, 0), (1, 1), (1, 7), (7, 1), (5, 3), (9, 7)] {
+            let rgba = DynamicImage::ImageRgba8(ImageBuffer::from_fn(width, height, |x, y| {
+                colors[((y * width + x) as usize) % colors.len()]
+            }));
+            let images = [
+                rgba.clone(),
+                DynamicImage::ImageLuma8(rgba.to_luma8()),
+                DynamicImage::ImageLumaA8(rgba.to_luma_alpha8()),
+                DynamicImage::ImageRgb8(rgba.to_rgb8()),
+                DynamicImage::ImageLuma16(rgba.to_luma16()),
+                DynamicImage::ImageLumaA16(rgba.to_luma_alpha16()),
+                DynamicImage::ImageRgb16(rgba.to_rgb16()),
+                DynamicImage::ImageRgba16(rgba.to_rgba16()),
+                DynamicImage::ImageRgb32F(rgba.to_rgb32f()),
+                DynamicImage::ImageRgba32F(rgba.to_rgba32f()),
+            ];
+            for image in images {
+                for direction in
+                    [GradientDirection::Vertical, GradientDirection::Horizontal, GradientDirection::Diagonal]
+                {
+                    let gradient = Gradient {
+                        direction,
+                        start_color: Rgba([23, 117, 251, 19]),
+                        end_color: Rgba([250, 61, 9, 231]),
+                    };
+                    assert_eq!(
+                        apply_gradient_background(&image, &gradient).as_rgba8().unwrap().as_raw(),
+                        scalar_gradient(&image, &gradient).as_rgba8().unwrap().as_raw(),
+                        "{direction:?}, {width}x{height}, {:?}",
+                        image.color()
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn test_render_luma8_unsized() {
