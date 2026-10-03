@@ -175,6 +175,9 @@
 - Add BatchOutput byte-entry write_zip/write_zip_with helpers for caller-owned
   outputs, avoiding a complete archive buffer and redundant central-directory
   name copies while preserving ZIP bytes and compression options.
+- Add BatchRender::try_build for ordered named outputs with geometry and
+  backend-budget errors, preserving the existing build method and supporting
+  no_std with alloc.
 
 ## [2.1.1] - 2026-09-16
 

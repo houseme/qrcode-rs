@@ -1672,6 +1672,45 @@ impl<'a> BatchRender<'a> {
             .collect()
     }
 
+    /// Tries to render every code in order with the same names and settings as
+    /// [`build`](Self::build).
+    ///
+    /// Collects the rendered outputs into memory. Rendering stops at the first
+    /// error; successfully rendered earlier outputs are dropped on failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first [`RenderError`](crate::render::RenderError) in code
+    /// order when a symbol has an invalid module grid, its configured geometry
+    /// overflows, or the pixel backend rejects its output budget. Geometry and
+    /// backend limits are checked before constructing that symbol's canvas.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use qrcode_rs::QrCode;
+    ///
+    /// let codes = [QrCode::new(b"alpha").unwrap()];
+    /// let rendered = QrCode::batch_render(&codes).extension("txt").try_build::<char>()?;
+    /// assert_eq!(rendered[0].name(), "qr-0001.txt");
+    /// # Ok::<(), qrcode_rs::render::RenderError>(())
+    /// ```
+    pub fn try_build<P: Pixel>(&self) -> Result<Vec<BatchRendered<P::Image>>, crate::render::RenderError> {
+        self.codes
+            .iter()
+            .enumerate()
+            .map(|(offset, code)| {
+                let mut renderer = Renderer::<P>::try_from_symbol(code)?;
+                renderer.quiet_zone(self.quiet_zone);
+                if let Some((width, height)) = self.module_dimensions {
+                    renderer.module_dimensions(width, height);
+                }
+                let image = renderer.try_build()?;
+                Ok(BatchRendered::new(self.name_for(offset), image))
+            })
+            .collect()
+    }
+
     fn name_for(&self, offset: usize) -> String {
         let index = self.start_index as u128 + offset as u128;
         let mut name = format!("{}{:0width$}", self.prefix, index, width = self.index_width);
@@ -1681,6 +1720,123 @@ impl<'a> BatchRender<'a> {
             name.push_str(extension);
         }
         name
+    }
+}
+
+#[cfg(test)]
+mod batch_render_fallible_tests {
+    use super::{BatchRender, Color, EcLevel, QrCode, Version};
+    use crate::render::{Canvas, Pixel, RenderError};
+    use qrcode_core::QrSymbol;
+
+    #[test]
+    fn fallible_batch_matches_names_geometry_and_pixels_of_existing_build() {
+        let codes =
+            [QrCode::with_version(b"1", Version::Micro(1), EcLevel::L).unwrap(), QrCode::new(b"alpha").unwrap()];
+        for quiet in [false, true] {
+            for dimensions in [None, Some((2, 3)), Some((0, 0))] {
+                let mut batch = BatchRender::new(&codes)
+                    .prefix("ticket-")
+                    .extension(".txt")
+                    .start_index(7)
+                    .index_width(3)
+                    .quiet_zone(quiet);
+                if let Some((width, height)) = dimensions {
+                    batch = batch.module_dimensions(width, height);
+                }
+                let actual = batch.try_build::<char>().unwrap();
+                assert_eq!(actual, batch.build::<char>());
+                assert_eq!(actual[0].name(), "ticket-007.txt");
+                assert_eq!(actual[1].name(), "ticket-008.txt");
+                for (entry, code) in actual.iter().zip(&codes) {
+                    let modules = code.width() + if quiet { 2 * code.quiet_zone() as usize } else { 0 };
+                    let (width, height) = dimensions.unwrap_or((1u32, 1u32));
+                    assert_eq!(entry.image().lines().count(), modules * height.max(1) as usize);
+                    assert!(entry.image().lines().all(|line| line.chars().count() == modules * width.max(1) as usize));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn fallible_batch_reports_geometry_and_backend_budget_errors_without_large_allocation() {
+        let codes = [QrCode::new(b"alpha").unwrap()];
+        for size in [u32::MAX, 1024] {
+            let batch = BatchRender::new(&codes).module_dimensions(size, size);
+            assert_eq!(batch.try_build::<char>(), Err(RenderError::OutputTooLarge));
+        }
+    }
+
+    #[test]
+    fn fallible_batch_keeps_unique_indices_beyond_usize_max() {
+        let codes = QrCode::batch(["alpha", "beta"], EcLevel::M).unwrap();
+        let batch = BatchRender::new(&codes).extension("txt").start_index(usize::MAX);
+        let actual = batch.try_build::<char>().unwrap();
+        assert_eq!(actual, batch.build::<char>());
+        assert_eq!(actual[1].name(), alloc::format!("qr-{}.txt", usize::MAX as u128 + 1));
+    }
+
+    #[test]
+    fn empty_fallible_batch_does_not_render_even_with_excessive_dimensions() {
+        let batch = BatchRender::new(&[]).module_dimensions(u32::MAX, u32::MAX);
+        assert!(batch.try_build::<char>().unwrap().is_empty());
+    }
+
+    #[derive(Clone, Copy)]
+    struct GuardPixel;
+
+    struct GuardCanvas(u32, u32);
+
+    impl Pixel for GuardPixel {
+        type Image = (u32, u32);
+        type Canvas = GuardCanvas;
+
+        fn default_unit_size() -> (u32, u32) {
+            (1, 1)
+        }
+
+        fn default_color(_color: Color) -> Self {
+            Self
+        }
+    }
+
+    impl Canvas for GuardCanvas {
+        type Pixel = GuardPixel;
+        type Image = (u32, u32);
+
+        fn validate_dimensions(
+            width: u32,
+            _height: u32,
+            _dark: &GuardPixel,
+            _light: &GuardPixel,
+        ) -> Result<(), RenderError> {
+            assert!(width <= 21, "later symbols must not be processed after the first error");
+            Ok(())
+        }
+
+        fn new(width: u32, height: u32, _dark: GuardPixel, _light: GuardPixel) -> Self {
+            Self(width, height)
+        }
+
+        fn draw_dark_pixel(&mut self, _x: u32, _y: u32) {}
+
+        fn into_image(self) -> Self::Image {
+            (self.0, self.1)
+        }
+    }
+
+    #[test]
+    fn fallible_batch_returns_the_first_source_error_and_skips_later_symbols() {
+        let first = QrCode::with_version(b"alpha", Version::Normal(1), EcLevel::M).unwrap();
+        let mut invalid = first.clone();
+        invalid.content.clear();
+        let later = QrCode::with_version(b"alpha", Version::Normal(2), EcLevel::M).unwrap();
+        let codes = [first, invalid, later];
+        let batch = BatchRender::new(&codes).quiet_zone(false);
+        assert_eq!(
+            batch.try_build::<GuardPixel>(),
+            Err(RenderError::InvalidModuleSource { width: 21, height: 21, len: 0 })
+        );
     }
 }
 
