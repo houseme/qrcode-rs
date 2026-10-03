@@ -8,7 +8,7 @@
 
 #[cfg(not(feature = "std"))]
 #[allow(unused_imports)]
-use alloc::{string::String, vec, vec::Vec};
+use alloc::string::String;
 
 use crate::ParseError;
 
@@ -36,10 +36,12 @@ impl WifiSecurity {
     }
 
     fn from_wire(value: &str) -> Self {
-        match value.to_ascii_uppercase().as_str() {
-            "WPA" | "WPA2" | "WPA3" => Self::Wpa,
-            "WEP" => Self::Wep,
-            _ => Self::None, // "nopass", empty, or unknown → open
+        if ["WPA", "WPA2", "WPA3"].iter().any(|auth| value.eq_ignore_ascii_case(auth)) {
+            Self::Wpa
+        } else if value.eq_ignore_ascii_case("WEP") {
+            Self::Wep
+        } else {
+            Self::None // "nopass", empty, or unknown → open
         }
     }
 }
@@ -156,25 +158,20 @@ fn strip_wifi_prefix(s: &str) -> Option<&str> {
 }
 
 /// Splits the payload body on unescaped `;`, preserving escape sequences inside
-/// each field. Returns the raw (still-escaped) field strings.
-fn split_fields(rest: &str) -> Vec<String> {
-    let mut fields = Vec::new();
-    let mut cur = String::new();
-    let mut chars = rest.chars();
-    while let Some(c) = chars.next() {
-        if c == '\\' {
-            cur.push('\\');
-            if let Some(next) = chars.next() {
-                cur.push(next);
-            }
-        } else if c == ';' {
-            fields.push(core::mem::take(&mut cur));
+/// each field. Each raw (still-escaped) field borrows the input.
+fn split_fields(rest: &str) -> impl Iterator<Item = &str> {
+    let mut escaped = false;
+    rest.split(move |c| {
+        if escaped {
+            escaped = false;
+            false
+        } else if c == '\\' {
+            escaped = true;
+            false
         } else {
-            cur.push(c);
+            c == ';'
         }
-    }
-    fields.push(cur);
-    fields
+    })
 }
 
 /// Reverses [`push_escaped`]: `\<c>` → `c`, copying other chars verbatim.
@@ -267,5 +264,37 @@ mod tests {
         let mut out = String::new();
         push_escaped(&mut out, "a;b,c\"d\\e:f");
         assert_eq!(out, "a\\;b\\,c\\\"d\\\\e\\:f");
+    }
+
+    #[test]
+    fn borrowed_fields_preserve_escaped_delimiters_and_empty_fields() {
+        let mut fields = split_fields("S:中文\\;网络;P:pass\\\\;H:true;;");
+        assert_eq!(fields.next(), Some("S:中文\\;网络"));
+        assert_eq!(fields.next(), Some("P:pass\\\\"));
+        assert_eq!(fields.next(), Some("H:true"));
+        assert_eq!(fields.next(), Some(""));
+        assert_eq!(fields.next(), Some(""));
+        assert_eq!(fields.next(), None);
+    }
+
+    #[test]
+    fn duplicate_fields_keep_the_last_value_and_unknown_fields_are_ignored() {
+        let cfg =
+            WifiConfig::parse("wifi:S:first;X:忽略\\;字段;S:最后;T:WEP;T:wPa3;P:old;P:new;H:true;H:false;;").unwrap();
+        assert_eq!(cfg.ssid(), "最后");
+        assert_eq!(cfg.security(), WifiSecurity::Wpa);
+        assert_eq!(cfg.password(), Some("new"));
+        assert!(!cfg.hidden());
+    }
+
+    #[test]
+    fn unicode_values_and_trailing_escape_keep_tolerant_behavior() {
+        let payload = encode_wifi("网络;🦀\\", "密碼,\"测试", "WPA2");
+        let cfg = WifiConfig::parse(&payload).unwrap();
+        assert_eq!(cfg.ssid(), "网络;🦀\\");
+        assert_eq!(cfg.password(), Some("密碼,\"测试"));
+        assert_eq!(cfg.security(), WifiSecurity::Wpa);
+        assert_eq!(WifiConfig::parse("WIFI:S:trailing\\").unwrap().ssid(), "trailing");
+        assert_eq!(WifiConfig::parse("WIFI:S:open;T:unknown;;").unwrap().security(), WifiSecurity::None);
     }
 }

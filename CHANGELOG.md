@@ -16,6 +16,9 @@
   RGBA image copy.
 - Borrow unfolded vCard lines until continuation text requires ownership,
   avoiding copies of ignored properties and temporary uppercase keys.
+- Parse WiFi fields as borrowed slices and compare authentication modes
+  without allocating uppercase strings, preserving escaping and
+  duplicate-field behavior.
 
 ### Fixed
 
