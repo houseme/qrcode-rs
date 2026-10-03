@@ -89,6 +89,21 @@ impl<P: image::Pixel + 'static> Canvas for (P, ImageBuffer<P, Vec<P::Subpixel>>)
         let row_left = left as usize * channel_count;
         let data: &mut [P::Subpixel] = &mut self.1;
 
+        if channel_count == 3 && width >= 8 && height > 1 {
+            let first_start = top as usize * row_stride + row_left;
+            let (first_rows, remaining_rows) = data.split_at_mut(first_start + row_stride);
+            let first_row = &mut first_rows[first_start..first_start + row_width];
+            for pixel in first_row.chunks_exact_mut(channel_count) {
+                pixel.copy_from_slice(channels);
+            }
+
+            // The split keeps source and destination rows disjoint without allocating a template.
+            for row in remaining_rows.chunks_mut(row_stride).take(height as usize - 1) {
+                row[..row_width].copy_from_slice(first_row);
+            }
+            return;
+        }
+
         // Each row is contiguous, so avoid recomputing and checking every pixel's coordinates.
         for y in top..top + height {
             let start = y as usize * row_stride + row_left;
@@ -368,6 +383,32 @@ mod render_tests {
         );
     }
 
+    fn assert_rectangle_matches_scalar<P>(
+        image_width: u32,
+        image_height: u32,
+        rectangle: (u32, u32, u32, u32),
+        dark: P,
+        light: P,
+    ) where
+        P: image::Pixel + 'static,
+        P::Subpixel: std::fmt::Debug,
+    {
+        let (left, top, width, height) = rectangle;
+        let mut canvas = <(P, ImageBuffer<P, Vec<P::Subpixel>>) as Canvas>::new(image_width, image_height, dark, light);
+        let mut expected = ImageBuffer::from_pixel(image_width, image_height, light);
+        canvas.draw_dark_rect(left, top, width, height);
+        for y in top..top + height {
+            for x in left..left + width {
+                expected.put_pixel(x, y, dark);
+            }
+        }
+        assert_eq!(
+            canvas.into_image().as_raw(),
+            expected.as_raw(),
+            "image {image_width}x{image_height}, rectangle ({left}, {top}, {width}, {height})"
+        );
+    }
+
     fn assert_rectangles_match_scalar<P>(dark: P, light: P)
     where
         P: image::Pixel + 'static,
@@ -378,26 +419,22 @@ mod render_tests {
                 for top in 0..=image_height {
                     for width in 0..=image_width - left {
                         for height in 0..=image_height - top {
-                            let mut canvas = <(P, ImageBuffer<P, Vec<P::Subpixel>>) as Canvas>::new(
+                            assert_rectangle_matches_scalar(
                                 image_width,
                                 image_height,
+                                (left, top, width, height),
                                 dark,
                                 light,
                             );
-                            let mut expected = ImageBuffer::from_pixel(image_width, image_height, light);
-                            canvas.draw_dark_rect(left, top, width, height);
-                            for y in top..top + height {
-                                for x in left..left + width {
-                                    expected.put_pixel(x, y, dark);
-                                }
-                            }
-                            assert_eq!(
-                                canvas.into_image().as_raw(),
-                                expected.as_raw(),
-                                "image {image_width}x{image_height}, rectangle ({left}, {top}, {width}, {height})"
-                            );
                         }
                     }
+                }
+            }
+        }
+        for width in [1, 2, 7, 8, 32] {
+            for height in [1, 8, 64] {
+                for (left, top) in [(0, 0), (3, 2), (6, 4)] {
+                    assert_rectangle_matches_scalar(width + 6, height + 4, (left, top, width, height), dark, light);
                 }
             }
         }
@@ -425,6 +462,50 @@ mod render_tests {
             };
         }
         check_primitives!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize, f32, f64);
+    }
+
+    fn assert_rectangle_bits<P>(dark: P, light: P, bits: impl Fn(P::Subpixel) -> u64 + Copy)
+    where
+        P: image::Pixel + 'static,
+    {
+        for width in [1, 2, 7, 8, 32] {
+            for height in [1, 8, 64] {
+                for (left, top) in [(0, 0), (3, 2), (6, 4)] {
+                    let mut canvas =
+                        <(P, ImageBuffer<P, Vec<P::Subpixel>>) as Canvas>::new(width + 6, height + 4, dark, light);
+                    let mut expected = ImageBuffer::from_pixel(width + 6, height + 4, light);
+                    canvas.draw_dark_rect(left, top, width, height);
+                    // Repainting must also preserve NaN payloads and signed zero exactly.
+                    canvas.draw_dark_rect(left, top, width, height);
+                    for y in top..top + height {
+                        for x in left..left + width {
+                            expected.put_pixel(x, y, dark);
+                        }
+                    }
+                    let actual = canvas.into_image().into_raw().into_iter().map(bits).collect::<Vec<_>>();
+                    let expected = expected.into_raw().into_iter().map(bits).collect::<Vec<_>>();
+                    assert_eq!(actual, expected, "rectangle ({left}, {top}, {width}, {height})");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn float_rectangle_copies_preserve_nan_payloads_and_signed_zero_bits() {
+        macro_rules! check_float {
+            ($float:ty, $dark_nan:expr, $signaling_nan:expr, $light_nan:expr, $bits:expr) => {{
+                let dark =
+                    [<$float>::from_bits($dark_nan), <$float>::from_bits($signaling_nan), -0.0, <$float>::INFINITY];
+                let light = [<$float>::from_bits($light_nan), 0.0, <$float>::NEG_INFINITY, 1.0];
+                let bits = $bits;
+                assert_rectangle_bits(Luma([dark[0]]), Luma([light[0]]), bits);
+                assert_rectangle_bits(LumaA([dark[0], dark[2]]), LumaA([light[0], light[1]]), bits);
+                assert_rectangle_bits(Rgb([dark[0], dark[1], dark[2]]), Rgb([light[0], light[1], light[2]]), bits);
+                assert_rectangle_bits(Rgba(dark), Rgba(light), bits);
+            }};
+        }
+        check_float!(f32, 0x7fc0_0123, 0x7fa0_0067, 0xffc0_0456, |value: f32| u64::from(value.to_bits()));
+        check_float!(f64, 0x7ff8_0000_0000_0123, 0x7ff0_0000_0000_0067, 0xfff8_0000_0000_0456, f64::to_bits);
     }
 
     #[test]

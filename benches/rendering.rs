@@ -78,5 +78,45 @@ fn bench_batch_packaging(c: &mut Criterion) {
     let _ = c;
 }
 
-criterion_group!(benches, bench_render, bench_batch_packaging);
+fn bench_image_rectangles(c: &mut Criterion) {
+    #[cfg(feature = "image")]
+    {
+        use image::{ImageBuffer, Luma, Rgb, Rgba};
+        use qrcode_rs::render::Canvas;
+
+        fn bench_pixel<P>(c: &mut Criterion, name: &str, dark: P, light: P)
+        where
+            P: image::Pixel + 'static,
+        {
+            let mut group = c.benchmark_group(format!("image_rect/{name}"));
+            for width in [1u32, 2, 7, 8, 32] {
+                for height in [1u32, 8, 64] {
+                    // Allocate once and leave margins so each rectangle spans strided rows.
+                    let mut canvas =
+                        <(P, ImageBuffer<P, Vec<P::Subpixel>>) as Canvas>::new(width + 6, height + 4, dark, light);
+                    group.throughput(criterion::Throughput::Elements(u64::from(width) * u64::from(height)));
+                    group.bench_function(format!("{width}x{height}"), |b| {
+                        b.iter(|| {
+                            std::hint::black_box(&mut canvas).draw_dark_rect(
+                                std::hint::black_box(3),
+                                std::hint::black_box(2),
+                                std::hint::black_box(width),
+                                std::hint::black_box(height),
+                            );
+                        });
+                    });
+                }
+            }
+            group.finish();
+        }
+
+        bench_pixel(c, "luma8", Luma([0u8]), Luma([255]));
+        bench_pixel(c, "rgb8", Rgb([17u8, 43, 89]), Rgb([251, 239, 227]));
+        bench_pixel(c, "rgba8", Rgba([17u8, 43, 89, 131]), Rgba([251, 239, 227, 199]));
+    }
+    #[cfg(not(feature = "image"))]
+    let _ = c;
+}
+
+criterion_group!(benches, bench_render, bench_batch_packaging, bench_image_rectangles);
 criterion_main!(benches);

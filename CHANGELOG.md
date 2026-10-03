@@ -39,6 +39,9 @@
 - Score mask candidates directly in one byte buffer with statically dispatched
   mask functions, then materialize only the winning canvas while preserving
   module state and mask ties.
+- Reuse the first row when drawing wider multi-row RGB rectangles, without
+  allocations, while retaining the existing grayscale, RGBA, tiny-rectangle
+  and single-row paths.
 
 ### Fixed
 
@@ -99,6 +102,8 @@
 - Add Stored ZIP packaging benchmarks for small, 32 KiB, and 1 MiB payloads.
 - Add a backward-compatible Canvas dimension-validation hook and a shared 256
   MiB estimate budget for built-in buffered renderers.
+- Add isolated grayscale/RGB/RGBA rectangle benchmarks and bitwise
+  floating-point drawing regressions.
 
 ## [2.1.1] - 2026-09-16
 
