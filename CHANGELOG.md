@@ -153,6 +153,9 @@
 - Reject out-of-range two-dimensional module coordinates before indexing or
   mutation, and enforce reported row heights with checked row arithmetic while
   retaining rectangular grids and metadata contracts.
+- Count UTF-8 module and quiet-zone bytes in plain-text plugin output, check
+  platform and shared buffer limits before allocation, and return RenderFailed
+  for output-budget or reservation failures.
 
 ### Added
 

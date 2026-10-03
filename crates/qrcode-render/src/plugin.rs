@@ -132,20 +132,21 @@ where
 {
     let width = code.width();
     let quiet_zone = usize::try_from(quiet_zone)
-        .map_err(|_| PluginError::InvalidConfig("quiet_zone does not fit in platform dimensions".into()))?;
+        .map_err(|_| PluginError::RenderFailed("quiet_zone does not fit in platform dimensions".into()))?;
     let border =
-        quiet_zone.checked_mul(2).ok_or_else(|| PluginError::InvalidConfig("quiet_zone dimensions overflow".into()))?;
+        quiet_zone.checked_mul(2).ok_or_else(|| PluginError::RenderFailed("quiet_zone dimensions overflow".into()))?;
     let total_width = width
         .checked_add(border)
-        .ok_or_else(|| PluginError::InvalidConfig("plain-text output dimensions overflow".into()))?;
+        .ok_or_else(|| PluginError::RenderFailed("plain-text output dimensions overflow".into()))?;
     let module_end = quiet_zone
         .checked_add(width)
-        .ok_or_else(|| PluginError::InvalidConfig("plain-text module dimensions overflow".into()))?;
-    let capacity = total_width
-        .checked_mul(total_width)
-        .and_then(|area| area.checked_add(total_width.saturating_sub(1)))
-        .ok_or_else(|| PluginError::InvalidConfig("plain-text output size overflow".into()))?;
-    let mut output = String::with_capacity(capacity);
+        .ok_or_else(|| PluginError::RenderFailed("plain-text module dimensions overflow".into()))?;
+    let dark_modules = code.modules().iter().filter(|&&color| color == Color::Dark).count();
+    let capacity = output_capacity(total_width, dark_modules, dark, light)?;
+    let mut output = String::new();
+    output
+        .try_reserve_exact(capacity)
+        .map_err(|_| PluginError::RenderFailed("could not allocate plain-text output buffer".into()))?;
 
     for y in 0..total_width {
         if y > 0 {
@@ -161,6 +162,21 @@ where
     }
 
     Ok(output)
+}
+
+fn output_capacity(width: usize, dark_modules: usize, dark: char, light: char) -> Result<usize, PluginError> {
+    let bytes = width
+        .checked_mul(width)
+        .and_then(|area| area.checked_sub(dark_modules))
+        .and_then(|light_modules| light_modules.checked_mul(light.len_utf8()))
+        .and_then(|light_bytes| {
+            dark_modules.checked_mul(dark.len_utf8()).and_then(|dark_bytes| light_bytes.checked_add(dark_bytes))
+        })
+        .and_then(|bytes| bytes.checked_add(width.saturating_sub(1)))
+        .ok_or_else(|| PluginError::RenderFailed("plain-text output size overflow".into()))?;
+    crate::check_buffer_size(bytes)
+        .map_err(|_| PluginError::RenderFailed("plain-text output exceeds render buffer limits".into()))?;
+    Ok(bytes)
 }
 
 fn config_char(config: &RenderConfig, key: &str, default: char) -> Result<char, PluginError> {
@@ -301,6 +317,49 @@ mod tests {
         let renderer = super::PlainTextRenderer { dark: 'X', light: '.', quiet_zone: u32::MAX, config_valid: true };
         let modules = ModuleGrid::new(alloc::vec![Color::Dark], 1, 1).unwrap();
 
-        assert!(matches!(CoreRenderer::render(&renderer, &modules), Err(PluginError::InvalidConfig(_))));
+        assert!(matches!(CoreRenderer::render(&renderer, &modules), Err(PluginError::RenderFailed(_))));
+    }
+
+    #[test]
+    fn plain_text_capacity_counts_utf8_modules_quiet_zone_and_newlines() {
+        assert_eq!(super::output_capacity(4, 2, '💖', '.'), Ok(2 * 4 + 14 + 3));
+        assert_eq!(super::output_capacity(4, 2, '#', '💖'), Ok(2 + 14 * 4 + 3));
+        assert_eq!(super::output_capacity(1, 1, '💖', '.'), Ok(4));
+        assert!(matches!(super::output_capacity(usize::MAX, 1, '#', '.'), Err(PluginError::RenderFailed(_))));
+        assert!(matches!(super::output_capacity(16_385, 1, '#', '.'), Err(PluginError::RenderFailed(_))));
+        assert!(matches!(super::output_capacity(10_001, 1, '💖', '🙂'), Err(PluginError::RenderFailed(_))));
+        let capacity = super::output_capacity(16_383, 1, '#', '.').unwrap();
+        assert!(capacity <= crate::MAX_BUFFER_BYTES);
+    }
+
+    #[test]
+    fn plain_text_plugin_rejects_output_budget_before_allocation() {
+        let source = ModuleGrid::new(alloc::vec![Color::Dark], 1, 1).unwrap();
+        for config in [
+            RenderConfig::new().with_option("quiet_zone", alloc::format!("{}", u32::MAX / 2)),
+            RenderConfig::new().with_option("quiet_zone", "8192"),
+            RenderConfig::new().with_option("quiet_zone", "5000").with_option("dark", "💖").with_option("light", "🙂"),
+        ] {
+            let renderer = PlainTextRendererFactory.build(&config);
+            assert!(matches!(renderer.render(&source), Err(PluginError::RenderFailed(_))));
+        }
+    }
+
+    #[test]
+    fn plain_text_plugin_keeps_configuration_grid_and_output_error_order() {
+        let source = BadSource { modules: [Color::Dark; 4] };
+        let invalid = PlainTextRendererFactory.build(&RenderConfig::new().with_option("quiet_zone", "not-a-number"));
+        assert!(matches!(invalid.render(&source), Err(PluginError::InvalidConfig(_))));
+        let oversized = PlainTextRendererFactory.build(&RenderConfig::new().with_option("quiet_zone", "8192"));
+        assert_eq!(oversized.render(&source), Err(PluginError::InvalidModuleGrid));
+    }
+
+    #[test]
+    fn plain_text_plugin_preserves_unicode_output_for_core_and_dyn_renderers() {
+        let source = ModuleGrid::new(alloc::vec![Color::Dark, Color::Light, Color::Light, Color::Dark], 2, 2).unwrap();
+        let renderer = super::PlainTextRenderer { dark: '💖', light: '界', quiet_zone: 1, config_valid: true };
+        let expected = "界界界界\n界💖界界\n界界💖界\n界界界界";
+        assert_eq!(CoreRenderer::render(&renderer, &source).unwrap(), expected);
+        assert_eq!(qrcode_core::DynRenderer::render(&renderer, &source).unwrap(), RenderOutput::Text(expected.into()));
     }
 }
