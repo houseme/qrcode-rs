@@ -59,5 +59,31 @@ fn bench_codewords(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_remainders, bench_codewords);
+fn bench_remainder_control(c: &mut Criterion) {
+    #[cfg(feature = "bench-internals")]
+    {
+        use qrcode_rs::ec::create_error_correction_code_modulo_for_bench;
+
+        let mut group = c.benchmark_group("rs_remainder_control");
+        for (name, data_len, degree) in
+            [("micro_m1", 3, 2), ("normal_v1_m", 16, 10), ("large_block", 123, 30), ("public_max_degree", 128, 69)]
+        {
+            let mixed = (0..data_len).map(|index| ((index * 73 + 19) % 256) as u8).collect::<Vec<_>>();
+            let zero = vec![0; data_len];
+            for (pattern, data) in [("mixed", mixed), ("zero", zero)] {
+                group.bench_function(format!("{name}_{pattern}_current"), |b| {
+                    b.iter(|| create_error_correction_code(std::hint::black_box(&data), degree))
+                });
+                group.bench_function(format!("{name}_{pattern}_modulo"), |b| {
+                    b.iter(|| create_error_correction_code_modulo_for_bench(std::hint::black_box(&data), degree))
+                });
+            }
+        }
+        group.finish();
+    }
+    #[cfg(not(feature = "bench-internals"))]
+    let _ = c;
+}
+
+criterion_group!(benches, bench_remainders, bench_codewords, bench_remainder_control);
 criterion_main!(benches);

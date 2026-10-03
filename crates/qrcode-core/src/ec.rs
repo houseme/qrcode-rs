@@ -47,6 +47,7 @@ pub fn create_error_correction_code(data: &[u8], ec_code_size: usize) -> Vec<u8>
     work.split_off(data.len())
 }
 
+#[inline]
 fn polynomial_remainder<'a>(data: &[u8], log_den: &[u8], work: &'a mut Vec<u8>) -> &'a [u8] {
     let data_len = data.len();
     work.clear();
@@ -62,11 +63,40 @@ fn polynomial_remainder<'a>(data: &[u8], log_den: &[u8], work: &'a mut Vec<u8>) 
 
         let log_lead_coeff = usize::from(LOG_TABLE[lead_coeff]);
         for (u, v) in work[i + 1..].iter_mut().zip(log_den.iter()) {
-            *u ^= EXP_TABLE[(usize::from(*v) + log_lead_coeff) % 255];
+            *u ^= EXP_TABLE[usize::from(*v) + log_lead_coeff];
         }
     }
 
     &work[data_len..]
+}
+
+/// Benchmark-only control retaining the original modulo-based GF lookup.
+#[cfg(feature = "bench-internals")]
+#[doc(hidden)]
+pub fn create_error_correction_code_modulo_for_bench(data: &[u8], ec_code_size: usize) -> Vec<u8> {
+    let log_den = GENERATOR_POLYNOMIALS[ec_code_size];
+    let mut work = Vec::with_capacity(data.len() + ec_code_size);
+    polynomial_remainder_modulo(data, log_den, &mut work);
+    work.split_off(data.len())
+}
+
+#[cfg(feature = "bench-internals")]
+#[inline]
+fn polynomial_remainder_modulo<'a>(data: &[u8], log_den: &[u8], work: &'a mut Vec<u8>) -> &'a [u8] {
+    work.clear();
+    work.extend_from_slice(data);
+    work.resize(data.len() + log_den.len(), 0);
+    for index in 0..data.len() {
+        let coefficient = usize::from(work[index]);
+        if coefficient == 0 {
+            continue;
+        }
+        let log_coefficient = usize::from(LOG_TABLE[coefficient]);
+        for (value, log_generator) in work[index + 1..].iter_mut().zip(log_den.iter()) {
+            *value ^= EXP_TABLE[(usize::from(*log_generator) + log_coefficient) % 255];
+        }
+    }
+    &work[data.len()..]
 }
 
 #[cfg(test)]
@@ -159,6 +189,13 @@ mod ec_tests {
     }
 
     #[test]
+    fn expanded_exp_table_matches_original_modulo_lookup() {
+        for (exponent, &value) in EXP_TABLE.iter().enumerate() {
+            assert_eq!(value, EXP_TABLE[exponent % 255], "exponent {exponent}");
+        }
+    }
+
+    #[test]
     fn reused_remainder_buffer_matches_legacy_for_every_supported_degree() {
         let mut work = Vec::new();
         for (degree, log_den) in GENERATOR_POLYNOMIALS.iter().enumerate() {
@@ -172,6 +209,8 @@ mod ec_tests {
                         "degree {degree}, len {len}, data {data:?}"
                     );
                     assert_eq!(create_error_correction_code(&data, degree), expected);
+                    #[cfg(feature = "bench-internals")]
+                    assert_eq!(crate::ec::create_error_correction_code_modulo_for_bench(&data, degree), expected);
                 }
             }
         }
@@ -442,13 +481,16 @@ mod max_allowed_errors_test {
 //{{{ Precomputed tables for GF(256).
 
 /// `EXP_TABLE` encodes the value of 2<sup>n</sup> in the Galois Field GF(256).
-const EXP_TABLE: [u8; 256] = generate_exp_table();
+///
+/// Powers repeat every 255 entries. Covering every sum of two byte-sized logs
+/// lets the division loop index the table directly without reducing modulo 255.
+const EXP_TABLE: [u8; 512] = generate_exp_table();
 
-/// `LOG_TABLE` is the inverse function of `EXP_TABLE`.
+/// `LOG_TABLE` is the inverse of the first nonzero cycle in `EXP_TABLE`.
 const LOG_TABLE: [u8; 256] = generate_log_table();
 
-const fn generate_exp_table() -> [u8; 256] {
-    let mut table = [0; 256];
+const fn generate_exp_table() -> [u8; 512] {
+    let mut table = [0; 512];
     let mut value = 1_u16;
     let mut i = 0;
     while i < table.len() {

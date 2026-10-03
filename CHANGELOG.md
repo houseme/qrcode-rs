@@ -53,6 +53,9 @@
   outputs in the parallel path.
 - Stream PNG-grid inputs into compact QR symbols and render one final canvas
   rather than collecting input strings and individual raster tiles.
+- Use a periodic 512-byte finite-field exponent table for Reed-Solomon
+  correction, removing modulo from coefficient lookups while preserving
+  error-correction bytes; add same-binary modulo benchmark controls.
 
 ### Fixed
 
