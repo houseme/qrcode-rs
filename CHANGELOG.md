@@ -80,6 +80,9 @@
 - Reserve SVG and HTML attribute output using only valid attribute names and
   their escaped UTF-8 values, avoiding oversized reservations for ignored
   attributes and growth during escaping.
+- Use a shared portable slicing-by-eight IEEE CRC-32 implementation for larger
+  ZIP payloads, retaining the scalar path below 256 bytes, all tail bytes and
+  the existing archive format.
 
 ### Fixed
 

@@ -711,7 +711,7 @@ impl<W: std::io::Write> ZipBytesWriter<W> {
         let uncompressed_size = u32::try_from(bytes.len())
             .map_err(|_| BatchPackError::EntryTooLarge { name: name.to_string(), len: bytes.len() })?;
         let local_header_offset = u32::try_from(self.offset).map_err(|_| BatchPackError::ArchiveTooLarge)?;
-        let crc32 = crc32(bytes);
+        let crc32 = zip_crc32(bytes);
         let (compression_method, payload) = compress_zip_payload(bytes, compression)?;
         let compressed_size = u32::try_from(payload.len())
             .map_err(|_| BatchPackError::EntryTooLarge { name: name.to_string(), len: payload.len() })?;
@@ -820,10 +820,10 @@ fn compress_zip_payload(bytes: &[u8], compression: ZipCompression) -> Result<(u1
     }
 }
 
-const CRC32_TABLE: [u32; 256] = {
-    let mut table = [0; 256];
+static ZIP_CRC32_TABLES: [[u32; 256]; 8] = {
+    let mut tables = [[0; 256]; 8];
     let mut index = 0;
-    while index < table.len() {
+    while index < 256 {
         let mut value = index as u32;
         let mut bit = 0;
         while bit < 8 {
@@ -831,16 +831,50 @@ const CRC32_TABLE: [u32; 256] = {
             value = (value >> 1) ^ (0xedb8_8320 & mask);
             bit += 1;
         }
-        table[index] = value;
+        tables[0][index] = value;
         index += 1;
     }
-    table
+    let mut slice = 1;
+    while slice < 8 {
+        index = 0;
+        while index < 256 {
+            let previous = tables[slice - 1][index];
+            tables[slice][index] = (previous >> 8) ^ tables[0][(previous & 0xff) as usize];
+            index += 1;
+        }
+        slice += 1;
+    }
+    tables
 };
 
-fn crc32(bytes: &[u8]) -> u32 {
+/// Computes the IEEE CRC32 used by ZIP packaging and the companion CLI.
+///
+/// This implementation detail supports the same checksum for every byte slice,
+/// including empty and unaligned slices. Inputs below 256 bytes use the scalar
+/// table path; larger inputs process eight bytes per step before a scalar tail.
+#[doc(hidden)]
+#[inline]
+#[must_use]
+pub fn zip_crc32(bytes: &[u8]) -> u32 {
     let mut crc = 0xffff_ffff;
-    for &byte in bytes {
-        crc = (crc >> 8) ^ CRC32_TABLE[((crc ^ u32::from(byte)) & 0xff) as usize];
+    let mut tail = bytes;
+    if bytes.len() >= 256 {
+        let (chunks, remainder) = bytes.as_chunks::<8>();
+        for chunk in chunks {
+            let first = crc ^ u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            crc = ZIP_CRC32_TABLES[7][(first & 0xff) as usize]
+                ^ ZIP_CRC32_TABLES[6][((first >> 8) & 0xff) as usize]
+                ^ ZIP_CRC32_TABLES[5][((first >> 16) & 0xff) as usize]
+                ^ ZIP_CRC32_TABLES[4][(first >> 24) as usize]
+                ^ ZIP_CRC32_TABLES[3][usize::from(chunk[4])]
+                ^ ZIP_CRC32_TABLES[2][usize::from(chunk[5])]
+                ^ ZIP_CRC32_TABLES[1][usize::from(chunk[6])]
+                ^ ZIP_CRC32_TABLES[0][usize::from(chunk[7])];
+        }
+        tail = remainder;
+    }
+    for &byte in tail {
+        crc = (crc >> 8) ^ ZIP_CRC32_TABLES[0][((crc ^ u32::from(byte)) & 0xff) as usize];
     }
     !crc
 }
@@ -984,6 +1018,32 @@ fn grid_columns(requested: usize, count: usize) -> Result<usize, BatchPackError>
 mod tests {
     use super::*;
 
+    // Retain an independently generated copy of the previous scalar table as
+    // an oracle. It does not read the production slicing tables.
+    const LEGACY_CRC32_TABLE: [u32; 256] = {
+        let mut table = [0; 256];
+        let mut index = 0;
+        while index < table.len() {
+            let mut value = index as u32;
+            let mut bit = 0;
+            while bit < 8 {
+                value = if value & 1 == 0 { value >> 1 } else { (value >> 1) ^ 0xedb8_8320 };
+                bit += 1;
+            }
+            table[index] = value;
+            index += 1;
+        }
+        table
+    };
+
+    fn crc32_table_reference(bytes: &[u8]) -> u32 {
+        let mut crc = 0xffff_ffff;
+        for &byte in bytes {
+            crc = (crc >> 8) ^ LEGACY_CRC32_TABLE[((crc ^ u32::from(byte)) & 0xff) as usize];
+        }
+        !crc
+    }
+
     fn crc32_bitwise(bytes: &[u8]) -> u32 {
         let mut crc = 0xffff_ffff;
         for &byte in bytes {
@@ -998,18 +1058,35 @@ mod tests {
 
     #[test]
     fn crc32_matches_ieee_vectors() {
-        assert_eq!(crc32(b""), 0);
-        assert_eq!(crc32(b"123456789"), 0xcbf4_3926);
-        assert_eq!(crc32(b"abc"), 0x3524_41c2);
+        assert_eq!(zip_crc32(b""), 0);
+        assert_eq!(zip_crc32(b"123456789"), 0xcbf4_3926);
+        assert_eq!(zip_crc32(b"abc"), 0x3524_41c2);
     }
 
     #[test]
     fn crc32_matches_bitwise_oracle_for_prefixes_and_unaligned_slices() {
-        let bytes = (0..65_539_usize).map(|index| (index.wrapping_mul(73) % 256) as u8).collect::<Vec<_>>();
-        for length in (0..=256).chain([511, 512, 1023, 1024, 32_768, 65_536]) {
-            for offset in 0..3 {
+        let bytes = (0..529_usize).map(|index| (index.wrapping_mul(73) % 256) as u8).collect::<Vec<_>>();
+        for length in 0..=512 {
+            for offset in 0..16 {
                 let input = &bytes[offset..offset + length];
-                assert_eq!(crc32(input), crc32_bitwise(input), "offset {offset}, length {length}");
+                let actual = zip_crc32(input);
+                assert_eq!(actual, crc32_bitwise(input), "offset {offset}, length {length}");
+                assert_eq!(actual, crc32_table_reference(input), "offset {offset}, length {length}");
+            }
+        }
+    }
+
+    #[test]
+    fn crc32_matches_independent_oracles_for_large_and_unaligned_slices() {
+        let bytes = (0..1_048_600_usize)
+            .map(|index| ((index.wrapping_mul(37) ^ (index >> 9) ^ 0x5b) & 0xff) as u8)
+            .collect::<Vec<_>>();
+        for length in [32_768, 32_769, 65_535, 65_536, 1_048_576, 1_048_583] {
+            for offset in 0..8 {
+                let input = &bytes[offset..offset + length];
+                let actual = zip_crc32(input);
+                assert_eq!(actual, crc32_bitwise(input), "offset {offset}, length {length}");
+                assert_eq!(actual, crc32_table_reference(input), "offset {offset}, length {length}");
             }
         }
     }
@@ -1051,6 +1128,47 @@ mod tests {
         assert!(archive.starts_with(b"PK\x03\x04"));
         assert!(archive.windows(b"qr-0001.svg".len()).any(|window| window == b"qr-0001.svg"));
         assert!(archive.windows(b"<svg>beta</svg>".len()).any(|window| window == b"<svg>beta</svg>"));
+    }
+
+    #[test]
+    fn stored_zip_matches_independent_ieee_crc_wire_fixture() {
+        // Generated independently with Python struct.pack ZIP headers and
+        // zlib.crc32, using zero timestamps and UTF-8 name flags.
+        let expected_hex = concat!(
+            "504b03041400000800000000000000000000000000000000000009000000656d7074792e62696e504b03041400000800",
+            "0000000000570d652480000000800000000d000000e4ba8ce7bbb4e7a0812e62696e000102030405060708090a0b0c0d",
+            "0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d",
+            "3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d",
+            "6e6f707172737475767778797a7b7c7d7e7f504b0304140000080000000000006a1bd855050100000501000008000000",
+            "62756c6b2e62696e000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2021222324252627",
+            "28292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f5051525354555657",
+            "58595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f8081828384858687",
+            "88898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7",
+            "b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7",
+            "e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff7461696c73504b0102140014000008000000000000000000",
+            "000000000000000000090000000000000000000000000000000000656d7074792e62696e504b01021400140000080000",
+            "00000000570d652480000000800000000d0000000000000000000000000027000000e4ba8ce7bbb4e7a0812e62696e50",
+            "4b01021400140000080000000000006a1bd85505010000050100000800000000000000000000000000d200000062756c",
+            "6b2e62696e504b05060000000003000300a8000000fd0100000000",
+        );
+        let expected = expected_hex
+            .as_bytes()
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| u8::from_str_radix(core::str::from_utf8(pair).unwrap(), 16).unwrap())
+            .collect::<Vec<_>>();
+        let mut bulk = (0..=255_u8).collect::<Vec<_>>();
+        bulk.extend_from_slice(b"tails");
+        let files = BatchOutput::from_entries([
+            BatchEntry::new("empty.bin", Vec::new()),
+            BatchEntry::new("二维码.bin", (0..128_u8).collect::<Vec<_>>()),
+            BatchEntry::new("bulk.bin", bulk),
+        ]);
+        assert_eq!(files.to_zip().unwrap(), expected);
+        let mut written = Vec::new();
+        files.write_zip(&mut written).unwrap();
+        assert_eq!(written, expected);
     }
 
     #[test]

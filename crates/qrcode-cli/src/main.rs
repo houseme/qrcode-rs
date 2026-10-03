@@ -1004,29 +1004,8 @@ impl ZipStoreWriter {
     }
 }
 
-const CRC32_TABLE: [u32; 256] = {
-    let mut table = [0; 256];
-    let mut index = 0;
-    while index < table.len() {
-        let mut value = index as u32;
-        let mut bit = 0;
-        while bit < 8 {
-            let mask = 0u32.wrapping_sub(value & 1);
-            value = (value >> 1) ^ (0xedb8_8320 & mask);
-            bit += 1;
-        }
-        table[index] = value;
-        index += 1;
-    }
-    table
-};
-
 fn crc32(bytes: &[u8]) -> u32 {
-    let mut crc = 0xffff_ffff;
-    for &byte in bytes {
-        crc = (crc >> 8) ^ CRC32_TABLE[((crc ^ u32::from(byte)) & 0xff) as usize];
-    }
-    !crc
+    qrcode_rs::batch::zip_crc32(bytes)
 }
 
 #[cfg(test)]
