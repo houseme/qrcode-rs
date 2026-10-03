@@ -48,6 +48,9 @@
 - Preserve centering, quiet zones, non-square modules and RGBA replacement
   semantics; keep the existing pre-rendered image-grid API and its separate
   pixel-buffer limit.
+- Consume ZIP lines, CSV, JSONL and JSON inputs incrementally; use concrete
+  buffered JSON readers and retain at most 64 input records and rendered
+  outputs in the parallel path.
 
 ### Fixed
 
@@ -97,6 +100,8 @@
   instead of panicking inside the decoder.
 - Report Structured Append capacity overflow after preserving the existing
   metadata and duplicate-position error priorities.
+- Prioritize pending earlier encoding errors over later input errors, and
+  validate complete JSON input before publishing an archive.
 
 ### Added
 

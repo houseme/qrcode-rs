@@ -405,8 +405,17 @@ fn parallel_zip_chunks_keep_global_order_and_complete_payloads() {
     let input = dir.join("records.txt");
     let output = dir.join("output.zip");
     let payloads = (0..131).map(|index| format!("payload-{index:04}")).collect::<Vec<_>>();
-    for format in ["lines", "json"] {
-        let content = if format == "json" { serde_json::to_string(&payloads).unwrap() } else { payloads.join("\n") };
+    for format in ["lines", "json", "jsonl", "csv"] {
+        let content = match format {
+            "json" => serde_json::to_string(&payloads).unwrap(),
+            "jsonl" => payloads
+                .iter()
+                .map(|text| format!("{{\"text\":{}}}", serde_json::to_string(text).unwrap()))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            "csv" => payloads.iter().map(|text| format!("\"{text}\"")).collect::<Vec<_>>().join("\n"),
+            _ => payloads.join("\n"),
+        };
         std::fs::write(&input, content).unwrap();
         let result = bin()
             .args(["--batch"])
@@ -453,6 +462,103 @@ fn parallel_zip_error_after_completed_chunks_preserves_existing_output() {
     assert!(String::from_utf8_lossy(&result.stderr).contains("data too long"));
     assert_eq!(std::fs::read(&output).unwrap(), b"existing output");
     assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn json_stream_errors_and_trailing_garbage_never_publish_zip_output() {
+    let dir = temporary_directory("json_stream_errors");
+    let input = dir.join("records.json");
+    let output = dir.join("output.zip");
+    let prefix = (0..70).map(|index| format!("payload-{index}")).collect::<Vec<_>>();
+    let complete = serde_json::to_string(&prefix).unwrap();
+    let truncated = &complete[..complete.len() - 1];
+    for content in [
+        format!("{complete} garbage"),
+        format!("{complete} []"),
+        truncated.to_owned(),
+        format!("{truncated},42]"),
+        format!("{truncated} \"missing comma\"]"),
+    ] {
+        std::fs::write(&input, content).unwrap();
+        std::fs::write(&output, b"existing output").unwrap();
+        for parallel in [false, true] {
+            let mut command = bin();
+            command
+                .args(["--batch"])
+                .arg(&input)
+                .args(["--batch-format", "json", "--batch-pack", "zip", "-f", "svg", "-o"])
+                .arg(&output);
+            if parallel {
+                command.arg("--parallel");
+            }
+            let result = command.output().unwrap();
+            assert_eq!(result.status.code(), Some(1), "{}", String::from_utf8_lossy(&result.stderr));
+            assert_eq!(std::fs::read(&output).unwrap(), b"existing output");
+            assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2);
+        }
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn pending_render_errors_take_priority_over_later_record_parse_errors() {
+    let dir = temporary_directory("stream_error_order");
+    let input = dir.join("records.txt");
+    let output = dir.join("output.zip");
+    let oversized = "x".repeat(4_000);
+    for (format, content) in [
+        ("json", format!("[\"{oversized}\",42]")),
+        ("json", format!("[\"{oversized}\"] trailing")),
+        ("jsonl", format!("\"{oversized}\"\n{{\"text\":42}}\n")),
+        ("csv", format!("{oversized}\n\"broken\"quote\n")),
+    ] {
+        std::fs::write(&input, content).unwrap();
+        std::fs::write(&output, b"existing output").unwrap();
+        for parallel in [false, true] {
+            let mut command = bin();
+            command
+                .args(["--batch"])
+                .arg(&input)
+                .args(["--batch-format", format, "--batch-pack", "zip", "-f", "svg", "-o"])
+                .arg(&output);
+            if parallel {
+                command.arg("--parallel");
+            }
+            let result = command.output().unwrap();
+            assert_eq!(result.status.code(), Some(1));
+            assert!(
+                String::from_utf8_lossy(&result.stderr).contains("data too long"),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+            assert_eq!(std::fs::read(&output).unwrap(), b"existing output");
+            assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2);
+        }
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn json_zip_accepts_single_records_from_stdin() {
+    let dir = temporary_directory("json_zip_stdin");
+    let output = dir.join("output.zip");
+    for content in [r#""alpha""#, r#"{"text":"alpha","ignored":{"nested":true}}"#] {
+        let mut child = bin()
+            .args(["--batch", "-", "--batch-format", "json", "--batch-pack", "zip", "--parallel", "-f", "svg", "-o"])
+            .arg(&output)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child.stdin.take().unwrap().write_all(content.as_bytes()).unwrap();
+        let result = child.wait_with_output().unwrap();
+        assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+        let entries = stored_zip_entries(&std::fs::read(&output).unwrap());
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].0, "qr-0001.svg");
+    }
     std::fs::remove_dir_all(dir).unwrap();
 }
 

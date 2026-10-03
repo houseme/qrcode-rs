@@ -135,7 +135,7 @@ batch-zip-deflate = ["std", "dep:flate2"]
 async = ["std", "dep:tokio"]
 # Enables the `qrencodes` CLI binary (pulls in clap + all render backends).
 # The library stays zero-dependency when this feature is off.
-cli = ["dep:clap", "dep:serde_json", "parallel", "image", "svg", "eps", "pic", "html", "pdf", "decode-rqrr"]
+cli = ["dep:clap", "dep:serde", "dep:serde_json", "serde_json/std", "parallel", "image", "svg", "eps", "pic", "html", "pdf", "decode-rqrr"]
 # Enables the `rqrr`-backed `RqrrDecoder` (decoding QR codes back to data).
 # Pulls in `rqrr` + the `image` renderer (used to feed grayscale into the decoder).
 decode-rqrr = ["image", "qrcode-decode/rqrr"]

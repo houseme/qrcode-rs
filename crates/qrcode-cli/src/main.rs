@@ -1,6 +1,7 @@
 //! `qrencodes` — command-line QR code generator.
 
 use std::error::Error;
+use std::fmt;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
@@ -14,6 +15,7 @@ use qrcode_rs::decode::rqrr::RqrrDecoder;
 use qrcode_rs::decode::{GrayPixels, QrDecoder};
 use qrcode_rs::{EcLevel, QrCode, QrSymbol, Version};
 use rayon::prelude::*;
+use serde::Deserialize;
 
 const MAX_PNG_SIDE: u64 = 65_535;
 const MAX_PNG_PIXELS: u64 = 268_435_456;
@@ -281,41 +283,25 @@ fn render_batch_zip(cli: &Cli, quiet_zone: bool) -> Result<usize, Box<dyn Error>
     };
     let mut archive = ZipStoreWriter::create(Path::new(output))?;
 
-    let written = if cli.parallel {
-        let inputs = read_inputs(cli)?;
-        let mut written = 0;
-        // Keep the parsed inputs for compatibility, but release each ordered
-        // block of rendered payloads before rendering the next block.
-        for chunk in inputs.chunks(ZIP_PARALLEL_CHUNK_SIZE) {
-            let rendered = render_many_parallel(chunk, cli, quiet_zone)?;
-            for bytes in rendered {
-                archive.write_file(&batch_file_name(written, cli.format), &bytes)?;
-                written += 1;
+    let mut written = 0;
+    let mut pending = Vec::with_capacity(if cli.parallel { ZIP_PARALLEL_CHUNK_SIZE } else { 0 });
+    let input_result = for_each_batch_payload(cli, |text| {
+        if cli.parallel {
+            pending.push(text);
+            if pending.len() == ZIP_PARALLEL_CHUNK_SIZE {
+                write_parallel_zip_chunk(&mut pending, &mut archive, &mut written, cli, quiet_zone)?;
             }
-        }
-        written
-    } else if cli.batch_format == BatchFormat::Json {
-        let inputs = read_inputs(cli)?;
-        for (index, text) in inputs.iter().enumerate() {
-            let bytes = render_one(text, cli, quiet_zone)?;
-            archive.write_file(&batch_file_name(index, cli.format), &bytes)?;
-        }
-        inputs.len()
-    } else {
-        let Some(path) = &cli.batch else {
-            return Ok(0);
-        };
-        let mut written = 0;
-        let mut source = open_record_source(path)?;
-        let mut line_no = 0;
-        let mut line = String::new();
-        while let Some(text) = read_batch_payload(&mut *source, &mut line, &mut line_no, cli)? {
+        } else {
             let bytes = render_one(&text, cli, quiet_zone)?;
             archive.write_file(&batch_file_name(written, cli.format), &bytes)?;
             written += 1;
         }
-        written
-    };
+        Ok(())
+    });
+    // Earlier pending records take priority over a later input/JSON error.
+    // Failed rendering clears the chunk, so its error is not retried here.
+    write_parallel_zip_chunk(&mut pending, &mut archive, &mut written, cli, quiet_zone)?;
+    input_result?;
 
     if written == 0 {
         return Err("no non-empty input records found".into());
@@ -323,6 +309,25 @@ fn render_batch_zip(cli: &Cli, quiet_zone: bool) -> Result<usize, Box<dyn Error>
     archive.finish()?;
     eprintln!("wrote {output}");
     Ok(written)
+}
+
+fn write_parallel_zip_chunk(
+    pending: &mut Vec<String>,
+    archive: &mut ZipStoreWriter,
+    written: &mut usize,
+    cli: &Cli,
+    quiet_zone: bool,
+) -> Result<(), Box<dyn Error>> {
+    if pending.is_empty() {
+        return Ok(());
+    }
+    let rendered = render_many_parallel(pending, cli, quiet_zone);
+    pending.clear();
+    for bytes in rendered? {
+        archive.write_file(&batch_file_name(*written, cli.format), &bytes)?;
+        *written += 1;
+    }
+    Ok(())
 }
 
 fn render_many_parallel(inputs: &[String], cli: &Cli, quiet_zone: bool) -> Result<Vec<Vec<u8>>, Box<dyn Error>> {
@@ -356,23 +361,42 @@ fn open_record_source(path: &Path) -> Result<Box<dyn BufRead>, Box<dyn Error>> {
 }
 
 fn read_inputs(cli: &Cli) -> Result<Vec<String>, Box<dyn Error>> {
+    let mut inputs = Vec::new();
+    for_each_batch_payload(cli, |text| {
+        inputs.push(text);
+        Ok(())
+    })?;
+    Ok(inputs)
+}
+
+fn for_each_batch_payload(
+    cli: &Cli,
+    mut consume: impl FnMut(String) -> Result<(), Box<dyn Error>>,
+) -> Result<usize, Box<dyn Error>> {
     if let Some(path) = &cli.batch {
         if cli.batch_format == BatchFormat::Json {
-            let mut content = String::new();
-            open_record_source(path)?.read_to_string(&mut content)?;
-            return extract_json_payloads(&content, &cli.batch_key);
+            // Preserve the concrete reader type through serde_json's byte reads.
+            if path == Path::new("-") {
+                let stdin = std::io::stdin();
+                if stdin.is_terminal() {
+                    return Err("batch input '-' requires piped data via stdin".into());
+                }
+                return for_each_json_payload(BufReader::new(stdin.lock()), &cli.batch_key, consume);
+            }
+            return for_each_json_payload(BufReader::new(File::open(path)?), &cli.batch_key, consume);
         }
-
-        let mut inputs = Vec::new();
         let mut source = open_record_source(path)?;
+        let mut count = 0;
         let mut line_no = 0;
         let mut line = String::new();
         while let Some(text) = read_batch_payload(&mut *source, &mut line, &mut line_no, cli)? {
-            inputs.push(text);
+            consume(text)?;
+            count += 1;
         }
-        return Ok(inputs);
+        return Ok(count);
     }
-    Ok(vec![read_single_input(cli)?])
+    consume(read_single_input(cli)?)?;
+    Ok(1)
 }
 
 fn read_stdin() -> Result<String, Box<dyn Error>> {
@@ -476,24 +500,95 @@ fn extract_batch_payload(
     Ok(Some(text))
 }
 
+#[cfg(test)]
 fn extract_json_payloads(content: &str, json_key: &str) -> Result<Vec<String>, Box<dyn Error>> {
-    let value: serde_json::Value = serde_json::from_str(content)?;
     let mut inputs = Vec::new();
-    match &value {
-        serde_json::Value::Array(items) => {
-            for item in items {
-                if let Some(text) = extract_json_payload(item, json_key)? {
-                    inputs.push(text);
-                }
-            }
-        }
-        other => {
-            if let Some(text) = extract_json_payload(other, json_key)? {
-                inputs.push(text);
-            }
-        }
-    }
+    for_each_json_payload(content.as_bytes(), json_key, |text| {
+        inputs.push(text);
+        Ok(())
+    })?;
     Ok(inputs)
+}
+
+fn for_each_json_payload<R: Read>(
+    source: R,
+    json_key: &str,
+    mut consume: impl FnMut(String) -> Result<(), Box<dyn Error>>,
+) -> Result<usize, Box<dyn Error>> {
+    let mut deserializer = serde_json::Deserializer::from_reader(source);
+    let mut consume_error = None;
+    let result = serde::Deserializer::deserialize_any(
+        &mut deserializer,
+        JsonPayloadVisitor { json_key, consume: &mut consume, consume_error: &mut consume_error, count: 0 },
+    );
+    if let Some(error) = consume_error {
+        return Err(error);
+    }
+    let count = result?;
+    deserializer.end()?;
+    Ok(count)
+}
+
+struct JsonPayloadVisitor<'a, F> {
+    json_key: &'a str,
+    consume: &'a mut F,
+    consume_error: &'a mut Option<Box<dyn Error>>,
+    count: usize,
+}
+
+impl<F: FnMut(String) -> Result<(), Box<dyn Error>>> JsonPayloadVisitor<'_, F> {
+    fn emit<E: serde::de::Error>(&mut self, value: serde_json::Value) -> Result<(), E> {
+        let text = match value {
+            serde_json::Value::String(text) => text,
+            serde_json::Value::Object(mut object) => match object.remove(self.json_key) {
+                None => return Ok(()),
+                Some(serde_json::Value::String(text)) => text,
+                Some(_) => return Err(E::custom(format!("JSON key '{}' must be a string", self.json_key))),
+            },
+            _ => return Err(E::custom("JSON batch records must be strings or objects")),
+        };
+        if text.trim().is_empty() {
+            return Ok(());
+        }
+        if let Err(error) = (self.consume)(text) {
+            let message = error.to_string();
+            *self.consume_error = Some(error);
+            return Err(E::custom(message));
+        }
+        self.count += 1;
+        Ok(())
+    }
+}
+
+impl<'de, F: FnMut(String) -> Result<(), Box<dyn Error>>> serde::de::Visitor<'de> for JsonPayloadVisitor<'_, F> {
+    type Value = usize;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a JSON array of strings or objects, or a single string or object")
+    }
+
+    fn visit_seq<A: serde::de::SeqAccess<'de>>(mut self, mut sequence: A) -> Result<Self::Value, A::Error> {
+        while let Some(value) = sequence.next_element::<serde_json::Value>()? {
+            self.emit(value)?;
+        }
+        Ok(self.count)
+    }
+
+    fn visit_map<A: serde::de::MapAccess<'de>>(mut self, map: A) -> Result<Self::Value, A::Error> {
+        let value = serde_json::Value::deserialize(serde::de::value::MapAccessDeserializer::new(map))?;
+        self.emit(value)?;
+        Ok(self.count)
+    }
+
+    fn visit_str<E: serde::de::Error>(mut self, value: &str) -> Result<Self::Value, E> {
+        self.emit(serde_json::Value::String(value.to_owned()))?;
+        Ok(self.count)
+    }
+
+    fn visit_string<E: serde::de::Error>(mut self, value: String) -> Result<Self::Value, E> {
+        self.emit(serde_json::Value::String(value))?;
+        Ok(self.count)
+    }
 }
 
 fn extract_json_payload(value: &serde_json::Value, json_key: &str) -> Result<Option<String>, Box<dyn Error>> {
@@ -1152,6 +1247,27 @@ mod tests {
     fn json_batch_payload_extracts_array_items() {
         let payloads = extract_json_payloads(r#"[{"payload":"alpha"},"beta",{"payload":""}]"#, "payload").unwrap();
         assert_eq!(payloads, vec!["alpha".to_owned(), "beta".to_owned()]);
+    }
+
+    #[test]
+    fn json_payload_reader_accepts_single_records_and_rejects_trailing_data() {
+        assert_eq!(extract_json_payloads(r#""alpha""#, "text").unwrap(), ["alpha"]);
+        assert_eq!(extract_json_payloads(r#"{"payload":"beta"}"#, "payload").unwrap(), ["beta"]);
+        assert!(extract_json_payloads(r#"["alpha"] trailing"#, "text").is_err());
+        assert!(extract_json_payloads(r#"["alpha"] ["beta"]"#, "text").is_err());
+        assert!(extract_json_payloads(r#"["alpha", "#, "text").is_err());
+    }
+
+    #[test]
+    fn json_payload_reader_stops_when_the_consumer_fails() {
+        let mut visited = 0;
+        let error = for_each_json_payload(r#"["alpha","beta",42]"#.as_bytes(), "text", |_| {
+            visited += 1;
+            Err("consumer failed".into())
+        })
+        .unwrap_err();
+        assert_eq!(visited, 1);
+        assert_eq!(error.to_string(), "consumer failed");
     }
 
     #[test]

@@ -1011,6 +1011,7 @@ dependencies = [
  "qrcode-rs",
  "qrcode-svg",
  "rayon",
+ "serde",
  "serde_json",
 ]
 
