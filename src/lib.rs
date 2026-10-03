@@ -1128,6 +1128,7 @@ impl Index<(usize, usize)> for QrCode {
     type Output = Color;
 
     fn index(&self, (x, y): (usize, usize)) -> &Color {
+        assert!(x < self.width && y < self.width, "module coordinates out of bounds");
         let index = y * self.width + x;
         &self.content[index]
     }
@@ -1139,6 +1140,7 @@ impl ModuleStorage for QrCode {
     }
 
     fn set(&mut self, x: usize, y: usize, color: Color) {
+        assert!(x < self.width && y < self.width, "module coordinates out of bounds");
         let index = y * self.width + x;
         self.content[index] = color;
     }
@@ -1163,6 +1165,87 @@ impl QrSymbol for QrCode {
 
     fn error_correction_level(&self) -> EcLevel {
         self.ec_level
+    }
+}
+
+#[cfg(test)]
+mod module_coordinate_tests {
+    use super::{Color, EcLevel, ModuleSource, ModuleStorage, QrCode, Version};
+
+    #[test]
+    fn valid_module_coordinates_match_row_major_storage_for_normal_and_micro_symbols() {
+        for (version, ec_level) in [(Version::Normal(1), EcLevel::M), (Version::Micro(1), EcLevel::L)] {
+            let mut code = QrCode::with_version(b"1", version, ec_level).unwrap();
+            for y in 0..code.width() {
+                for x in 0..code.width() {
+                    let expected = code.colors()[y * code.width() + x];
+                    assert_eq!(code[(x, y)], expected);
+                    assert_eq!(ModuleSource::get(&code, x, y), expected);
+                    assert_eq!(ModuleStorage::get(&code, x, y), expected);
+                    ModuleStorage::set(&mut code, x, y, !expected);
+                    assert_eq!(code[(x, y)], !expected);
+                    ModuleStorage::set(&mut code, x, y, expected);
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "module coordinates out of bounds")]
+    fn indexing_cannot_alias_the_next_row() {
+        let code = QrCode::new(b"coordinates").unwrap();
+        let _ = code[(code.width(), 0)];
+    }
+
+    #[test]
+    #[should_panic(expected = "module coordinates out of bounds")]
+    fn indexing_rejects_a_row_past_the_grid() {
+        let code = QrCode::new(b"coordinates").unwrap();
+        let _ = code[(0, code.width())];
+    }
+
+    #[test]
+    #[should_panic(expected = "module coordinates out of bounds")]
+    fn indexing_rejects_large_coordinates_before_offset_arithmetic() {
+        let code = QrCode::new(b"coordinates").unwrap();
+        let _ = code[(usize::MAX, usize::MAX)];
+    }
+
+    #[test]
+    #[should_panic(expected = "module coordinates out of bounds")]
+    fn module_source_access_cannot_alias_the_next_row() {
+        let code = QrCode::new(b"coordinates").unwrap();
+        let _ = ModuleSource::get(&code, code.width(), 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "module coordinates out of bounds")]
+    fn module_storage_access_rejects_a_row_past_the_grid() {
+        let code = QrCode::new(b"coordinates").unwrap();
+        let _ = ModuleStorage::get(&code, 0, code.width());
+    }
+
+    #[test]
+    #[should_panic(expected = "module coordinates out of bounds")]
+    fn module_storage_write_cannot_alias_the_next_row() {
+        let mut code = QrCode::new(b"coordinates").unwrap();
+        let width = code.width();
+        ModuleStorage::set(&mut code, width, 0, Color::Light);
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn rejected_module_writes_leave_the_entire_grid_unchanged() {
+        let mut code = QrCode::new(b"coordinates").unwrap();
+        let original = code.to_colors();
+        let width = code.width();
+        for (x, y) in [(width, 0), (0, width), (usize::MAX, 0), (0, usize::MAX)] {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                ModuleStorage::set(&mut code, x, y, Color::Light);
+            }));
+            assert!(result.is_err());
+            assert_eq!(code.colors(), original.as_slice());
+        }
     }
 }
 

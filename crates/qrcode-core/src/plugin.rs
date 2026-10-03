@@ -179,10 +179,12 @@ impl ModuleGrid {
 
 impl ModuleStorage for ModuleGrid {
     fn get(&self, x: usize, y: usize) -> Color {
+        assert!(x < self.width && y < self.height, "module coordinates out of bounds");
         self.modules[y * self.width + x]
     }
 
     fn set(&mut self, x: usize, y: usize, color: Color) {
+        assert!(x < self.width && y < self.height, "module coordinates out of bounds");
         self.modules[y * self.width + x] = color;
     }
 
@@ -398,6 +400,7 @@ mod tests {
     use crate::{Color, ModuleSource, ModuleStorage};
     use alloc::boxed::Box;
     use alloc::string::ToString;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
 
     struct TextRenderer {
         dark: char,
@@ -547,5 +550,32 @@ mod tests {
     #[test]
     fn module_grid_rejects_dimension_multiplication_overflow() {
         assert_eq!(ModuleGrid::new(alloc::vec![], usize::MAX, 2), Err(super::PluginError::InvalidModuleGrid));
+    }
+
+    #[test]
+    fn rectangular_module_grid_reads_and_writes_each_coordinate() {
+        let mut grid = ModuleGrid::new(alloc::vec![Color::Light; 6], 3, 2).unwrap();
+        for y in 0_usize..2 {
+            for x in 0_usize..3 {
+                let color = if (x + y).is_multiple_of(2) { Color::Dark } else { Color::Light };
+                ModuleStorage::set(&mut grid, x, y, color);
+                assert_eq!(ModuleStorage::get(&grid, x, y), color);
+                assert_eq!(ModuleSource::get(&grid, x, y), color);
+            }
+        }
+        assert_eq!(ModuleSource::width(&grid), 3);
+        assert_eq!(ModuleSource::height(&grid), 2);
+        assert_eq!(ModuleSource::row(&grid, 1), &[Color::Light, Color::Dark, Color::Light]);
+    }
+
+    #[test]
+    fn module_grid_rejects_invalid_coordinates_before_mutating_a_different_row() {
+        let mut grid = ModuleGrid::new(alloc::vec![Color::Light; 6], 3, 2).unwrap();
+        for (x, y) in [(3, 0), (0, 2), (usize::MAX, 0), (0, usize::MAX), (usize::MAX, usize::MAX)] {
+            assert!(catch_unwind(|| ModuleStorage::get(&grid, x, y)).is_err());
+            assert!(catch_unwind(|| ModuleSource::get(&grid, x, y)).is_err());
+            assert!(catch_unwind(AssertUnwindSafe(|| ModuleStorage::set(&mut grid, x, y, Color::Dark))).is_err());
+            assert_eq!(ModuleSource::modules(&grid), &[Color::Light; 6]);
+        }
     }
 }

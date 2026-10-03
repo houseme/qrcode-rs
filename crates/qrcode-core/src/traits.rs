@@ -70,6 +70,7 @@ const fn has_valid_module_geometry(len: usize, width: usize, height: usize) -> b
 
 impl ModuleSource for ModuleView<'_> {
     fn get(&self, x: usize, y: usize) -> Color {
+        assert!(x < self.width && y < self.height, "module coordinates out of bounds");
         self.modules[y * self.width + x]
     }
 
@@ -120,6 +121,7 @@ impl<'a> QrCodeRef<'a> {
 
 impl ModuleSource for QrCodeRef<'_> {
     fn get(&self, x: usize, y: usize) -> Color {
+        assert!(x < self.width && y < self.width, "module coordinates out of bounds");
         self.modules[y * self.width + x]
     }
 
@@ -229,12 +231,14 @@ pub trait ModuleSource {
     ///
     /// # Panics
     ///
-    /// Panics when `y >= height()` or when [`modules`](Self::modules) does not
-    /// contain a complete row-major grid.
+    /// Panics when `y >= height()`, when row offset arithmetic overflows, or
+    /// when [`modules`](Self::modules) does not contain the requested row.
     fn row(&self, y: usize) -> &[Color] {
         let width = self.width();
-        let start = y * width;
-        &self.modules()[start..start + width]
+        assert!(y < self.height(), "module row out of bounds");
+        let start = y.checked_mul(width).expect("module row offset overflow");
+        let end = start.checked_add(width).expect("module row end overflow");
+        &self.modules()[start..end]
     }
 
     /// Returns whether this storage has no modules.
@@ -325,6 +329,31 @@ mod tests {
     use super::{Builder, Encoder, ModuleSource, ModuleStorage, ModuleView, QrCodeRef, QrSymbol, Renderer};
     use crate::{Color, EcLevel, Version};
     use core::convert::Infallible;
+    use std::panic::catch_unwind;
+
+    struct RowSource<'a> {
+        modules: &'a [Color],
+        width: usize,
+        height: usize,
+    }
+
+    impl ModuleSource for RowSource<'_> {
+        fn get(&self, x: usize, y: usize) -> Color {
+            self.modules[y * self.width + x]
+        }
+
+        fn width(&self) -> usize {
+            self.width
+        }
+
+        fn height(&self) -> usize {
+            self.height
+        }
+
+        fn modules(&self) -> &[Color] {
+            self.modules
+        }
+    }
 
     struct DummySymbol {
         version: Version,
@@ -457,6 +486,56 @@ mod tests {
     }
 
     #[test]
+    fn module_view_coordinates_do_not_alias_another_row() {
+        for (width, height) in [(3_usize, 2_usize), (1, 3), (3, 1), (2, 2)] {
+            let modules = (0..width * height)
+                .map(|index| if index.is_multiple_of(2) { Color::Dark } else { Color::Light })
+                .collect::<Vec<_>>();
+            let view = ModuleView::new_rect(&modules, width, height).unwrap();
+            for y in 0..height {
+                for x in 0..width {
+                    assert_eq!(view.get(x, y), modules[y * width + x]);
+                }
+            }
+            for (x, y) in [(width, 0), (0, height), (usize::MAX, 0), (0, usize::MAX), (usize::MAX, usize::MAX)] {
+                assert!(catch_unwind(|| view.get(x, y)).is_err(), "{width}x{height}, ({x}, {y})");
+            }
+        }
+    }
+
+    #[test]
+    fn default_row_checks_reported_height_even_with_extra_backing_rows() {
+        let modules = [Color::Dark, Color::Light, Color::Light, Color::Dark];
+        let source = RowSource { modules: &modules, width: 2, height: 1 };
+
+        assert_eq!(source.row(0), &modules[..2]);
+        assert!(catch_unwind(|| source.row(1)).is_err());
+        assert!(catch_unwind(|| source.row(usize::MAX)).is_err());
+    }
+
+    #[test]
+    fn default_row_rejects_offset_and_end_overflow() {
+        let modules = [Color::Dark];
+        let offset_overflow = RowSource { modules: &modules, width: 2, height: usize::MAX };
+        let end_overflow = RowSource { modules: &modules, width: usize::MAX, height: 2 };
+
+        assert!(catch_unwind(|| offset_overflow.row(usize::MAX / 2 + 1)).is_err());
+        assert!(catch_unwind(|| end_overflow.row(1)).is_err());
+    }
+
+    #[test]
+    fn default_row_only_requires_the_requested_row_to_exist() {
+        let modules = [Color::Dark, Color::Light, Color::Dark];
+        let source = RowSource { modules: &modules, width: 2, height: 2 };
+        let empty_rows = RowSource { modules: &[], width: 0, height: 3 };
+
+        assert_eq!(source.row(0), &modules[..2]);
+        assert!(catch_unwind(|| source.row(1)).is_err());
+        assert_eq!(empty_rows.row(2), &[]);
+        assert!(catch_unwind(|| empty_rows.row(3)).is_err());
+    }
+
+    #[test]
     fn module_view_row_range_borrows_contiguous_rows() {
         let modules = [
             Color::Dark,
@@ -514,6 +593,23 @@ mod tests {
         assert_eq!(symbol.version(), Version::Normal(3));
         assert_eq!(symbol.error_correction_level(), EcLevel::Q);
         assert_eq!(symbol.quiet_zone(), 4);
+    }
+
+    #[test]
+    fn qr_code_ref_coordinates_do_not_alias_another_row() {
+        let modules = [Color::Dark, Color::Light, Color::Light, Color::Dark];
+        let symbol = QrCodeRef::new(&modules, 2, Version::Normal(3), EcLevel::Q).unwrap();
+
+        for y in 0..2 {
+            for x in 0..2 {
+                assert_eq!(symbol.get(x, y), modules[y * 2 + x]);
+            }
+        }
+        for (x, y) in [(2, 0), (0, 2), (usize::MAX, 0), (0, usize::MAX), (usize::MAX, usize::MAX)] {
+            assert!(catch_unwind(|| symbol.get(x, y)).is_err());
+        }
+        assert_eq!(symbol.version(), Version::Normal(3));
+        assert_eq!(symbol.error_correction_level(), EcLevel::Q);
     }
 
     #[test]

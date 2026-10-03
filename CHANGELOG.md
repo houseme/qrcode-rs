@@ -147,6 +147,9 @@
 - Reject nonzero truncated mode prefixes at natural Structured Append EOF and
   Kanji values mapping outside the encoder's supported ranges, while accepting
   zero shortened terminators and preserving full-terminator padding tolerance.
+- Reject out-of-range two-dimensional module coordinates before indexing or
+  mutation, and enforce reported row heights with checked row arithmetic while
+  retaining rectangular grids and metadata contracts.
 
 ### Added
 
