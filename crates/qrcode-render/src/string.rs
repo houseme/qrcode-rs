@@ -10,8 +10,7 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::{Canvas as RenderCanvas, Pixel};
-use qrcode_core::As;
+use crate::{Canvas as RenderCanvas, Pixel, RenderError, check_buffer_size, checked_area};
 use qrcode_core::Color;
 
 /// A renderable character or string fragment used by the plain-text renderer.
@@ -21,7 +20,9 @@ use qrcode_core::Color;
 pub trait Element: Copy {
     /// Returns the default element for a dark or light module.
     fn default_color(color: Color) -> Self;
-    /// The length (in bytes/chars) of this element when rendered.
+    /// The UTF-8 byte count appended by [`Element::append_to_string`].
+    ///
+    /// Implementations must report this accurately for output-size budgeting.
     fn strlen(self) -> usize;
     /// Appends this element to `string`.
     fn append_to_string(self, string: &mut String);
@@ -60,8 +61,24 @@ pub struct Canvas<P: Element> {
     buffer: Vec<P>,
     width: usize,
     dark_pixel: P,
-    dark_cap_inc: isize,
-    capacity: isize,
+    dark_byte_len: usize,
+    capacity: usize,
+}
+
+fn layout<P: Element>(width: u32, height: u32, dark: P, light: P) -> Result<(usize, usize), RenderError> {
+    let area = checked_area(width, height)?;
+    let newlines = if area == 0 { 0 } else { height as usize - 1 };
+    let buffer_bytes = area.checked_mul(core::mem::size_of::<P>()).ok_or(RenderError::OutputTooLarge)?;
+    let output_bytes = area
+        .checked_mul(dark.strlen().max(light.strlen()))
+        .and_then(|bytes| bytes.checked_add(newlines))
+        .ok_or(RenderError::OutputTooLarge)?;
+    check_buffer_size(buffer_bytes.checked_add(output_bytes).ok_or(RenderError::OutputTooLarge)?)?;
+    let capacity = area
+        .checked_mul(light.strlen())
+        .and_then(|bytes| bytes.checked_add(newlines))
+        .ok_or(RenderError::OutputTooLarge)?;
+    Ok((area, capacity))
 }
 
 impl<P: Element> Pixel for P {
@@ -82,28 +99,28 @@ impl<P: Element> RenderCanvas for Canvas<P> {
     type Image = String;
 
     fn new(width: u32, height: u32, dark_pixel: P, light_pixel: P) -> Self {
-        let width = width.as_usize();
-        let height = height.as_isize();
-        let dark_cap = dark_pixel.strlen().as_isize();
-        let light_cap = light_pixel.strlen().as_isize();
+        let (area, capacity) = layout(width, height, dark_pixel, light_pixel).unwrap_or_else(|error| panic!("{error}"));
         Self {
-            buffer: vec![light_pixel; width * height.as_usize()],
-            width,
+            buffer: vec![light_pixel; area],
+            width: width as usize,
             dark_pixel,
-            dark_cap_inc: dark_cap - light_cap,
-            capacity: light_cap * width.as_isize() * height + (height - 1),
+            dark_byte_len: dark_pixel.strlen(),
+            capacity,
         }
     }
 
+    fn validate_dimensions(width: u32, height: u32, dark: &P, light: &P) -> Result<(), RenderError> {
+        layout(width, height, *dark, *light).map(|_| ())
+    }
+
     fn draw_dark_pixel(&mut self, x: u32, y: u32) {
-        let x = x.as_usize();
-        let y = y.as_usize();
-        self.capacity += self.dark_cap_inc;
-        self.buffer[x + y * self.width] = self.dark_pixel;
+        let pixel = &mut self.buffer[x as usize + y as usize * self.width];
+        self.capacity = self.capacity - pixel.strlen() + self.dark_byte_len;
+        *pixel = self.dark_pixel;
     }
 
     fn into_image(self) -> String {
-        let mut result = String::with_capacity(self.capacity.as_usize());
+        let mut result = String::with_capacity(self.capacity);
         for (i, pixel) in self.buffer.into_iter().enumerate() {
             if i != 0 && i % self.width == 0 {
                 result.push('\n');
@@ -135,4 +152,57 @@ fn test_render_to_string() {
          AAAAAAAA\n\
          AAAAAAAA"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{MAX_BUFFER_BYTES, Renderer};
+
+    #[test]
+    fn character_budget_includes_buffer_and_output() {
+        let width = (MAX_BUFFER_BYTES / 5) as u32;
+        assert!(Canvas::<char>::validate_dimensions(width, 1, &'#', &' ').is_ok());
+        assert_eq!(Canvas::<char>::validate_dimensions(width + 1, 1, &'#', &' '), Err(RenderError::OutputTooLarge));
+        assert_eq!(Canvas::<char>::validate_dimensions(65_536, 65_536, &'#', &' '), Err(RenderError::OutputTooLarge));
+    }
+
+    #[test]
+    fn long_utf8_fragments_are_rejected_before_allocating() {
+        let fragment = "💖".repeat(1024);
+        let modules = [Color::Dark];
+        let result = Renderer::new(&modules, 1, 0)
+            .dark_color(fragment.as_str())
+            .light_color("")
+            .module_dimensions(1024, 1024)
+            .try_build();
+        assert_eq!(result, Err(RenderError::OutputTooLarge));
+    }
+
+    #[test]
+    fn repainting_shorter_pixels_keeps_the_actual_output_capacity() {
+        let mut canvas = Canvas::new(2, 2, "", "long");
+        for _ in 0..128 {
+            canvas.draw_dark_pixel(0, 0);
+        }
+        assert_eq!(canvas.capacity, 13);
+        assert_eq!(canvas.into_image(), "long\nlonglong");
+    }
+
+    #[test]
+    fn repainting_multibyte_characters_counts_the_replaced_pixel_once() {
+        let mut canvas = Canvas::new(2, 2, '😀', ' ');
+        for _ in 0..128 {
+            canvas.draw_dark_pixel(1, 1);
+        }
+        assert_eq!(canvas.capacity, 8);
+        assert_eq!(canvas.into_image(), "  \n 😀");
+    }
+
+    #[test]
+    fn empty_canvases_produce_empty_text() {
+        for (width, height) in [(0, 0), (0, u32::MAX), (u32::MAX, 0)] {
+            assert_eq!(Canvas::new(width, height, '█', ' ').into_image(), "");
+        }
+    }
 }

@@ -634,7 +634,7 @@ fn render_one(text: &str, cli: &Cli, quiet_zone: bool) -> Result<Vec<u8>, Box<dy
         Format::Png => {
             use qrcode_image::{DynamicImage, ImageFormat};
             validate_png_size(&code, cli.size, quiet_zone)?;
-            let image = render_png_image_with_colors(code, cli, quiet_zone, dark_rgb, light_rgb);
+            let image = render_png_image_with_colors(code, cli, quiet_zone, dark_rgb, light_rgb)?;
             qrcode_image::encode_to_format(&DynamicImage::ImageRgba8(image), ImageFormat::Png)?
         }
         Format::Eps => code
@@ -672,7 +672,7 @@ fn render_png_image(text: &str, cli: &Cli, quiet_zone: bool) -> Result<qrcode_im
     let dark_rgb = parse_rgb(dark_str, "dark")?;
     let light_rgb = parse_rgb(light_str, "light")?;
     validate_png_size(&code, cli.size, quiet_zone)?;
-    Ok(render_png_image_with_colors(code, cli, quiet_zone, dark_rgb, light_rgb))
+    Ok(render_png_image_with_colors(code, cli, quiet_zone, dark_rgb, light_rgb)?)
 }
 
 fn render_png_image_with_colors(
@@ -681,7 +681,7 @@ fn render_png_image_with_colors(
     quiet_zone: bool,
     dark_rgb: (u8, u8, u8),
     light_rgb: (u8, u8, u8),
-) -> qrcode_image::RgbaImage {
+) -> Result<qrcode_image::RgbaImage, qrcode_render::RenderError> {
     use qrcode_image::Rgba;
 
     code.render::<Rgba<u8>>()
@@ -689,7 +689,7 @@ fn render_png_image_with_colors(
         .module_dimensions(cli.size, cli.size)
         .dark_color(Rgba([dark_rgb.0, dark_rgb.1, dark_rgb.2, 255]))
         .light_color(Rgba([light_rgb.0, light_rgb.1, light_rgb.2, 255]))
-        .build()
+        .try_build()
 }
 
 fn validate_png_size(code: &QrCode, module_size: u32, quiet_zone: bool) -> Result<(), Box<dyn Error>> {

@@ -73,6 +73,12 @@
 - Parse CSV records consistently across sequential and parallel batch paths,
   supporting quoted LF/CRLF line endings and escaped quotes while rejecting
   malformed quoting with the record start line.
+- Reject oversized text, Unicode, ANSI, HTML, and image allocations before
+  construction, including UTF-8 and escaped-attribute output sizes, and
+  propagate PNG budget failures through CLI errors.
+- Track text capacities accurately when repainting pixels and handle empty
+  Unicode/ANSI canvases without division by zero; image validation follows
+  row-stride arithmetic on 32-bit targets.
 
 ### Added
 
@@ -86,6 +92,8 @@
   benchmarks, with the original dynamic program retained as a correctness
   oracle.
 - Add Stored ZIP packaging benchmarks for small, 32 KiB, and 1 MiB payloads.
+- Add a backward-compatible Canvas dimension-validation hook and a shared 256
+  MiB estimate budget for built-in buffered renderers.
 
 ## [2.1.1] - 2026-09-16
 

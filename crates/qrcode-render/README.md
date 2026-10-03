@@ -1,5 +1,12 @@
 # qrcode-render
 
+Built-in buffered renderers check their estimated backing buffers and output
+against a 256 MiB budget before allocation. Use `Renderer::try_build` to receive
+`RenderError::OutputTooLarge` for requests that exceed the budget; `build` panics
+on validation errors. Custom canvases can provide their own limits through
+`Canvas::validate_dimensions`. These checks estimate sizes and do not guarantee
+that an allocator can satisfy a request under memory pressure.
+
 `qrcode-render` contains the shared QR rendering traits and built-in text,
 Unicode, ANSI, color, and template helpers used by
 [`qrcode-rs`](https://crates.io/crates/qrcode-rs).

@@ -499,6 +499,61 @@ fn grid_batch_rejects_excessive_sheet_size_and_preserves_output() {
 }
 
 #[test]
+fn png_backend_budget_returns_a_cli_error_and_preserves_existing_output() {
+    let dir = temporary_directory("png_backend_budget");
+    let input = dir.join("records.txt");
+    let output = dir.join("output.png");
+    std::fs::write(&input, "alpha\n").unwrap();
+    std::fs::write(&output, b"existing image").unwrap();
+    for pack in [None, Some("grid")] {
+        let mut command = bin();
+        command.args(["-f", "png", "--size", "300", "-o"]).arg(&output);
+        if let Some(pack) = pack {
+            command.args(["--batch"]).arg(&input).args(["--batch-pack", pack]);
+        } else {
+            command.arg("alpha");
+        }
+        let result = command.output().unwrap();
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert_eq!(result.status.code(), Some(1), "{stderr}");
+        assert!(stderr.contains("resource limits"), "{stderr}");
+        assert!(!stderr.contains("panicked"), "{stderr}");
+        assert_eq!(std::fs::read(&output).unwrap(), b"existing image");
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn later_png_backend_budget_error_preserves_zip_output() {
+    let dir = temporary_directory("zip_png_backend_budget");
+    let input = dir.join("records.txt");
+    let output = dir.join("output.zip");
+    // The prefix renders to about 7 MiB; the later version-40 image exceeds the
+    // backend budget and must be rejected before allocating its pixel buffer.
+    std::fs::write(&input, format!("alpha\n{}\n", "x".repeat(2_900))).unwrap();
+    std::fs::write(&output, b"existing archive").unwrap();
+    for parallel in [false, true] {
+        let mut command = bin();
+        command
+            .args(["--batch"])
+            .arg(&input)
+            .args(["--batch-pack", "zip", "-f", "png", "--size", "45", "-e", "L", "-o"])
+            .arg(&output);
+        if parallel {
+            command.arg("--parallel");
+        }
+        let result = command.output().unwrap();
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert_eq!(result.status.code(), Some(1), "{stderr}");
+        assert!(stderr.contains("resource limits"), "{stderr}");
+        assert!(!stderr.contains("panicked"), "{stderr}");
+        assert_eq!(std::fs::read(&output).unwrap(), b"existing archive");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2);
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn validate_decodes_generated_png() {
     let stamp = time::SystemTime::now().duration_since(time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
     let path = std::env::temp_dir().join(format!("qrencodes_cli_validate_{stamp}.png"));

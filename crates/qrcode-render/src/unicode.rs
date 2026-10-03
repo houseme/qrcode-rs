@@ -10,7 +10,29 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::{Canvas as RenderCanvas, Color, Pixel};
+use crate::{Canvas as RenderCanvas, Color, Pixel, RenderError, check_buffer_size, checked_area};
+
+fn layout(
+    width: u32,
+    height: u32,
+    row_group: usize,
+    col_step: usize,
+    glyph_bytes: usize,
+) -> Result<(usize, usize), RenderError> {
+    let area = checked_area(width, height)?;
+    if area == 0 {
+        return Ok((0, 0));
+    }
+    let rows = (height as usize).div_ceil(row_group);
+    let cols = (width as usize).div_ceil(col_step);
+    let capacity = rows
+        .checked_mul(cols)
+        .and_then(|glyphs| glyphs.checked_mul(glyph_bytes))
+        .and_then(|bytes| bytes.checked_add(rows - 1))
+        .ok_or(RenderError::OutputTooLarge)?;
+    check_buffer_size(area.checked_add(capacity).ok_or(RenderError::OutputTooLarge)?)?;
+    Ok((area, capacity))
+}
 
 //{{{ Shared macro for bit-packed canvas
 
@@ -18,12 +40,13 @@ use crate::{Canvas as RenderCanvas, Color, Pixel};
 /// vertical pixels into a single `u8` cell. The `into_image` method processes
 /// `ROW_GROUP` rows at a time with zero intermediate allocations.
 macro_rules! impl_bit_canvas {
-    ($canvas:ident, $pixel:ident, $row_group:expr, $col_step:expr, $encode:expr) => {
+    ($canvas:ident, $pixel:ident, $row_group:expr, $col_step:expr, $glyph_bytes:expr, $encode:expr) => {
         #[doc(hidden)]
         pub struct $canvas {
             canvas: Vec<u8>,
             width: u32,
             dark_pixel: u8,
+            output_capacity: usize,
         }
 
         impl RenderCanvas for $canvas {
@@ -31,24 +54,36 @@ macro_rules! impl_bit_canvas {
             type Image = String;
 
             fn new(width: u32, height: u32, dark_pixel: $pixel, light_pixel: $pixel) -> Self {
-                let a = vec![light_pixel.value(); (width * height) as usize];
-                $canvas { width, canvas: a, dark_pixel: dark_pixel.value() }
+                let (area, output_capacity) = layout(width, height, $row_group, $col_step, $glyph_bytes)
+                    .unwrap_or_else(|error| panic!("{error}"));
+                let a = vec![light_pixel.value(); area];
+                $canvas { width, canvas: a, dark_pixel: dark_pixel.value(), output_capacity }
+            }
+
+            fn validate_dimensions(
+                width: u32,
+                height: u32,
+                _dark: &$pixel,
+                _light: &$pixel,
+            ) -> Result<(), RenderError> {
+                layout(width, height, $row_group, $col_step, $glyph_bytes).map(|_| ())
             }
 
             fn draw_dark_pixel(&mut self, x: u32, y: u32) {
-                self.canvas[(x + y * self.width) as usize] = self.dark_pixel;
+                self.canvas[x as usize + y as usize * self.width as usize] = self.dark_pixel;
             }
 
             fn into_image(self) -> String {
                 let w = self.width as usize;
                 let data = &self.canvas;
+                if data.is_empty() {
+                    return String::new();
+                }
                 let row_group = $row_group;
                 let empty: &[u8] = &[];
                 let col_step: usize = $col_step;
                 let row_count = data.len() / w;
-                let output_rows = row_count.div_ceil(row_group);
-                let output_cols = w.div_ceil(col_step);
-                let mut out = String::with_capacity(output_rows * (output_cols + 1));
+                let mut out = String::with_capacity(self.output_capacity);
 
                 for group_start in (0..row_count).step_by(row_group) {
                     let actual = row_group.min(row_count - group_start);
@@ -60,10 +95,9 @@ macro_rules! impl_bit_canvas {
                     for col in (0..w).step_by(col_step) {
                         out.push_str($encode(&group, col));
                     }
-                    out.push('\n');
-                }
-                if out.ends_with('\n') {
-                    out.pop();
+                    if group_start + actual < row_count {
+                        out.push('\n');
+                    }
                 }
                 out
             }
@@ -112,7 +146,7 @@ fn encode_1x2(rows: &[&[u8]], col: usize) -> &'static str {
     CODEPAGE[usize::from(top * 2 + bot)]
 }
 
-impl_bit_canvas!(Canvas1x2, Dense1x2, 2, 1, encode_1x2 as fn(&[&[u8]], usize) -> &'static str);
+impl_bit_canvas!(Canvas1x2, Dense1x2, 2, 1, 3, encode_1x2 as fn(&[&[u8]], usize) -> &'static str);
 
 //}}}
 //{{{ Dense2x2 — quadrant blocks (U+2596–U+259F), 2×2 per character
@@ -176,7 +210,7 @@ fn encode_2x2(rows: &[&[u8]], col: usize) -> &'static str {
     QUADRANT[(tl | (tr << 1) | (bl << 2) | (br << 3)) as usize]
 }
 
-impl_bit_canvas!(Canvas2x2, Dense2x2, 2, 2, encode_2x2 as fn(&[&[u8]], usize) -> &'static str);
+impl_bit_canvas!(Canvas2x2, Dense2x2, 2, 2, 3, encode_2x2 as fn(&[&[u8]], usize) -> &'static str);
 
 //}}}
 //{{{ Braille (U+2800–U+28FF), 2×4 dots per character
@@ -255,7 +289,7 @@ fn encode_braille(rows: &[&[u8]], col: usize) -> &'static str {
     unsafe { core::str::from_utf8_unchecked(&BRAILLE_UTF8[bits as usize]) }
 }
 
-impl_bit_canvas!(CanvasBraille, Braille, 4, 2, encode_braille as fn(&[&[u8]], usize) -> &'static str);
+impl_bit_canvas!(CanvasBraille, Braille, 4, 2, 3, encode_braille as fn(&[&[u8]], usize) -> &'static str);
 
 //}}}
 //{{{ Dense3x2 — sextant characters (U+1FB00–U+1FB3F), 3×2 per character
@@ -348,9 +382,66 @@ fn encode_3x2(rows: &[&[u8]], col: usize) -> &'static str {
     }
 }
 
-impl_bit_canvas!(Canvas3x2, Dense3x2, 3, 2, encode_3x2 as fn(&[&[u8]], usize) -> &'static str);
+impl_bit_canvas!(Canvas3x2, Dense3x2, 3, 2, 4, encode_3x2 as fn(&[&[u8]], usize) -> &'static str);
 
 //}}}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+    use crate::{MAX_BUFFER_BYTES, Renderer};
+
+    fn assert_safe_dimensions<P: Pixel<Image = String>>() {
+        let dark = P::default_color(Color::Dark);
+        let light = P::default_color(Color::Light);
+        for (width, height) in [(65_536, 65_536), (u32::MAX, u32::MAX)] {
+            assert_eq!(P::Canvas::validate_dimensions(width, height, &dark, &light), Err(RenderError::OutputTooLarge));
+        }
+        for (width, height) in [(0, 0), (0, u32::MAX), (u32::MAX, 0)] {
+            assert_eq!(P::Canvas::new(width, height, dark, light).into_image(), "");
+        }
+        let modules = [Color::Dark];
+        assert_eq!(
+            Renderer::<P>::new(&modules, 1, 0).module_dimensions(65_536, 65_536).try_build(),
+            Err(RenderError::OutputTooLarge)
+        );
+    }
+
+    #[test]
+    fn all_unicode_backends_guard_large_and_empty_dimensions() {
+        assert_safe_dimensions::<Dense1x2>();
+        assert_safe_dimensions::<Dense2x2>();
+        assert_safe_dimensions::<Braille>();
+        assert_safe_dimensions::<Dense3x2>();
+    }
+
+    #[test]
+    fn unicode_budget_counts_multibyte_output() {
+        let width = (MAX_BUFFER_BYTES / 4) as u32;
+        assert!(Canvas1x2::validate_dimensions(width, 1, &Dense1x2::Dark, &Dense1x2::Light).is_ok());
+        assert_eq!(
+            Canvas1x2::validate_dimensions(width + 1, 1, &Dense1x2::Dark, &Dense1x2::Light),
+            Err(RenderError::OutputTooLarge)
+        );
+    }
+
+    #[test]
+    fn odd_rows_preserve_padding_and_have_no_trailing_newline() {
+        let mut canvas = Canvas1x2::new(3, 3, Dense1x2::Dark, Dense1x2::Light);
+        canvas.draw_dark_pixel(0, 2);
+        assert_eq!(canvas.into_image(), "   \n▀  ");
+        let modules = [Color::Dark; 9];
+        let output = Renderer::<Dense3x2>::new(&modules, 3, 0).build();
+        assert_eq!(output.len(), 8);
+        assert!(!output.ends_with('\n'));
+    }
+
+    #[test]
+    #[should_panic(expected = "rendered output exceeds coordinate or backend resource limits")]
+    fn direct_unicode_constructor_rejects_excessive_area() {
+        let _ = Canvas1x2::new(65_536, 65_536, Dense1x2::Dark, Dense1x2::Light);
+    }
+}
 
 #[test]
 fn test_render_to_utf8_string() {

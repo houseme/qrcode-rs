@@ -30,8 +30,18 @@ use alloc::{
 
 use core::marker::PhantomData;
 
-use qrcode_core::{As, Color as ModuleColor};
-use qrcode_render::{Canvas as RenderCanvas, Pixel};
+use qrcode_core::Color as ModuleColor;
+use qrcode_render::{Canvas as RenderCanvas, MAX_BUFFER_BYTES, Pixel, RenderError};
+
+const TABLE_HEADER: &str = r#"<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><table style="border-collapse:collapse;line-height:0">"#;
+const TABLE_FOOTER: &str = "</table></body></html>";
+const TABLE_CELL_PREFIX: &str = r#"<td style="width:1px;height:1px;background:"#;
+const TABLE_CELL_SUFFIX: &str = r#""></td>"#;
+const GRID_HEADER: &str = r#"<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><div style="display:grid;grid-template-columns:repeat("#;
+const GRID_HEADER_SUFFIX: &str = r#",1px);line-height:0">"#;
+const GRID_FOOTER: &str = "</div></body></html>";
+const GRID_CELL_PREFIX: &str = r#"<div style="width:1px;height:1px;background:"#;
+const GRID_CELL_SUFFIX: &str = r#""></div>"#;
 
 /// Rendering mode for HTML output.
 #[derive(Copy, Clone, Default, PartialEq, Eq)]
@@ -69,6 +79,52 @@ pub struct Canvas<'a> {
     light_color: &'a str,
     mode: Mode,
     marker: PhantomData<Color<'a>>,
+    table_capacity: usize,
+    grid_capacity: usize,
+}
+
+fn escaped_attr_len(value: &str) -> Result<usize, RenderError> {
+    value.chars().try_fold(0usize, |length, ch| {
+        let bytes = match ch {
+            '&' | '\'' => 5,
+            '<' | '>' => 4,
+            '"' => 6,
+            _ => ch.len_utf8(),
+        };
+        length.checked_add(bytes).ok_or(RenderError::OutputTooLarge)
+    })
+}
+
+fn layout(width: u32, height: u32, dark: Color<'_>, light: Color<'_>) -> Result<(usize, usize, usize), RenderError> {
+    let area = (width as usize).checked_mul(height as usize).ok_or(RenderError::OutputTooLarge)?;
+    let color_bytes = if area == 0 { 0 } else { escaped_attr_len(dark.0)?.max(escaped_attr_len(light.0)?) };
+    let table_cell_bytes = TABLE_CELL_PREFIX
+        .len()
+        .checked_add(TABLE_CELL_SUFFIX.len())
+        .and_then(|bytes| bytes.checked_add(color_bytes))
+        .ok_or(RenderError::OutputTooLarge)?;
+    let table_capacity = area
+        .checked_mul(table_cell_bytes)
+        .and_then(|bytes| (height as usize).checked_mul(9).and_then(|rows| bytes.checked_add(rows)))
+        .and_then(|bytes| bytes.checked_add(TABLE_HEADER.len() + TABLE_FOOTER.len()))
+        .ok_or(RenderError::OutputTooLarge)?;
+    let grid_cell_bytes = GRID_CELL_PREFIX
+        .len()
+        .checked_add(GRID_CELL_SUFFIX.len())
+        .and_then(|bytes| bytes.checked_add(color_bytes))
+        .ok_or(RenderError::OutputTooLarge)?;
+    let width_digits = if width == 0 { 1 } else { width.ilog10() as usize + 1 };
+    let grid_capacity = area
+        .checked_mul(grid_cell_bytes)
+        .and_then(|bytes| {
+            bytes.checked_add(GRID_HEADER.len() + width_digits + GRID_HEADER_SUFFIX.len() + GRID_FOOTER.len())
+        })
+        .ok_or(RenderError::OutputTooLarge)?;
+    let total_bytes = area.checked_add(table_capacity.max(grid_capacity)).ok_or(RenderError::OutputTooLarge)?;
+    if total_bytes > MAX_BUFFER_BYTES || total_bytes > isize::MAX as usize {
+        return Err(RenderError::OutputTooLarge);
+    }
+    Ok((area, table_capacity, grid_capacity))
 }
 
 impl<'a> Canvas<'a> {
@@ -107,21 +163,29 @@ impl<'a> RenderCanvas for Canvas<'a> {
     type Image = String;
 
     fn new(width: u32, height: u32, dark_pixel: Color<'a>, light_pixel: Color<'a>) -> Self {
+        let (area, table_capacity, grid_capacity) =
+            layout(width, height, dark_pixel, light_pixel).unwrap_or_else(|error| panic!("{error}"));
         Canvas {
-            dark_pixels: vec![false; (width * height).as_usize()],
+            dark_pixels: vec![false; area],
             width,
             height,
             dark_color: dark_pixel.0,
             light_color: light_pixel.0,
             mode: Mode::default(),
             marker: PhantomData,
+            table_capacity,
+            grid_capacity,
         }
     }
 
+    fn validate_dimensions(width: u32, height: u32, dark: &Color<'a>, light: &Color<'a>) -> Result<(), RenderError> {
+        layout(width, height, *dark, *light).map(|_| ())
+    }
+
     fn draw_dark_pixel(&mut self, x: u32, y: u32) {
-        let idx = (y * self.width + x).as_usize();
-        if idx < self.dark_pixels.len() {
-            self.dark_pixels[idx] = true;
+        let idx = (y as usize).checked_mul(self.width as usize).and_then(|row| row.checked_add(x as usize));
+        if let Some(pixel) = idx.and_then(|idx| self.dark_pixels.get_mut(idx)) {
+            *pixel = true;
         }
     }
 
@@ -135,44 +199,42 @@ impl<'a> RenderCanvas for Canvas<'a> {
 
 impl<'a> Canvas<'a> {
     fn into_table(self) -> String {
-        let cap = 512 + (self.width * self.height * 20) as usize;
-        let mut html = String::with_capacity(cap);
-        html.push_str(r#"<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><table style="border-collapse:collapse;line-height:0">"#);
+        let mut html = String::with_capacity(self.table_capacity);
+        html.push_str(TABLE_HEADER);
 
         for y in 0..self.height {
             html.push_str("<tr>");
             for x in 0..self.width {
-                let idx = (y * self.width + x).as_usize();
+                let idx = y as usize * self.width as usize + x as usize;
                 let color = if self.dark_pixels[idx] { self.dark_color } else { self.light_color };
-                html.push_str(r#"<td style="width:1px;height:1px;background:"#);
+                html.push_str(TABLE_CELL_PREFIX);
                 push_escaped_attr_value(&mut html, color);
-                html.push_str(r#""></td>"#);
+                html.push_str(TABLE_CELL_SUFFIX);
             }
             html.push_str("</tr>");
         }
 
-        html.push_str("</table></body></html>");
+        html.push_str(TABLE_FOOTER);
         html
     }
 
     fn into_grid(self) -> String {
-        let cap = 512 + (self.width * self.height * 10) as usize;
-        let mut html = String::with_capacity(cap);
-        html.push_str(r#"<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><div style="display:grid;grid-template-columns:repeat("#);
+        let mut html = String::with_capacity(self.grid_capacity);
+        html.push_str(GRID_HEADER);
         html.push_str(&self.width.to_string());
-        html.push_str(r#",1px);line-height:0">"#);
+        html.push_str(GRID_HEADER_SUFFIX);
 
         for y in 0..self.height {
             for x in 0..self.width {
-                let idx = (y * self.width + x).as_usize();
+                let idx = y as usize * self.width as usize + x as usize;
                 let color = if self.dark_pixels[idx] { self.dark_color } else { self.light_color };
-                html.push_str(r#"<div style="width:1px;height:1px;background:"#);
+                html.push_str(GRID_CELL_PREFIX);
                 push_escaped_attr_value(&mut html, color);
-                html.push_str(r#""></div>"#);
+                html.push_str(GRID_CELL_SUFFIX);
             }
         }
 
-        html.push_str("</div></body></html>");
+        html.push_str(GRID_FOOTER);
         html
     }
 }
@@ -239,8 +301,66 @@ pub fn aria_label(html: &str, label: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::Color;
+    use super::{Canvas, Color, Mode, layout};
     use alloc::string::String;
+    use qrcode_render::{Canvas as RenderCanvas, RenderError, Renderer};
+
+    #[test]
+    fn html_large_dimensions_fail_before_allocation() {
+        let dark = Color("#000");
+        let light = Color("#fff");
+        for (width, height) in [(65_536, 65_536), (u32::MAX, u32::MAX), (0, u32::MAX)] {
+            assert_eq!(Canvas::validate_dimensions(width, height, &dark, &light), Err(RenderError::OutputTooLarge));
+        }
+        let modules = [qrcode_core::Color::Light];
+        assert_eq!(
+            Renderer::<Color>::new(&modules, 1, 0).module_dimensions(65_536, 65_536).try_build(),
+            Err(RenderError::OutputTooLarge)
+        );
+    }
+
+    #[test]
+    fn html_escaped_color_bytes_are_included_in_budget() {
+        let color = "\"".repeat(4096);
+        assert_eq!(
+            Canvas::validate_dimensions(256, 256, &Color(&color), &Color("#fff")),
+            Err(RenderError::OutputTooLarge)
+        );
+    }
+
+    #[test]
+    fn html_capacity_covers_both_modes_and_utf8_escaping() {
+        let color = Color("\"'&<>💖");
+        let (_, table_capacity, grid_capacity) = layout(2, 3, color, color).unwrap();
+        for (mode, capacity) in [(Mode::Table, table_capacity), (Mode::Grid, grid_capacity)] {
+            let mut canvas = Canvas::new(2, 3, color, color);
+            canvas.set_mode(mode);
+            canvas.draw_dark_pixel(0, 1);
+            let output = canvas.into_image();
+            assert_eq!(output.len(), capacity);
+            assert_eq!(output.matches("&quot;&#39;&amp;&lt;&gt;💖").count(), 6);
+        }
+    }
+
+    #[test]
+    fn html_empty_canvases_keep_valid_containers() {
+        for (width, height) in [(0, 0), (0, 3), (3, 0)] {
+            for mode in [Mode::Table, Mode::Grid] {
+                let mut canvas = Canvas::new(width, height, Color("#000"), Color("#fff"));
+                canvas.set_mode(mode);
+                let output = canvas.into_image();
+                assert!(output.starts_with("<!DOCTYPE html>"));
+                assert!(output.ends_with("</body></html>"));
+                assert!(!output.contains("background:"));
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "rendered output exceeds coordinate or backend resource limits")]
+    fn direct_html_constructor_rejects_excessive_area() {
+        let _ = Canvas::new(65_536, 65_536, Color("#000"), Color("#fff"));
+    }
 
     fn sample_html() -> String {
         let modules =

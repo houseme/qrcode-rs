@@ -49,6 +49,22 @@ pub mod plugin;
 pub mod string;
 pub mod unicode;
 
+/// Maximum combined buffer and output size estimated by the built-in buffered
+/// rendering backends (256 MiB).
+///
+/// This guards against excessive render requests, not allocator failures under
+/// memory pressure. Vector backends and third-party canvases choose their own
+/// limits through [`Canvas::validate_dimensions`].
+pub const MAX_BUFFER_BYTES: usize = 256 * 1024 * 1024;
+
+pub(crate) fn checked_area(width: u32, height: u32) -> Result<usize, RenderError> {
+    (width as usize).checked_mul(height as usize).ok_or(RenderError::OutputTooLarge)
+}
+
+pub(crate) fn check_buffer_size(bytes: usize) -> Result<(), RenderError> {
+    if bytes > MAX_BUFFER_BYTES || bytes > isize::MAX as usize { Err(RenderError::OutputTooLarge) } else { Ok(()) }
+}
+
 //------------------------------------------------------------------------------
 //{{{ Pixel trait
 
@@ -113,6 +129,26 @@ pub trait Canvas: Sized {
     /// Constructs a new canvas of the given dimensions.
     fn new(width: u32, height: u32, dark_pixel: Self::Pixel, light_pixel: Self::Pixel) -> Self;
 
+    /// Checks dimensions and pixel-dependent resource limits before allocation.
+    ///
+    /// The default accepts all dimensions, preserving existing custom and
+    /// vector canvases. Buffered backends override this to reject requests that
+    /// exceed their allocation budget. [`Renderer::try_build`] calls this
+    /// before [`Canvas::new`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RenderError::OutputTooLarge`] when the backend cannot safely
+    /// represent or allocate the requested output within its resource limits.
+    fn validate_dimensions(
+        _width: u32,
+        _height: u32,
+        _dark_pixel: &Self::Pixel,
+        _light_pixel: &Self::Pixel,
+    ) -> Result<(), RenderError> {
+        Ok(())
+    }
+
     /// Draws a single dark pixel at the (x, y) coordinate.
     fn draw_dark_pixel(&mut self, x: u32, y: u32);
 
@@ -154,7 +190,8 @@ pub enum RenderError {
     },
 
     /// The requested quiet zone, module size, or final canvas dimensions
-    /// overflow this renderer's `u32` coordinate space.
+    /// overflow this renderer's coordinate space or exceed the backend's
+    /// buffer and output budget.
     OutputTooLarge,
 }
 
@@ -165,7 +202,7 @@ impl fmt::Display for RenderError {
                 write!(f, "invalid module source dimensions: width={width}, height={height}, len={len}")
             }
             RenderError::ModuleSourceTooWide { width } => write!(f, "module source width {width} exceeds u32::MAX"),
-            RenderError::OutputTooLarge => f.write_str("rendered output dimensions exceed u32::MAX"),
+            RenderError::OutputTooLarge => f.write_str("rendered output exceeds coordinate or backend resource limits"),
         }
     }
 }
@@ -394,7 +431,8 @@ impl<'a, P: Pixel> Renderer<'a, P> {
     ///
     /// Returns [`RenderError::InvalidModuleSource`] if the module grid is empty.
     /// Returns [`RenderError::OutputTooLarge`] if the configured quiet zone or
-    /// module size would overflow the renderer's coordinate space.
+    /// module size would overflow the renderer's coordinate space, or the
+    /// backend rejects the output's estimated buffer and output size.
     pub fn try_build(&self) -> Result<P::Image, RenderError> {
         let w = self.modules_count;
         if w == 0 {
@@ -408,6 +446,7 @@ impl<'a, P: Pixel> Renderer<'a, P> {
         let real_width = width.checked_mul(mw).ok_or(RenderError::OutputTooLarge)?;
         let real_height = width.checked_mul(mh).ok_or(RenderError::OutputTooLarge)?;
 
+        P::Canvas::validate_dimensions(real_width, real_height, &self.dark_color, &self.light_color)?;
         let mut canvas = P::Canvas::new(real_width, real_height, self.dark_color, self.light_color);
         for (y, row) in self.content.chunks_exact(w as usize).enumerate() {
             let top = (y as u32 + qz) * mh;
@@ -426,7 +465,8 @@ impl<'a, P: Pixel> Renderer<'a, P> {
     /// # Panics
     ///
     /// Panics if the module grid is empty, or if the configured quiet zone or
-    /// module size would overflow the renderer's coordinate space.
+    /// module size would overflow the renderer's coordinate space, or the
+    /// backend's allocation budget would be exceeded.
     pub fn build(&self) -> P::Image {
         self.try_build().unwrap_or_else(|err| panic!("{err}"))
     }
@@ -478,8 +518,90 @@ impl<'a, P: StyledPixel> Renderer<'a, P> {
 
 #[cfg(test)]
 mod tests {
-    use super::{RenderError, RenderTemplate, Renderer};
+    use super::{Canvas, Pixel, RenderError, RenderTemplate, Renderer};
     use qrcode_core::{Color, EcLevel, ModuleSource, QrSymbol, Renderer as CoreRenderer, Version};
+
+    #[derive(Clone, Copy)]
+    struct VectorPixel;
+
+    struct VectorCanvas(u32, u32);
+
+    impl Pixel for VectorPixel {
+        type Image = (u32, u32);
+        type Canvas = VectorCanvas;
+
+        fn default_color(_color: Color) -> Self {
+            Self
+        }
+    }
+
+    impl Canvas for VectorCanvas {
+        type Pixel = VectorPixel;
+        type Image = (u32, u32);
+
+        fn new(width: u32, height: u32, _dark: VectorPixel, _light: VectorPixel) -> Self {
+            Self(width, height)
+        }
+
+        fn draw_dark_pixel(&mut self, _x: u32, _y: u32) {}
+
+        fn draw_dark_rect(&mut self, _left: u32, _top: u32, _width: u32, _height: u32) {}
+
+        fn into_image(self) -> Self::Image {
+            (self.0, self.1)
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    struct RejectingPixel;
+
+    struct RejectingCanvas;
+
+    impl Pixel for RejectingPixel {
+        type Image = ();
+        type Canvas = RejectingCanvas;
+
+        fn default_color(_color: Color) -> Self {
+            Self
+        }
+    }
+
+    impl Canvas for RejectingCanvas {
+        type Pixel = RejectingPixel;
+        type Image = ();
+
+        fn new(_width: u32, _height: u32, _dark: RejectingPixel, _light: RejectingPixel) -> Self {
+            panic!("rejected dimensions must not reach allocation")
+        }
+
+        fn validate_dimensions(
+            _width: u32,
+            _height: u32,
+            _dark: &RejectingPixel,
+            _light: &RejectingPixel,
+        ) -> Result<(), RenderError> {
+            Err(RenderError::OutputTooLarge)
+        }
+
+        fn draw_dark_pixel(&mut self, _x: u32, _y: u32) {}
+
+        fn into_image(self) {}
+    }
+
+    #[test]
+    fn default_canvas_validation_preserves_large_vector_dimensions() {
+        let modules = [Color::Dark];
+        assert_eq!(
+            Renderer::<VectorPixel>::new(&modules, 1, 0).module_dimensions(u32::MAX, u32::MAX).try_build(),
+            Ok((u32::MAX, u32::MAX))
+        );
+    }
+
+    #[test]
+    fn try_build_validates_backend_limits_before_constructing_canvas() {
+        let modules = [Color::Light];
+        assert_eq!(Renderer::<RejectingPixel>::new(&modules, 1, 0).try_build(), Err(RenderError::OutputTooLarge));
+    }
 
     struct BadSource {
         modules: [Color; 4],

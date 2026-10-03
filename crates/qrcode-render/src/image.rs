@@ -3,7 +3,7 @@
 //!
 //! `QrCode::render::<image::Rgba<u8>>()` (or `Luma<u8>`, `Rgb<u8>`, …) produces
 //! an `image::ImageBuffer`, which can be saved or encoded with the `image` API.
-use crate::{Canvas, Pixel, StyledPixel};
+use crate::{Canvas, Pixel, RenderError, StyledPixel};
 use qrcode_core::Color;
 
 use image::{DynamicImage, GenericImageView, ImageBuffer, Luma, LumaA, Primitive, Rgb, Rgba};
@@ -50,7 +50,20 @@ impl<P: image::Pixel + 'static> Canvas for (P, ImageBuffer<P, Vec<P::Subpixel>>)
     type Pixel = P;
     type Image = ImageBuffer<P, Vec<P::Subpixel>>;
 
+    fn validate_dimensions(width: u32, height: u32, _dark_pixel: &P, _light_pixel: &P) -> Result<(), RenderError> {
+        // Match ImageBuffer's row-first length checks, including empty images on 32-bit targets.
+        let bytes = (width as usize)
+            .checked_mul(usize::from(P::CHANNEL_COUNT))
+            .and_then(|row_samples| row_samples.checked_mul(height as usize))
+            .and_then(|samples| samples.checked_mul(core::mem::size_of::<P::Subpixel>()))
+            .ok_or(RenderError::OutputTooLarge)?;
+        crate::check_buffer_size(bytes)
+    }
+
     fn new(width: u32, height: u32, dark_pixel: P, light_pixel: P) -> Self {
+        if let Err(error) = Self::validate_dimensions(width, height, &dark_pixel, &light_pixel) {
+            panic!("image canvas dimensions are too large: {error}");
+        }
         (dark_pixel, ImageBuffer::from_pixel(width, height, light_pixel))
     }
 
@@ -302,9 +315,58 @@ pub fn apply_gradient_background(image: &DynamicImage, gradient: &Gradient) -> D
 
 #[cfg(test)]
 mod render_tests {
-    use crate::{Canvas, Renderer};
+    use crate::{Canvas, MAX_BUFFER_BYTES, RenderError, Renderer};
     use image::{DynamicImage, GenericImageView, ImageBuffer, Luma, LumaA, Rgb, Rgba};
     use qrcode_core::Color;
+
+    fn assert_image_buffer_budget<P>(dark: P, light: P, bytes_per_pixel: usize)
+    where
+        P: image::Pixel + 'static,
+    {
+        let validate = <(P, ImageBuffer<P, Vec<P::Subpixel>>) as Canvas>::validate_dimensions;
+        let max_pixels = u32::try_from(MAX_BUFFER_BYTES / bytes_per_pixel).unwrap();
+        assert_eq!(validate(max_pixels, 1, &dark, &light), Ok(()));
+        assert_eq!(validate(1, max_pixels, &dark, &light), Ok(()));
+        assert_eq!(validate(max_pixels + 1, 1, &dark, &light), Err(RenderError::OutputTooLarge));
+        assert_eq!(validate(1, max_pixels + 1, &dark, &light), Err(RenderError::OutputTooLarge));
+        assert_eq!(validate(65_536, 65_536, &dark, &light), Err(RenderError::OutputTooLarge));
+        assert_eq!(validate(u32::MAX, u32::MAX, &dark, &light), Err(RenderError::OutputTooLarge));
+        let wide_empty =
+            if usize::BITS == 32 && P::CHANNEL_COUNT > 1 { Err(RenderError::OutputTooLarge) } else { Ok(()) };
+        assert_eq!(validate(u32::MAX, 0, &dark, &light), wide_empty);
+        assert_eq!(validate(0, u32::MAX, &dark, &light), Ok(()));
+    }
+
+    #[test]
+    fn image_buffer_budget_accounts_for_channels_and_subpixel_sizes_without_allocating() {
+        assert_image_buffer_budget(Luma([0u8]), Luma([255]), 1);
+        assert_image_buffer_budget(LumaA([0u8, 255]), LumaA([255, 255]), 2);
+        assert_image_buffer_budget(Rgb([0u8, 0, 0]), Rgb([255, 255, 255]), 3);
+        assert_image_buffer_budget(Rgba([0u8, 0, 0, 255]), Rgba([255, 255, 255, 255]), 4);
+        assert_image_buffer_budget(Luma([0u16]), Luma([65535]), 2);
+        assert_image_buffer_budget(LumaA([0u16, 65535]), LumaA([65535, 65535]), 4);
+        assert_image_buffer_budget(Rgb([0u16, 0, 0]), Rgb([65535, 65535, 65535]), 6);
+        assert_image_buffer_budget(Rgba([0u16, 0, 0, 65535]), Rgba([65535, 65535, 65535, 65535]), 8);
+        assert_image_buffer_budget(Luma([0.0f32]), Luma([1.0]), 4);
+        assert_image_buffer_budget(LumaA([0.0f32, 1.0]), LumaA([1.0, 1.0]), 8);
+        assert_image_buffer_budget(Rgb([0.0f32, 0.0, 0.0]), Rgb([1.0, 1.0, 1.0]), 12);
+        assert_image_buffer_budget(Rgba([0.0f32, 0.0, 0.0, 1.0]), Rgba([1.0, 1.0, 1.0, 1.0]), 16);
+        assert_image_buffer_budget(Luma([0.0f64]), Luma([1.0]), 8);
+        assert_image_buffer_budget(LumaA([0.0f64, 1.0]), LumaA([1.0, 1.0]), 16);
+        assert_image_buffer_budget(Rgb([0.0f64, 0.0, 0.0]), Rgb([1.0, 1.0, 1.0]), 24);
+        assert_image_buffer_budget(Rgba([0.0f64, 0.0, 0.0, 1.0]), Rgba([1.0, 1.0, 1.0, 1.0]), 32);
+    }
+
+    #[test]
+    #[should_panic(expected = "image canvas dimensions are too large")]
+    fn direct_image_canvas_construction_rejects_oversized_dimensions_before_allocating() {
+        let _ = <(Rgba<u8>, ImageBuffer<Rgba<u8>, Vec<u8>>) as Canvas>::new(
+            65_536,
+            65_536,
+            Rgba([0, 0, 0, 255]),
+            Rgba([255, 255, 255, 255]),
+        );
+    }
 
     fn assert_rectangles_match_scalar<P>(dark: P, light: P)
     where
@@ -316,7 +378,12 @@ mod render_tests {
                 for top in 0..=image_height {
                     for width in 0..=image_width - left {
                         for height in 0..=image_height - top {
-                            let mut canvas = (dark, ImageBuffer::from_pixel(image_width, image_height, light));
+                            let mut canvas = <(P, ImageBuffer<P, Vec<P::Subpixel>>) as Canvas>::new(
+                                image_width,
+                                image_height,
+                                dark,
+                                light,
+                            );
                             let mut expected = ImageBuffer::from_pixel(image_width, image_height, light);
                             canvas.draw_dark_rect(left, top, width, height);
                             for y in top..top + height {

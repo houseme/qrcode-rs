@@ -33,7 +33,7 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::{Canvas as RenderCanvas, Pixel, StyledPixel};
+use crate::{Canvas as RenderCanvas, Pixel, RenderError, StyledPixel, check_buffer_size, checked_area};
 use qrcode_core::Color as ModuleColor;
 
 /// An ANSI TrueColor (24-bit) pixel.
@@ -100,6 +100,24 @@ pub struct CanvasAnsi {
     dark_pixel: u8,
     dark_color: Color,
     light_color: Color,
+    output_capacity: usize,
+}
+
+fn layout(width: u32, height: u32) -> Result<(usize, usize), RenderError> {
+    let area = checked_area(width, height)?;
+    if area == 0 {
+        return Ok((0, 0));
+    }
+    let rows = (height as usize).div_ceil(2);
+    // Two TrueColor escapes (19 bytes each), a UTF-8 block (3), and the row reset.
+    let capacity = (width as usize)
+        .checked_mul(41)
+        .and_then(|bytes| bytes.checked_add(4))
+        .and_then(|bytes| bytes.checked_mul(rows))
+        .and_then(|bytes| bytes.checked_add(rows - 1))
+        .ok_or(RenderError::OutputTooLarge)?;
+    check_buffer_size(area.checked_add(capacity).ok_or(RenderError::OutputTooLarge)?)?;
+    Ok((area, capacity))
 }
 
 impl RenderCanvas for CanvasAnsi {
@@ -107,26 +125,34 @@ impl RenderCanvas for CanvasAnsi {
     type Image = String;
 
     fn new(width: u32, height: u32, dark_pixel: Color, light_pixel: Color) -> Self {
+        let (area, output_capacity) = layout(width, height).unwrap_or_else(|error| panic!("{error}"));
         CanvasAnsi {
-            canvas: vec![0u8; (width * height) as usize],
+            canvas: vec![0u8; area],
             width,
             dark_pixel: 1,
             dark_color: dark_pixel,
             light_color: light_pixel,
+            output_capacity,
         }
     }
 
+    fn validate_dimensions(width: u32, height: u32, _dark: &Color, _light: &Color) -> Result<(), RenderError> {
+        layout(width, height).map(|_| ())
+    }
+
     fn draw_dark_pixel(&mut self, x: u32, y: u32) {
-        self.canvas[(x + y * self.width) as usize] = self.dark_pixel;
+        self.canvas[x as usize + y as usize * self.width as usize] = self.dark_pixel;
     }
 
     fn into_image(self) -> String {
         let w = self.width as usize;
+        if self.canvas.is_empty() {
+            return String::new();
+        }
         let dark = 1u8;
         let reset = "\x1b[0m";
         let row_count = self.canvas.len() / w;
-        let output_rows = row_count.div_ceil(2);
-        let mut out = String::with_capacity(output_rows * (w * 40 + reset.len() + 1));
+        let mut out = String::with_capacity(self.output_capacity);
 
         for group_start in (0..row_count).step_by(2) {
             if group_start > 0 {
@@ -241,5 +267,44 @@ mod tests {
             let esc_count = line.matches("\x1b[").count();
             assert_eq!(esc_count, 3);
         }
+    }
+
+    #[test]
+    fn ansi_budget_counts_escape_sequences_and_row_reset() {
+        let dark = Color::new(255, 254, 253);
+        let light = Color::new(252, 251, 250);
+        let width = ((crate::MAX_BUFFER_BYTES - 4) / 42) as u32;
+        assert!(CanvasAnsi::validate_dimensions(width, 1, &dark, &light).is_ok());
+        assert_eq!(CanvasAnsi::validate_dimensions(width + 1, 1, &dark, &light), Err(RenderError::OutputTooLarge));
+        assert_eq!(CanvasAnsi::validate_dimensions(65_536, 65_536, &dark, &light), Err(RenderError::OutputTooLarge));
+        let modules = [ModuleColor::Light];
+        assert_eq!(
+            Renderer::<Color>::new(&modules, 1, 0).module_dimensions(65_536, 65_536).try_build(),
+            Err(RenderError::OutputTooLarge)
+        );
+    }
+
+    #[test]
+    fn ansi_empty_canvases_produce_empty_text() {
+        for (width, height) in [(0, 0), (0, u32::MAX), (u32::MAX, 0)] {
+            assert_eq!(CanvasAnsi::new(width, height, Color::new(0, 0, 0), Color::new(255, 255, 255)).into_image(), "");
+        }
+    }
+
+    #[test]
+    fn ansi_odd_rows_stay_within_estimated_output_bytes() {
+        let mut canvas = CanvasAnsi::new(7, 3, Color::new(255, 254, 253), Color::new(252, 251, 250));
+        for y in 0..3 {
+            for x in 0..7 {
+                if (x + y) % 2 == 0 {
+                    canvas.draw_dark_pixel(x, y);
+                }
+            }
+        }
+        let capacity = canvas.output_capacity;
+        let output = canvas.into_image();
+        assert!(output.len() <= capacity);
+        assert_eq!(output.lines().count(), 2);
+        assert!(output.ends_with("\x1b[0m"));
     }
 }
