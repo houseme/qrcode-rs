@@ -85,6 +85,29 @@ fn push_escaped_attr_value(out: &mut String, value: &str) {
     }
 }
 
+fn escaped_attr_len(value: &str) -> Option<usize> {
+    value.chars().try_fold(0usize, |length, ch| {
+        let bytes = match ch {
+            '&' => 5,
+            '<' | '>' => 4,
+            '"' | '\'' => 6,
+            _ => ch.len_utf8(),
+        };
+        length.checked_add(bytes)
+    })
+}
+
+fn injected_attr_capacity(input_len: usize, attrs: &[(&str, &str)]) -> Option<usize> {
+    attrs
+        .iter()
+        .filter(|(key, _)| is_attr_name(key))
+        .try_fold(input_len, |capacity, (key, value)| {
+            let additional = key.len().checked_add(escaped_attr_len(value)?)?.checked_add(4)?;
+            capacity.checked_add(additional)
+        })
+        .filter(|&capacity| capacity <= isize::MAX as usize)
+}
+
 fn is_attr_name(name: &str) -> bool {
     let mut chars = name.chars();
     let Some(first) = chars.next() else {
@@ -182,7 +205,8 @@ pub fn inject_attributes(svg: &str, attrs: &[(&str, &str)]) -> String {
     let tag_start = svg.find("<svg").expect("invalid SVG: no <svg> element");
     let tag_end = opening_tag_end(svg, tag_start).expect("invalid SVG: no closing '>' in <svg>");
     let insert_pos = if svg.as_bytes()[tag_end - 1] == b'/' { tag_end - 1 } else { tag_end };
-    let mut result = String::with_capacity(svg.len() + attrs.iter().map(|(k, v)| k.len() + v.len() + 5).sum::<usize>());
+    let capacity = injected_attr_capacity(svg.len(), attrs).expect("SVG attribute output exceeds platform limits");
+    let mut result = String::with_capacity(capacity);
     result.push_str(&svg[..insert_pos]);
     for (key, value) in attrs {
         if !is_attr_name(key) {
@@ -568,6 +592,20 @@ mod tests {
         let position = start + input[start..].find('>').unwrap();
         let expected = format!("{} class=\"qr\"{}", &input[..position], &input[position..]);
         assert_eq!(inject_attributes(&input, &[("class", "qr")]), expected);
+    }
+
+    #[test]
+    fn injected_attributes_reserve_exact_escaped_bytes_and_skip_invalid_names() {
+        let ignored = "\"".repeat(4096);
+        let attrs = [("invalid name", ignored.as_str()), ("data-note", "&\"'<>💖")];
+        let expected = r#"<svg data-note="&amp;&quot;&apos;&lt;&gt;💖"/>"#;
+        assert_eq!(injected_attr_capacity(6, &attrs), Some(expected.len()));
+        assert_eq!(inject_attributes("<svg/>", &attrs), expected);
+        let invalid_attrs = [("invalid name", ignored.as_str())];
+        assert_eq!(injected_attr_capacity(6, &invalid_attrs), Some(6));
+        assert_eq!(inject_attributes("<svg/>", &invalid_attrs), "<svg/>");
+        assert_eq!(injected_attr_capacity(isize::MAX as usize, &[("class", "qr")]), None);
+        assert_eq!(injected_attr_capacity(usize::MAX, &[]), None);
     }
 
     #[test]

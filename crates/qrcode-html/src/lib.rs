@@ -95,6 +95,17 @@ fn escaped_attr_len(value: &str) -> Result<usize, RenderError> {
     })
 }
 
+fn injected_attr_capacity(input_len: usize, attrs: &[(&str, &str)]) -> Option<usize> {
+    attrs
+        .iter()
+        .filter(|(key, _)| is_attr_name(key))
+        .try_fold(input_len, |capacity, (key, value)| {
+            let additional = key.len().checked_add(escaped_attr_len(value).ok()?)?.checked_add(4)?;
+            capacity.checked_add(additional)
+        })
+        .filter(|&capacity| capacity <= isize::MAX as usize)
+}
+
 fn layout(width: u32, height: u32, dark: Color<'_>, light: Color<'_>) -> Result<(usize, usize, usize), RenderError> {
     let area = (width as usize).checked_mul(height as usize).ok_or(RenderError::OutputTooLarge)?;
     let color_bytes = if area == 0 { 0 } else { escaped_attr_len(dark.0)?.max(escaped_attr_len(light.0)?) };
@@ -266,7 +277,8 @@ pub fn inject_attributes(html: &str, attrs: &[(&str, &str)]) -> String {
         return html.to_owned();
     };
     let close = if html.as_bytes()[close - 1] == b'/' { close - 1 } else { close };
-    let mut result = String::with_capacity(html.len() + attrs.len() * 16);
+    let capacity = injected_attr_capacity(html.len(), attrs).expect("HTML attribute output exceeds platform limits");
+    let mut result = String::with_capacity(capacity);
     result.push_str(&html[..close]);
     for (key, value) in attrs {
         if !is_attr_name(key) {
@@ -461,6 +473,20 @@ mod tests {
             expected.push_str(&input[position..]);
             assert_eq!(super::inject_attributes(&input, &[("class", "qr")]), expected);
         }
+    }
+
+    #[test]
+    fn injected_attributes_reserve_exact_escaped_bytes_and_skip_invalid_names() {
+        let ignored = "\"".repeat(4096);
+        let attrs = [("invalid name", ignored.as_str()), ("data-note", "&\"'<>💖")];
+        let expected = r#"<div data-note="&amp;&quot;&#39;&lt;&gt;💖"/>"#;
+        assert_eq!(super::injected_attr_capacity(6, &attrs), Some(expected.len()));
+        assert_eq!(super::inject_attributes("<div/>", &attrs), expected);
+        let invalid_attrs = [("invalid name", ignored.as_str())];
+        assert_eq!(super::injected_attr_capacity(6, &invalid_attrs), Some(6));
+        assert_eq!(super::inject_attributes("<div/>", &invalid_attrs), "<div/>");
+        assert_eq!(super::injected_attr_capacity(isize::MAX as usize, &[("class", "qr")]), None);
+        assert_eq!(super::injected_attr_capacity(usize::MAX, &[]), None);
     }
 
     #[test]

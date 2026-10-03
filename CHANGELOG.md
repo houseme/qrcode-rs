@@ -77,6 +77,9 @@
 - Borrow the existing module grid for plugin rendering without postprocessors,
   retaining geometry checks and the existing error order; keep a mutable copy
   whenever postprocessors are registered.
+- Reserve SVG and HTML attribute output using only valid attribute names and
+  their escaped UTF-8 values, avoiding oversized reservations for ignored
+  attributes and growth during escaping.
 
 ### Fixed
 
