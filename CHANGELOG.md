@@ -32,6 +32,9 @@
 - Use exact linear-time mode/residue candidate buckets for larger parser
   segment sets, preserving bit count, segment count, and rightmost-start ties;
   retain the original optimizer for small or unusual coordinate inputs.
+- Render parallel ZIP batches in ordered chunks of at most 64 records,
+  releasing rendered payloads after each chunk while preserving global names,
+  ordered errors, and atomic output replacement.
 
 ### Fixed
 

@@ -17,6 +17,7 @@ use rayon::prelude::*;
 
 const MAX_PNG_SIDE: u64 = 65_535;
 const MAX_PNG_PIXELS: u64 = 268_435_456;
+const ZIP_PARALLEL_CHUNK_SIZE: usize = 64;
 static TEMP_OUTPUT_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Parser)]
@@ -282,11 +283,17 @@ fn render_batch_zip(cli: &Cli, quiet_zone: bool) -> Result<usize, Box<dyn Error>
 
     let written = if cli.parallel {
         let inputs = read_inputs(cli)?;
-        let rendered = render_many_parallel(&inputs, cli, quiet_zone)?;
-        for (index, bytes) in rendered.iter().enumerate() {
-            archive.write_file(&batch_file_name(index, cli.format), bytes)?;
+        let mut written = 0;
+        // Keep the parsed inputs for compatibility, but release each ordered
+        // block of rendered payloads before rendering the next block.
+        for chunk in inputs.chunks(ZIP_PARALLEL_CHUNK_SIZE) {
+            let rendered = render_many_parallel(chunk, cli, quiet_zone)?;
+            for bytes in rendered {
+                archive.write_file(&batch_file_name(written, cli.format), &bytes)?;
+                written += 1;
+            }
         }
-        rendered.len()
+        written
     } else if cli.batch_format == BatchFormat::Json {
         let inputs = read_inputs(cli)?;
         for (index, text) in inputs.iter().enumerate() {
@@ -1226,6 +1233,24 @@ mod tests {
 
         fs::remove_file(input).unwrap();
         fs::remove_file(output).unwrap();
+    }
+
+    #[test]
+    fn parallel_zip_reports_the_first_render_error_in_input_order() {
+        let input = temporary_path("ordered-zip-error-input");
+        let output = temporary_path("ordered-zip-error-output");
+        fs::write(&input, format!("{}\nvalid\n", "x".repeat(4_000))).unwrap();
+        let mut cli = cli_with_text(None);
+        cli.batch = Some(input.clone());
+        cli.output = Some(output.to_string_lossy().into_owned());
+        cli.format = Format::Svg;
+        cli.dark = "invalid-color".to_owned();
+        cli.parallel = true;
+        cli.batch_pack = BatchPack::Zip;
+        let error = render_batch(&cli, true).unwrap_err().to_string();
+        assert!(error.contains("data too long"), "wrong ordered error: {error}");
+        assert!(!output.exists());
+        fs::remove_file(input).unwrap();
     }
 
     #[test]

@@ -400,6 +400,63 @@ fn sequential_json_zip_contains_complete_ordered_payloads() {
 }
 
 #[test]
+fn parallel_zip_chunks_keep_global_order_and_complete_payloads() {
+    let dir = temporary_directory("zip_chunks");
+    let input = dir.join("records.txt");
+    let output = dir.join("output.zip");
+    let payloads = (0..131).map(|index| format!("payload-{index:04}")).collect::<Vec<_>>();
+    for format in ["lines", "json"] {
+        let content = if format == "json" { serde_json::to_string(&payloads).unwrap() } else { payloads.join("\n") };
+        std::fs::write(&input, content).unwrap();
+        let result = bin()
+            .args(["--batch"])
+            .arg(&input)
+            .args(["--batch-format", format, "--batch-pack", "zip", "--parallel", "-f", "svg", "-o"])
+            .arg(&output)
+            .output()
+            .unwrap();
+        assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+        let entries = stored_zip_entries(&std::fs::read(&output).unwrap());
+        assert_eq!(entries.len(), payloads.len());
+        for (index, ((name, actual), text)) in entries.iter().zip(&payloads).enumerate() {
+            let expected = qrcode_rs::QrCode::new(text)
+                .unwrap()
+                .render::<qrcode_rs::render::svg::Color>()
+                .dark_color(qrcode_rs::render::svg::Color("#000000"))
+                .light_color(qrcode_rs::render::svg::Color("#ffffff"))
+                .build();
+            assert_eq!(name, &format!("qr-{:04}.svg", index + 1));
+            assert_eq!(actual, expected.as_bytes());
+        }
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2);
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn parallel_zip_error_after_completed_chunks_preserves_existing_output() {
+    let dir = temporary_directory("zip_chunk_error");
+    let input = dir.join("records.txt");
+    let output = dir.join("output.zip");
+    let mut payloads = (0..130).map(|index| format!("payload-{index:04}")).collect::<Vec<_>>();
+    payloads.push("x".repeat(4_000));
+    std::fs::write(&input, payloads.join("\n")).unwrap();
+    std::fs::write(&output, b"existing output").unwrap();
+    let result = bin()
+        .args(["--batch"])
+        .arg(&input)
+        .args(["--batch-pack", "zip", "--parallel", "-f", "svg", "-o"])
+        .arg(&output)
+        .output()
+        .unwrap();
+    assert!(!result.status.success());
+    assert!(String::from_utf8_lossy(&result.stderr).contains("data too long"));
+    assert_eq!(std::fs::read(&output).unwrap(), b"existing output");
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn grid_batch_writes_contact_sheet_png() {
     let stamp = time::SystemTime::now().duration_since(time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
     let image = std::env::temp_dir().join(format!("qrencodes_cli_grid_batch_{stamp}.png"));
