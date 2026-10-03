@@ -5,6 +5,7 @@
 //! want stable file names, in-memory ZIP packaging, or PNG contact sheets
 //! without going through the CLI.
 
+use alloc::borrow::Cow;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -77,6 +78,8 @@ impl<I> QrBatchBuilder<I> {
     }
 
     /// Sets the first numeric suffix used in generated file names.
+    ///
+    /// Suffixes continue beyond `usize::MAX` without wrapping or repeating.
     #[must_use]
     pub const fn start_index(mut self, start_index: usize) -> Self {
         self.start_index = start_index;
@@ -96,7 +99,7 @@ impl<I> QrBatchBuilder<I> {
         let Self { inputs, ec_level, file_prefix, file_extension, start_index } = self;
         let mut entries = Vec::new();
         for (index, input) in inputs.into_iter().enumerate() {
-            let name = batch_file_name(&file_prefix, start_index + index, &file_extension);
+            let name = batch_file_name(&file_prefix, start_index as u128 + index as u128, &file_extension);
             let code = QrCode::with_error_correction_level(input, ec_level)?;
             entries.push(BatchEntry { name, data: code });
         }
@@ -117,7 +120,7 @@ impl<I> QrBatchBuilder<I> {
         let Self { inputs, ec_level, file_prefix, file_extension, start_index } = self;
         let mut entries = Vec::new();
         for (index, input) in inputs.into_iter().enumerate() {
-            let name = batch_file_name(&file_prefix, start_index + index, &file_extension);
+            let name = batch_file_name(&file_prefix, start_index as u128 + index as u128, &file_extension);
             let image = QrCode::with_error_correction_level(input, ec_level)?.render::<P>().build();
             entries.push(BatchEntry { name, data: image });
         }
@@ -144,7 +147,7 @@ impl<I> QrBatchBuilder<I> {
         let mut entries = Vec::new();
         for (index, input) in inputs.into_iter().enumerate() {
             let code = QrCode::with_error_correction_level(input, ec_level).map_err(BatchRenderError::Encode)?;
-            let name = batch_file_name(&file_prefix, start_index + index, &file_extension);
+            let name = batch_file_name(&file_prefix, start_index as u128 + index as u128, &file_extension);
             let bytes = render(&code, index).map_err(BatchRenderError::Render)?;
             entries.push(BatchEntry { name, data: bytes });
         }
@@ -272,7 +275,9 @@ impl BatchOutput<crate::render::image::RgbaImage> {
     /// # Errors
     ///
     /// Returns [`BatchPackError::EmptyBatch`] for an empty batch,
-    /// [`BatchPackError::GridTooLarge`] if the sheet dimensions overflow, or
+    /// [`BatchPackError::GridTooLarge`] if the sheet dimensions overflow,
+    /// exceed 65,535 pixels per side or 268,435,456 total pixels, or its pixel
+    /// buffer cannot be allocated, or
     /// [`BatchPackError::Image`] if PNG encoding fails.
     pub fn to_png_grid(&self, options: BatchGridOptions) -> Result<Vec<u8>, BatchPackError> {
         encode_png_grid(self.entries.iter().map(BatchEntry::data), options)
@@ -377,7 +382,7 @@ pub enum BatchPackError {
         /// Entry count.
         count: usize,
     },
-    /// The PNG contact sheet dimensions overflowed.
+    /// The PNG contact sheet exceeds its dimension or allocation budget.
     #[cfg(feature = "image")]
     GridTooLarge,
     /// PNG encoding failed.
@@ -431,7 +436,7 @@ impl From<crate::render::image::image::ImageError> for BatchPackError {
     }
 }
 
-fn batch_file_name(prefix: &str, index: usize, extension: &str) -> String {
+fn batch_file_name(prefix: &str, index: u128, extension: &str) -> String {
     format!("{prefix}-{index:04}.{extension}")
 }
 
@@ -480,7 +485,7 @@ impl ZipBytesWriter {
 
         self.write_u32(0x0403_4b50);
         self.write_u16(20);
-        self.write_u16(0);
+        self.write_u16(1 << 11); // Entry names are encoded as UTF-8.
         self.write_u16(compression_method);
         self.write_u16(0);
         self.write_u16(0);
@@ -521,7 +526,7 @@ impl ZipBytesWriter {
             self.write_u32(0x0201_4b50);
             self.write_u16(20);
             self.write_u16(20);
-            self.write_u16(0);
+            self.write_u16(1 << 11); // Match the local header's UTF-8 flag.
             self.write_u16(compression_method);
             self.write_u16(0);
             self.write_u16(0);
@@ -568,16 +573,16 @@ impl ZipBytesWriter {
     }
 }
 
-fn compress_zip_payload(bytes: &[u8], compression: ZipCompression) -> Result<(u16, Vec<u8>), BatchPackError> {
+fn compress_zip_payload(bytes: &[u8], compression: ZipCompression) -> Result<(u16, Cow<'_, [u8]>), BatchPackError> {
     match compression {
-        ZipCompression::Stored => Ok((0, bytes.to_vec())),
+        ZipCompression::Stored => Ok((0, Cow::Borrowed(bytes))),
         #[cfg(feature = "batch-zip-deflate")]
         ZipCompression::Deflated => {
             use std::io::Write;
 
             let mut encoder = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
             encoder.write_all(bytes)?;
-            Ok((8, encoder.finish()?))
+            Ok((8, Cow::Owned(encoder.finish()?)))
         }
     }
 }
@@ -613,7 +618,14 @@ fn encode_png_grid<'a>(
     let rows = u32::try_from(rows_usize).map_err(|_| BatchPackError::GridTooLarge)?;
     let sheet_width = cell_width.checked_mul(columns).ok_or(BatchPackError::GridTooLarge)?;
     let sheet_height = cell_height.checked_mul(rows).ok_or(BatchPackError::GridTooLarge)?;
-    let mut sheet = RgbaImage::from_pixel(sheet_width, sheet_height, Rgba(options.background));
+    let buffer_len = grid_buffer_len(sheet_width, sheet_height)?;
+    let mut pixels = Vec::new();
+    pixels.try_reserve_exact(buffer_len).map_err(|_| BatchPackError::GridTooLarge)?;
+    pixels.resize(buffer_len, 0);
+    let mut sheet = RgbaImage::from_raw(sheet_width, sheet_height, pixels).ok_or(BatchPackError::GridTooLarge)?;
+    for pixel in sheet.pixels_mut() {
+        *pixel = Rgba(options.background);
+    }
 
     for (index, &image) in images.iter().enumerate() {
         let col = u32::try_from(index % columns_usize).map_err(|_| BatchPackError::GridTooLarge)?;
@@ -624,6 +636,23 @@ fn encode_png_grid<'a>(
     }
 
     encode_to_format(&DynamicImage::ImageRgba8(sheet), ImageFormat::Png).map_err(Into::into)
+}
+
+#[cfg(feature = "image")]
+fn grid_buffer_len(width: u32, height: u32) -> Result<usize, BatchPackError> {
+    const MAX_GRID_SIDE: u32 = 65_535;
+    const MAX_GRID_PIXELS: u64 = 268_435_456;
+
+    let pixels = u64::from(width) * u64::from(height);
+    if width == 0 || height == 0 || width > MAX_GRID_SIDE || height > MAX_GRID_SIDE || pixels > MAX_GRID_PIXELS {
+        return Err(BatchPackError::GridTooLarge);
+    }
+    let bytes = pixels.checked_mul(4).ok_or(BatchPackError::GridTooLarge)?;
+    let len = usize::try_from(bytes).map_err(|_| BatchPackError::GridTooLarge)?;
+    if len > isize::MAX as usize {
+        return Err(BatchPackError::GridTooLarge);
+    }
+    Ok(len)
 }
 
 #[cfg(feature = "image")]
@@ -657,6 +686,20 @@ mod tests {
     }
 
     #[test]
+    fn builder_indices_continue_past_usize_max_in_all_output_paths() {
+        let encoded = QrBatchBuilder::new(["alpha", "beta"]).start_index(usize::MAX).encode().unwrap();
+        let rendered = QrBatchBuilder::new(["alpha", "beta"]).start_index(usize::MAX).render::<char>().unwrap();
+        let bytes = QrBatchBuilder::new(["alpha", "beta"])
+            .start_index(usize::MAX)
+            .render_bytes(|_, _| Ok::<_, core::convert::Infallible>(Vec::new()))
+            .unwrap();
+        let expected = format!("qr-{}.png", usize::MAX as u128 + 1);
+        assert_eq!(encoded.entries()[1].name(), expected);
+        assert_eq!(rendered.entries()[1].name(), expected);
+        assert_eq!(bytes.entries()[1].name(), expected);
+    }
+
+    #[test]
     fn byte_batch_writes_stored_zip_archive() {
         let files = BatchOutput::from_entries([
             BatchEntry::new("qr-0001.svg", b"<svg>alpha</svg>".to_vec()),
@@ -668,6 +711,30 @@ mod tests {
         assert!(archive.starts_with(b"PK\x03\x04"));
         assert!(archive.windows(b"qr-0001.svg".len()).any(|window| window == b"qr-0001.svg"));
         assert!(archive.windows(b"<svg>beta</svg>".len()).any(|window| window == b"<svg>beta</svg>"));
+    }
+
+    #[test]
+    fn stored_zip_payload_borrows_the_original_bytes() {
+        let payload = b"stored payload";
+        let (_, bytes) = compress_zip_payload(payload, ZipCompression::Stored).unwrap();
+        assert!(matches!(bytes, Cow::Borrowed(_)));
+        assert_eq!(bytes.as_ptr(), payload.as_ptr());
+    }
+
+    #[test]
+    fn zip_marks_unicode_names_as_utf8_in_both_headers() {
+        let name = "二维码.svg";
+        let payload = b"<svg>alpha</svg>";
+        let files = BatchOutput::from_entries([BatchEntry::new(name, payload.to_vec())]);
+        let archive = files.to_zip().unwrap();
+        let central_offset = 30 + name.len() + payload.len();
+
+        assert_eq!(u16::from_le_bytes(archive[6..8].try_into().unwrap()), 1 << 11);
+        assert_eq!(&archive[30..30 + name.len()], name.as_bytes());
+        assert_eq!(&archive[central_offset..central_offset + 4], b"PK\x01\x02");
+        assert_eq!(u16::from_le_bytes(archive[central_offset + 8..central_offset + 10].try_into().unwrap()), 1 << 11);
+        assert_eq!(&archive[central_offset + 46..central_offset + 46 + name.len()], name.as_bytes());
+        assert_eq!(&archive[30 + name.len()..central_offset], payload);
     }
 
     #[cfg(feature = "batch-zip-deflate")]
@@ -702,5 +769,38 @@ mod tests {
         let image = image::load_from_memory(&png).unwrap();
 
         assert!(image.width() > image.height() / 2);
+    }
+
+    #[cfg(feature = "image")]
+    #[test]
+    fn png_grid_rejects_excessive_dimensions_before_allocation() {
+        use crate::render::image::{Rgba, RgbaImage};
+
+        let image = RgbaImage::from_pixel(1, 1, Rgba([0, 0, 0, 255]));
+        let files = BatchOutput::from_entries([BatchEntry::new("qr.png", image)]);
+        assert!(matches!(
+            files.to_png_grid(BatchGridOptions::default().columns(65_536)),
+            Err(BatchPackError::GridTooLarge)
+        ));
+        assert!(matches!(grid_buffer_len(16_385, 16_385), Err(BatchPackError::GridTooLarge)));
+        assert!(matches!(grid_buffer_len(0, 1), Err(BatchPackError::GridTooLarge)));
+        assert_eq!(grid_buffer_len(16_384, 16_384).unwrap(), 1_073_741_824);
+    }
+
+    #[cfg(feature = "image")]
+    #[test]
+    fn png_grid_keeps_pixels_and_fills_unused_cells() {
+        use crate::render::image::{Rgba, RgbaImage, image};
+
+        let first = RgbaImage::from_pixel(1, 1, Rgba([1, 2, 3, 255]));
+        let second = RgbaImage::from_pixel(1, 1, Rgba([4, 5, 6, 255]));
+        let files = BatchOutput::from_entries([BatchEntry::new("a.png", first), BatchEntry::new("b.png", second)]);
+        let options = BatchGridOptions::default().columns(3).background([7, 8, 9, 255]);
+        let png = files.to_png_grid(options).unwrap();
+        let decoded = image::load_from_memory(&png).unwrap().to_rgba8();
+        assert_eq!(decoded.dimensions(), (3, 1));
+        assert_eq!(decoded.get_pixel(0, 0).0, [1, 2, 3, 255]);
+        assert_eq!(decoded.get_pixel(1, 0).0, [4, 5, 6, 255]);
+        assert_eq!(decoded.get_pixel(2, 0).0, [7, 8, 9, 255]);
     }
 }

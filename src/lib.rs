@@ -1619,6 +1619,8 @@ impl<'a> BatchRender<'a> {
     }
 
     /// Sets the first numeric index used in generated names.
+    ///
+    /// Suffixes continue beyond `usize::MAX` without wrapping or repeating.
     #[must_use]
     pub const fn start_index(mut self, start_index: usize) -> Self {
         self.start_index = start_index;
@@ -1671,7 +1673,7 @@ impl<'a> BatchRender<'a> {
     }
 
     fn name_for(&self, offset: usize) -> String {
-        let index = self.start_index.saturating_add(offset);
+        let index = self.start_index as u128 + offset as u128;
         let mut name = format!("{}{:0width$}", self.prefix, index, width = self.index_width);
         let extension = self.extension.trim_start_matches('.');
         if !extension.is_empty() {
@@ -2340,6 +2342,7 @@ mod api_tests {
     };
     use alloc::{
         boxed::Box,
+        format,
         string::{String, ToString},
         vec,
         vec::Vec,
@@ -2978,6 +2981,16 @@ mod api_tests {
         assert_eq!(rendered[0].name(), "qr-1");
         let (_, image) = rendered.into_iter().next().unwrap().into_parts();
         assert!(!image.is_empty());
+    }
+
+    #[test]
+    fn batch_render_indices_continue_past_usize_max_without_duplicates() {
+        let codes = QrCode::batch(["alpha", "beta", "gamma"], crate::EcLevel::M).unwrap();
+        let rendered = QrCode::batch_render(&codes).start_index(usize::MAX).extension("txt").build::<char>();
+        for (offset, entry) in rendered.iter().enumerate() {
+            let index = usize::MAX as u128 + offset as u128;
+            assert_eq!(entry.name(), format!("qr-{index}.txt"));
+        }
     }
 
     #[cfg(feature = "parallel")]
