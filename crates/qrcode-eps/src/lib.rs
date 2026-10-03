@@ -33,6 +33,13 @@ use qrcode_core::Color as ModuleColor;
 use qrcode_render::colors::{CmykColor as SharedCmykColor, ColorSpace, RgbColor};
 use qrcode_render::{Canvas as RenderCanvas, Pixel, StyledPixel};
 
+const MAX_STREAM_PREALLOC: usize = 8 * 1024 * 1024;
+
+fn stream_capacity(width: u32, height: u32) -> usize {
+    // Scaled vector output can cover many pixels with a single rectangle.
+    (width as usize).saturating_mul(height as usize).saturating_mul(20).min(MAX_STREAM_PREALLOC)
+}
+
 /// An EPS color (`[R, G, B]`).
 ///
 /// Each value must be in the range of 0.0 to 1.0.
@@ -128,9 +135,7 @@ impl RenderCanvas for Canvas {
             bgg = light_pixel.0[1],
             bgb = light_pixel.0[2],
         );
-        // Preallocate for the worst-case dark-module rectfill lines (~20 B each),
-        // matching the per-module heuristic used by the HTML renderer.
-        eps.reserve((width as usize) * (height as usize) * 20);
+        eps.reserve(stream_capacity(width, height));
         Self { eps, height }
     }
 
@@ -139,7 +144,7 @@ impl RenderCanvas for Canvas {
     }
 
     fn draw_dark_rect(&mut self, left: u32, top: u32, width: u32, height: u32) {
-        let bottom = self.height - top;
+        let bottom = self.height - top - height;
         writeln!(self.eps, "{left} {bottom} {width} {height} rectfill").unwrap();
     }
 
@@ -177,7 +182,7 @@ impl RenderCanvas for CmykCanvas {
             by = light_pixel.0[2],
             bk = light_pixel.0[3],
         );
-        eps.reserve((width as usize) * (height as usize) * 20);
+        eps.reserve(stream_capacity(width, height));
         Self { eps, height }
     }
 
@@ -186,7 +191,7 @@ impl RenderCanvas for CmykCanvas {
     }
 
     fn draw_dark_rect(&mut self, left: u32, top: u32, width: u32, height: u32) {
-        let bottom = self.height - top;
+        let bottom = self.height - top - height;
         writeln!(self.eps, "{left} {bottom} {width} {height} rectfill").unwrap();
     }
 
@@ -198,8 +203,8 @@ impl RenderCanvas for CmykCanvas {
 
 #[cfg(test)]
 mod tests {
-    use super::{CmykColor, Color};
-    use qrcode_render::{Renderer, StyledPixel};
+    use super::{Canvas, CmykCanvas, CmykColor, Color, MAX_STREAM_PREALLOC, stream_capacity};
+    use qrcode_render::{Canvas as RenderCanvas, Renderer, StyledPixel};
 
     #[test]
     fn eps_renderer_outputs_bounding_box_and_rects() {
@@ -211,7 +216,8 @@ mod tests {
 
         assert!(eps.starts_with("%!PS-Adobe-3.0 EPSF-3.0"));
         assert!(eps.contains("%%BoundingBox: 0 0 2 2"));
-        assert!(eps.contains("0 2 1 1 rectfill"));
+        assert!(eps.contains("0 1 1 1 rectfill"));
+        assert!(eps.contains("1 0 1 1 rectfill"));
         assert!(eps.ends_with("%%EOF"));
     }
 
@@ -239,5 +245,33 @@ mod tests {
         assert!(eps.contains("0 0 0 0 setcmykcolor"));
         assert!(eps.contains("1 0 0 0.25 setcmykcolor"));
         assert!(!eps.contains("setrgbcolor"));
+    }
+
+    #[test]
+    fn eps_rgb_rectangles_stay_inside_vertical_bounds() {
+        let mut canvas = Canvas::new(8, 12, Color([0.0; 3]), Color([1.0; 3]));
+        canvas.draw_dark_rect(1, 0, 4, 3);
+        canvas.draw_dark_rect(2, 10, 3, 2);
+        canvas.draw_dark_pixel(0, 11);
+
+        assert!(canvas.into_image().ends_with("1 9 4 3 rectfill\n2 0 3 2 rectfill\n0 0 1 1 rectfill\n%%EOF"));
+    }
+
+    #[test]
+    fn eps_cmyk_rectangles_stay_inside_vertical_bounds() {
+        let mut canvas = CmykCanvas::new(8, 12, CmykColor([0.0, 0.0, 0.0, 1.0]), CmykColor([0.0; 4]));
+        canvas.draw_dark_rect(1, 0, 4, 3);
+        canvas.draw_dark_rect(2, 10, 3, 2);
+        canvas.draw_dark_pixel(0, 11);
+
+        assert!(canvas.into_image().ends_with("1 9 4 3 rectfill\n2 0 3 2 rectfill\n0 0 1 1 rectfill\n%%EOF"));
+    }
+
+    #[test]
+    fn eps_stream_preallocation_is_bounded() {
+        assert_eq!(stream_capacity(u32::MAX, u32::MAX), MAX_STREAM_PREALLOC);
+        assert_eq!(stream_capacity(10_000, 10_000), MAX_STREAM_PREALLOC);
+        assert_eq!(stream_capacity(2, 3), 120);
+        assert_eq!(stream_capacity(0, u32::MAX), 0);
     }
 }

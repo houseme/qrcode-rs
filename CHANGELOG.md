@@ -26,6 +26,8 @@
 - Parse hexadecimal colors without UTF-8 boundary panics; make fallible
   renderer builders report empty sources and overflowing dimensions, and apply
   template module dimensions consistently.
+- Correct RGB and CMYK EPS rectangle coordinates and bound vector-stream
+  preallocation independently of oversized pixel dimensions.
 
 ### Added
 
