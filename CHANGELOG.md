@@ -29,6 +29,9 @@
 - Reuse a single Reed-Solomon scratch buffer and write error-correction bytes
   directly into the final interleaved output instead of allocating vectors for
   every block.
+- Use exact linear-time mode/residue candidate buckets for larger parser
+  segment sets, preserving bit count, segment count, and rightmost-start ties;
+  retain the original optimizer for small or unusual coordinate inputs.
 
 ### Fixed
 
@@ -71,6 +74,9 @@
   benchmarks.
 - Add isolated Reed-Solomon remainder and codeword-construction benchmarks
   across normal and Micro QR variants.
+- Add near-limit alternating-mode optimization and rejected-payload
+  benchmarks, with the original dynamic program retained as a correctness
+  oracle.
 
 ## [2.1.1] - 2026-09-16
 

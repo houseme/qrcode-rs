@@ -156,6 +156,8 @@ fn bench_segmentation(c: &mut Criterion) {
         let segments = Parser::new(&payload).collect::<Vec<_>>();
         (length, payload, segments)
     });
+    let over_capacity = b"A1".repeat(3544);
+    let worst_case_segments = Parser::new(&over_capacity).collect::<Vec<_>>();
 
     let mut segmentation = c.benchmark_group("segmentation");
     segmentation.bench_function("single_numeric_1024", |b| {
@@ -166,6 +168,9 @@ fn bench_segmentation(c: &mut Criterion) {
             b.iter(|| optimize_segments(std::hint::black_box(segments), Version::Normal(10)))
         });
     }
+    segmentation.bench_function("alternating_7088", |b| {
+        b.iter(|| optimize_segments(std::hint::black_box(&worst_case_segments), Version::Normal(10)))
+    });
     segmentation.finish();
 
     let mut automatic = c.benchmark_group("auto_encoding");
@@ -177,6 +182,13 @@ fn bench_segmentation(c: &mut Criterion) {
             b.iter(|| qrcode_rs::bits::encode_auto(std::hint::black_box(payload), EcLevel::L).unwrap())
         });
     }
+    automatic.bench_function("alternating_7088_rejected", |b| {
+        b.iter(|| {
+            qrcode_rs::bits::encode_auto(std::hint::black_box(&over_capacity), EcLevel::L)
+                .err()
+                .expect("the alternating payload exceeds the largest normal QR capacity")
+        })
+    });
     automatic.finish();
 }
 

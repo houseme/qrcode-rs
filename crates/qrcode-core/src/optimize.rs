@@ -20,6 +20,7 @@ use alloc::{
 };
 
 use crate::types::{Mode, Version};
+use core::cmp::Reverse;
 use core::marker::PhantomData;
 use core::slice::Iter;
 
@@ -322,8 +323,177 @@ pub fn total_encoded_len(segments: &[Segment], version: Version) -> usize {
 ///
 /// Segment boundaries are preserved; adjacent segments may be merged into the
 /// smallest common data mode that can encode the merged range.
+///
+/// Large inputs use an exact linear-time dynamic program with a fixed number of
+/// candidate buckets. Small inputs and exceptional coordinate ranges use the
+/// quadratic reference algorithm.
 #[must_use]
 pub fn optimize_segments(segments: &[Segment], version: Version) -> Vec<Segment> {
+    if segments.len() <= 32 || !supports_linear_costs(segments, version) {
+        optimize_segments_quadratic(segments, version)
+    } else {
+        optimize_segments_linear(segments, version)
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ModeCost {
+    mode: Mode,
+    period: usize,
+    bits_per_period: i128,
+    bucket_offset: usize,
+}
+
+const MODE_COSTS: [ModeCost; 4] = [
+    ModeCost { mode: Mode::Numeric, period: 3, bits_per_period: 10, bucket_offset: 0 },
+    ModeCost { mode: Mode::Alphanumeric, period: 2, bits_per_period: 11, bucket_offset: 3 },
+    ModeCost { mode: Mode::Byte, period: 1, bits_per_period: 8, bucket_offset: 5 },
+    ModeCost { mode: Mode::Kanji, period: 2, bits_per_period: 13, bucket_offset: 6 },
+];
+
+fn mode_index(mode: Mode) -> usize {
+    match mode {
+        Mode::Numeric => 0,
+        Mode::Alphanumeric => 1,
+        Mode::Byte => 2,
+        Mode::Kanji => 3,
+    }
+}
+
+fn supports_linear_costs(segments: &[Segment], version: Version) -> bool {
+    // Public segments may have arbitrary coordinates. Keep reference behavior
+    // when suffix lengths or the original cost arithmetic could overflow.
+    let mut min_begin = usize::MAX;
+    let mut max_begin = 0;
+    let mut max_end = 0;
+    for segment in segments {
+        min_begin = min_begin.min(segment.begin);
+        max_begin = max_begin.max(segment.begin);
+        max_end = max_end.max(segment.end);
+        if segment.end < max_begin {
+            return false;
+        }
+    }
+    let max_header = MODE_COSTS
+        .iter()
+        .map(|cost| version.mode_bits_count() + cost.mode.length_bits_count(version))
+        .max()
+        .unwrap_or(0);
+    (max_end - min_begin).checked_mul(13).and_then(|bits| bits.checked_add(max_header)).is_some()
+}
+
+fn prefer_start(
+    candidate: usize,
+    current: usize,
+    cost: ModeCost,
+    segments: &[Segment],
+    best_bits: &[usize],
+    best_count: &[usize],
+) -> bool {
+    if current == usize::MAX {
+        return true;
+    }
+    // For equal begin residues, the endpoint and rounding terms are shared.
+    // Signed wide keys also handle large absolute offsets without underflow.
+    let key = |start: usize| {
+        (
+            best_bits[start] as i128 - (segments[start].begin / cost.period) as i128 * cost.bits_per_period,
+            best_count[start],
+            Reverse(start),
+        )
+    };
+    key(candidate) < key(current)
+}
+
+fn optimize_segments_linear(segments: &[Segment], version: Version) -> Vec<Segment> {
+    let len = segments.len();
+    if len <= 1 {
+        return segments.to_vec();
+    }
+    let mut best_bits = vec![usize::MAX; len + 1];
+    let mut best_count = vec![usize::MAX; len + 1];
+    let mut previous = vec![0_usize; len + 1];
+    let mut previous_mode = vec![Mode::Byte; len + 1];
+    best_bits[0] = 0;
+    best_count[0] = 0;
+
+    // Each suffix-mode group retains its best start under every future mode's
+    // cost, since the best Numeric start need not stay best after a Byte join.
+    let mut groups = [[usize::MAX; 8]; 4];
+    for end in 1..=len {
+        let incoming = segments[end - 1].mode;
+        // The join is idempotent, so destination groups will not move again
+        // when encountered later in this same pass.
+        for (source_index, source_cost) in MODE_COSTS.iter().enumerate() {
+            let destination = source_cost.mode.max(incoming);
+            if destination == source_cost.mode {
+                continue;
+            }
+            let migrating = core::mem::replace(&mut groups[source_index], [usize::MAX; 8]);
+            let destination_group = &mut groups[mode_index(destination)];
+            for cost in MODE_COSTS {
+                for bucket in cost.bucket_offset..cost.bucket_offset + cost.period {
+                    let start = migrating[bucket];
+                    if start != usize::MAX
+                        && prefer_start(start, destination_group[bucket], cost, segments, &best_bits, &best_count)
+                    {
+                        destination_group[bucket] = start;
+                    }
+                }
+            }
+        }
+
+        let start = end - 1;
+        if best_bits[start] != usize::MAX {
+            for cost in MODE_COSTS {
+                let bucket = cost.bucket_offset + segments[start].begin % cost.period;
+                let group = &mut groups[mode_index(incoming)];
+                if prefer_start(start, group[bucket], cost, segments, &best_bits, &best_count) {
+                    group[bucket] = start;
+                }
+            }
+        }
+
+        for (group_index, cost) in MODE_COSTS.iter().enumerate() {
+            for &start in &groups[group_index][cost.bucket_offset..cost.bucket_offset + cost.period] {
+                if start == usize::MAX {
+                    continue;
+                }
+                let merged = Segment { mode: cost.mode, begin: segments[start].begin, end: segments[end - 1].end };
+                let Some(candidate_bits) = best_bits[start].checked_add(merged.encoded_len(version)) else {
+                    continue;
+                };
+                let candidate_count = best_count[start] + 1;
+                // An exact tie keeps the rightmost start, matching the
+                // reference algorithm's backwards candidate scan.
+                if (candidate_bits, candidate_count, Reverse(start))
+                    < (best_bits[end], best_count[end], Reverse(previous[end]))
+                {
+                    best_bits[end] = candidate_bits;
+                    best_count[end] = candidate_count;
+                    previous[end] = start;
+                    previous_mode[end] = cost.mode;
+                }
+            }
+        }
+    }
+
+    let mut cursor = len;
+    let mut optimized = Vec::with_capacity(best_count[len]);
+    while cursor > 0 {
+        let start = previous[cursor];
+        optimized.push(Segment {
+            mode: previous_mode[cursor],
+            begin: segments[start].begin,
+            end: segments[cursor - 1].end,
+        });
+        cursor = start;
+    }
+    optimized.reverse();
+    optimized
+}
+
+fn optimize_segments_quadratic(segments: &[Segment], version: Version) -> Vec<Segment> {
     let len = segments.len();
     if len <= 1 {
         return segments.to_vec();
@@ -374,7 +544,10 @@ pub fn optimize_segments(segments: &[Segment], version: Version) -> Vec<Segment>
 
 #[cfg(test)]
 mod optimize_tests {
-    use crate::optimize::{Optimizer, Segment, optimize_segments, total_encoded_len};
+    use crate::optimize::{
+        Optimizer, Parser, Segment, optimize_segments, optimize_segments_linear, optimize_segments_quadratic,
+        supports_linear_costs, total_encoded_len,
+    };
     use crate::types::{Mode, Version};
 
     fn test_optimization_result(given: &[Segment], expected: &[Segment], version: Version) {
@@ -521,6 +694,156 @@ mod optimize_tests {
             total_encoded_len(&optimized, Version::Normal(1))
                 < total_encoded_len(&[Segment { mode: Mode::Alphanumeric, begin: 0, end: 9 }], Version::Normal(1))
         );
+    }
+
+    const COST_VERSIONS: [Version; 7] = [
+        Version::Normal(1),
+        Version::Normal(10),
+        Version::Normal(27),
+        Version::Micro(1),
+        Version::Micro(2),
+        Version::Micro(3),
+        Version::Micro(4),
+    ];
+    const MODES: [Mode; 4] = [Mode::Numeric, Mode::Alphanumeric, Mode::Byte, Mode::Kanji];
+
+    fn assert_matches_quadratic(segments: &[Segment], version: Version) {
+        let expected = optimize_segments_quadratic(segments, version);
+        assert_eq!(
+            optimize_segments_linear(segments, version),
+            expected,
+            "linear plan: version {version:?}, segments {segments:?}"
+        );
+        assert_eq!(
+            optimize_segments(segments, version),
+            expected,
+            "hybrid plan: version {version:?}, segments {segments:?}"
+        );
+    }
+
+    #[test]
+    fn linear_plan_matches_quadratic_for_exhaustive_modes_and_length_residues() {
+        for len in 0..=6 {
+            for mut encoded_modes in 0..4_usize.pow(len) {
+                let modes = (0..len)
+                    .map(|_| {
+                        let mode = MODES[encoded_modes % 4];
+                        encoded_modes /= 4;
+                        mode
+                    })
+                    .collect::<Vec<_>>();
+                for length_pattern in 0..6 {
+                    let mut begin = 17;
+                    let segments = modes
+                        .iter()
+                        .enumerate()
+                        .map(|(index, &mode)| {
+                            let length = match length_pattern {
+                                0..=3 => length_pattern,
+                                4 => 7,
+                                _ => index % 6 + 1,
+                            };
+                            let segment = Segment { mode, begin, end: begin + length };
+                            begin = segment.end;
+                            segment
+                        })
+                        .collect::<Vec<_>>();
+                    for version in COST_VERSIONS {
+                        assert_matches_quadratic(&segments, version);
+                    }
+                }
+            }
+        }
+    }
+
+    fn next_random(seed: &mut u64) -> u64 {
+        *seed ^= *seed << 13;
+        *seed ^= *seed >> 7;
+        *seed ^= *seed << 17;
+        *seed
+    }
+
+    #[test]
+    fn linear_plan_matches_quadratic_for_long_random_sequences_and_shifted_offsets() {
+        let versions = [
+            Version::Normal(1),
+            Version::Normal(9),
+            Version::Normal(10),
+            Version::Normal(26),
+            Version::Normal(27),
+            Version::Normal(40),
+            Version::Micro(1),
+            Version::Micro(2),
+            Version::Micro(3),
+            Version::Micro(4),
+        ];
+        let mut seed = 2_712_u64;
+        for case in 0..512 {
+            let len = next_random(&mut seed) as usize % 224 + 33;
+            let mut begin = if case % 8 == 0 { usize::MAX - 65_536 } else { next_random(&mut seed) as usize % 1024 };
+            let segments = (0..len)
+                .map(|_| {
+                    let mode = MODES[next_random(&mut seed) as usize % 4];
+                    let length = next_random(&mut seed) as usize % 71;
+                    let gap = next_random(&mut seed) as usize % 5;
+                    let segment = Segment { mode, begin, end: begin + length };
+                    begin = segment.end + gap;
+                    segment
+                })
+                .collect::<Vec<_>>();
+            assert!(supports_linear_costs(&segments, versions[case % versions.len()]));
+            assert_matches_quadratic(&segments, versions[case % versions.len()]);
+        }
+    }
+
+    #[test]
+    fn linear_plan_matches_quadratic_at_the_hybrid_boundary() {
+        for len in [31, 32, 33, 64, 256, 1024] {
+            let data = (0..len).map(|index| if index % 2 == 0 { b'A' } else { b'1' }).collect::<Vec<_>>();
+            let segments = Parser::new(&data).collect::<Vec<_>>();
+            for version in COST_VERSIONS {
+                assert_matches_quadratic(&segments, version);
+            }
+        }
+    }
+
+    #[test]
+    fn linear_plan_keeps_the_rightmost_start_when_bits_and_segment_count_tie() {
+        let given = [
+            Segment { mode: Mode::Numeric, begin: 0, end: 7 },
+            Segment { mode: Mode::Alphanumeric, begin: 7, end: 8 },
+            Segment { mode: Mode::Numeric, begin: 8, end: 15 },
+        ];
+        let expected = vec![
+            Segment { mode: Mode::Alphanumeric, begin: 0, end: 8 },
+            Segment { mode: Mode::Numeric, begin: 8, end: 15 },
+        ];
+        let optimized = optimize_segments_linear(&given, Version::Normal(1));
+        assert_eq!(total_encoded_len(&optimized, Version::Normal(1)), 95);
+        assert_eq!(optimized, expected);
+        assert_matches_quadratic(&given, Version::Normal(1));
+    }
+
+    #[test]
+    fn exceptional_coordinates_preserve_the_quadratic_fallback() {
+        for segments in [
+            vec![Segment { mode: Mode::Byte, begin: 2, end: 1 }; 33],
+            (0..33)
+                .map(|index| {
+                    let begin = if index == 0 { 0 } else { usize::MAX / 4 };
+                    Segment { mode: Mode::Byte, begin, end: begin }
+                })
+                .collect::<Vec<_>>(),
+        ] {
+            assert!(!supports_linear_costs(&segments, Version::Normal(1)));
+            let actual = std::panic::catch_unwind(|| optimize_segments(&segments, Version::Normal(1)));
+            let expected = std::panic::catch_unwind(|| optimize_segments_quadratic(&segments, Version::Normal(1)));
+            match (actual, expected) {
+                (Ok(actual), Ok(expected)) => assert_eq!(actual, expected),
+                (Err(_), Err(_)) => {}
+                _ => panic!("the hybrid path changed the exceptional-coordinate behavior"),
+            }
+        }
     }
 }
 
