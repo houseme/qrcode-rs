@@ -62,6 +62,9 @@
 - Release sequential JSON directory inputs and successfully published parallel
   outputs as they are consumed, retaining global parallel scheduling and
   existing validation, error and publication ordering.
+- Pack byte-mode payloads directly at a fixed bit offset, using a contiguous
+  copy for aligned data and adjacent-byte shifts for unaligned data; preserve
+  headers, errors and metadata, and add isolated scalar benchmark controls.
 
 ### Fixed
 

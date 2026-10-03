@@ -711,8 +711,28 @@ impl Bits {
     /// Returns `Err(QrError::DataTooLong)` on overflow.
     pub fn push_byte_data(&mut self, data: &[u8]) -> QrResult<()> {
         self.push_header(Mode::Byte, data.len())?;
-        for b in data {
-            self.push_number(8, u16::from(*b));
+        let offset = self.bit_offset;
+        if offset == 0 {
+            self.data.extend_from_slice(data);
+        } else if let Some((&last, _)) = data.split_last() {
+            let last_index = self.data.len() - 1;
+            self.data[last_index] |= data[0] >> offset;
+            let shift = 8 - offset;
+            self.data.extend(data.windows(2).map(|pair| (pair[0] << shift) | (pair[1] >> offset)));
+            self.data.push(last << shift);
+        }
+        self.encoding_modes.insert(Mode::Byte);
+        self.payload_bits_len = None;
+        Ok(())
+    }
+
+    /// Benchmark-only control retaining the original scalar byte-writing loop.
+    #[cfg(feature = "bench-internals")]
+    #[doc(hidden)]
+    pub fn push_byte_data_scalar_for_bench(&mut self, data: &[u8]) -> QrResult<()> {
+        self.push_header(Mode::Byte, data.len())?;
+        for &byte in data {
+            self.push_number(8, u16::from(byte));
         }
         self.encoding_modes.insert(Mode::Byte);
         self.payload_bits_len = None;
@@ -723,7 +743,182 @@ impl Bits {
 #[cfg(test)]
 mod byte_tests {
     use crate::bits::Bits;
-    use crate::types::{QrError, Version};
+    use crate::types::{EcLevel, Mode, QrError, Version};
+
+    // Pack individual bits independently of Bits::push_number and the bulk
+    // byte writer so carry, padding and segment boundaries are checked.
+    fn reference_write(bytes: &mut Vec<u8>, bit_len: &mut usize, width: usize, value: usize) {
+        for index in (0..width).rev() {
+            if (*bit_len).is_multiple_of(8) {
+                bytes.push(0);
+            }
+            let byte_index = bytes.len() - 1;
+            bytes[byte_index] |= (((value >> index) & 1) as u8) << (7 - *bit_len % 8);
+            *bit_len += 1;
+        }
+    }
+
+    fn reference_byte_segment(bytes: &mut Vec<u8>, bit_len: &mut usize, version: Version, data: &[u8]) {
+        let mode_number = if version.is_micro() { 2 } else { 4 };
+        reference_write(bytes, bit_len, version.mode_bits_count(), mode_number);
+        reference_write(bytes, bit_len, Mode::Byte.length_bits_count(version), data.len());
+        for &byte in data {
+            reference_write(bytes, bit_len, 8, usize::from(byte));
+        }
+    }
+
+    fn check_byte_segment(data: &[u8], version: Version, prefix_len: usize) {
+        let mut bits = Bits::new(version);
+        let mut expected = Vec::new();
+        let mut bit_len = 0;
+        if prefix_len > 0 {
+            let prefix = (1 << prefix_len) - 1;
+            bits.push_number_checked(prefix_len, prefix).unwrap();
+            reference_write(&mut expected, &mut bit_len, prefix_len, prefix);
+        }
+        bits.push_byte_data(data).unwrap();
+        reference_byte_segment(&mut expected, &mut bit_len, version, data);
+
+        assert_eq!(bits.len(), bit_len, "{version:?} prefix {prefix_len}, data {data:?}");
+        assert_eq!(bits.bit_offset, bit_len % 8);
+        assert_eq!(bits.data, expected);
+        assert_eq!(bits.encoding_modes(), crate::bits::EncodingModes::from_mode(Mode::Byte));
+        assert_eq!(bits.payload_bits_len, None);
+        #[cfg(feature = "bench-internals")]
+        {
+            let mut scalar = Bits::new(version);
+            if prefix_len > 0 {
+                scalar.push_number_checked(prefix_len, (1 << prefix_len) - 1).unwrap();
+            }
+            scalar.push_byte_data_scalar_for_bench(data).unwrap();
+            assert_eq!(bits.data, scalar.data);
+            assert_eq!(bits.len(), scalar.len());
+        }
+    }
+
+    #[test]
+    fn byte_packing_matches_bit_reference_at_every_offset_and_version_group() {
+        for version in [
+            Version::Normal(1),
+            Version::Normal(9),
+            Version::Normal(10),
+            Version::Normal(26),
+            Version::Normal(27),
+            Version::Normal(40),
+            Version::Micro(3),
+            Version::Micro(4),
+        ] {
+            let max_length = (1 << Mode::Byte.length_bits_count(version)) - 1;
+            for len in [0, 1, 2, 15, 31, 255, 256, 2048].into_iter().filter(|&len| len <= max_length) {
+                let data = (0..len).map(|index| (index % 256) as u8).collect::<Vec<_>>();
+                for prefix_len in 0..8 {
+                    check_byte_segment(&data, version, prefix_len);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn micro_byte_packing_preserves_every_byte_value_at_every_offset() {
+        for version in [Version::Micro(3), Version::Micro(4)] {
+            for byte in 0..=255 {
+                for prefix_len in 0..8 {
+                    check_byte_segment(&[byte], version, prefix_len);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn byte_packing_preserves_consecutive_and_mixed_segment_boundaries() {
+        let version = Version::Normal(40);
+        for prefix_len in 0..8 {
+            let mut bits = Bits::new(version);
+            let mut expected = Vec::new();
+            let mut bit_len = 0;
+            if prefix_len > 0 {
+                let prefix = (1 << prefix_len) - 1;
+                bits.push_number_checked(prefix_len, prefix).unwrap();
+                reference_write(&mut expected, &mut bit_len, prefix_len, prefix);
+            }
+            for data in [&b""[..], &[0xff], &[0, 0xa5, 0x7f], &b"longer byte segment"[..], &b""[..]] {
+                bits.push_byte_data(data).unwrap();
+                reference_byte_segment(&mut expected, &mut bit_len, version, data);
+            }
+
+            bits.push_numeric_data(b"12345").unwrap();
+            reference_write(&mut expected, &mut bit_len, 4, 1);
+            reference_write(&mut expected, &mut bit_len, 14, 5);
+            reference_write(&mut expected, &mut bit_len, 10, 123);
+            reference_write(&mut expected, &mut bit_len, 7, 45);
+            bits.push_byte_data(&[0xf0, 0x0f, 0xaa, 0x55]).unwrap();
+            reference_byte_segment(&mut expected, &mut bit_len, version, &[0xf0, 0x0f, 0xaa, 0x55]);
+
+            assert_eq!(bits.data, expected);
+            assert_eq!(bits.len(), bit_len);
+            assert!(bits.encoding_modes().contains(Mode::Numeric));
+            assert!(bits.encoding_modes().contains(Mode::Byte));
+        }
+    }
+
+    #[test]
+    fn empty_byte_segment_after_padding_keeps_header_and_resets_payload_metadata() {
+        let version = Version::Normal(1);
+        let mut bits = Bits::new(version);
+        bits.push_numeric_data(b"1").unwrap();
+        bits.push_terminator(EcLevel::L).unwrap();
+        assert!(bits.payload_bits_len.is_some());
+        let mut expected = bits.data.clone();
+        let mut bit_len = bits.len();
+
+        bits.push_byte_data(&[]).unwrap();
+        reference_byte_segment(&mut expected, &mut bit_len, version, &[]);
+
+        assert_eq!(bits.data, expected);
+        assert_eq!(bits.len(), bit_len);
+        assert_eq!(bits.payload_bits_len, None);
+        assert!(bits.encoding_modes().contains(Mode::Byte));
+    }
+
+    #[test]
+    fn byte_packing_preserves_state_produced_by_a_zero_width_prefix() {
+        let version = Version::Normal(40);
+        let mut bits = Bits::new(version);
+        bits.push_number_checked(0, 0).unwrap();
+        let mut expected = bits.data.clone();
+        let mut bit_len = bits.len();
+        let data = [0xde, 0xad, 0xbe, 0xef];
+
+        bits.push_byte_data(&data).unwrap();
+        reference_byte_segment(&mut expected, &mut bit_len, version, &data);
+
+        assert_eq!(bits.data, expected);
+        assert_eq!(bits.len(), bit_len);
+    }
+
+    #[test]
+    fn byte_packing_errors_leave_existing_bits_and_metadata_unchanged() {
+        for (version, len, error) in [
+            (Version::Normal(1), 256, QrError::DataTooLong),
+            (Version::Micro(3), 16, QrError::DataTooLong),
+            (Version::Micro(4), 32, QrError::DataTooLong),
+            (Version::Micro(1), 256, QrError::UnsupportedCharacterSet),
+            (Version::Micro(2), 256, QrError::UnsupportedCharacterSet),
+        ] {
+            let mut bits = Bits::new(version);
+            bits.push_numeric_data(b"1").unwrap();
+            let expected = bits.data.clone();
+            let bit_len = bits.len();
+            let modes = bits.encoding_modes();
+            let payload_len = bits.payload_bits_len;
+
+            assert_eq!(bits.push_byte_data(&vec![0xff; len]), Err(error));
+            assert_eq!(bits.data, expected);
+            assert_eq!(bits.len(), bit_len);
+            assert_eq!(bits.encoding_modes(), modes);
+            assert_eq!(bits.payload_bits_len, payload_len);
+        }
+    }
 
     #[test]
     fn test() {
