@@ -192,12 +192,16 @@ impl Bits {
     /// Pushes an N-bit big-endian integer to the end of the bits, and check
     /// that the number does not overflow the bits.
     ///
+    /// Writing zero bits with a zero value leaves the stream unchanged.
+    ///
     /// Returns `Err(QrError::DataTooLong)` on overflow.
     pub fn push_number_checked(&mut self, n: usize, number: usize) -> QrResult<()> {
         if n > 16 || number >= (1 << n) {
             Err(QrError::DataTooLong)
         } else {
-            self.push_number(n, number.as_u16());
+            if n > 0 {
+                self.push_number(n, number.as_u16());
+            }
             Ok(())
         }
     }
@@ -881,19 +885,52 @@ mod byte_tests {
     }
 
     #[test]
-    fn byte_packing_preserves_state_produced_by_a_zero_width_prefix() {
-        let version = Version::Normal(40);
-        let mut bits = Bits::new(version);
-        bits.push_number_checked(0, 0).unwrap();
-        let mut expected = bits.data.clone();
-        let mut bit_len = bits.len();
-        let data = [0xde, 0xad, 0xbe, 0xef];
+    fn zero_width_checked_writes_preserve_empty_aligned_and_mixed_streams() {
+        let empty = Bits::new(Version::Normal(40));
+        let mut aligned = Bits::new(Version::Normal(40));
+        aligned.push_number_checked(4, 0xa).unwrap();
+        aligned.push_byte_data(b"abc").unwrap();
+        assert_eq!(aligned.bit_offset, 0);
+        let mut unaligned = Bits::new(Version::Normal(40));
+        unaligned.push_numeric_data(b"12345").unwrap();
+        assert_ne!(unaligned.bit_offset, 0);
+        let mut terminated = Bits::new(Version::Normal(1));
+        terminated.push_numeric_data(b"1").unwrap();
+        terminated.push_terminator(EcLevel::M).unwrap();
+        assert!(terminated.payload_bits_len.is_some());
+        let mut mixed_byte = Bits::new(Version::Normal(40));
+        mixed_byte.push_numeric_data(b"12345").unwrap();
+        mixed_byte.push_byte_data(&[0xab, 0xcd]).unwrap();
+        let mut mixed_terminated = Bits::new(Version::Normal(40));
+        mixed_terminated.push_numeric_data(b"12345").unwrap();
+        mixed_terminated.push_byte_data(&[0xab, 0xcd]).unwrap();
+        mixed_terminated.push_terminator(EcLevel::M).unwrap();
 
-        bits.push_byte_data(&data).unwrap();
-        reference_byte_segment(&mut expected, &mut bit_len, version, &data);
-
-        assert_eq!(bits.data, expected);
-        assert_eq!(bits.len(), bit_len);
+        for (name, mut bits) in [
+            ("empty", empty),
+            ("aligned", aligned),
+            ("unaligned", unaligned),
+            ("terminated", terminated),
+            ("mixed_byte", mixed_byte),
+            ("mixed_terminated", mixed_terminated),
+        ] {
+            let expected = bits.data.clone();
+            let bit_len = bits.len();
+            let offset = bits.bit_offset;
+            let capacity = bits.data.capacity();
+            let modes = bits.encoding_modes();
+            let payload_len = bits.payload_bits_len;
+            for number in [0, 1, usize::MAX] {
+                let result = if number == 0 { Ok(()) } else { Err(QrError::DataTooLong) };
+                assert_eq!(bits.push_number_checked(0, number), result, "{name} value {number}");
+                assert_eq!(bits.data, expected, "{name}");
+                assert_eq!(bits.len(), bit_len, "{name}");
+                assert_eq!(bits.bit_offset, offset, "{name}");
+                assert_eq!(bits.data.capacity(), capacity, "{name}");
+                assert_eq!(bits.encoding_modes(), modes, "{name}");
+                assert_eq!(bits.payload_bits_len, payload_len, "{name}");
+            }
+        }
     }
 
     #[test]

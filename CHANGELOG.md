@@ -132,6 +132,9 @@
 - Read quoted vCard URI parameters and grouped contact properties without
   mistaking parameter colons for value separators; skip unused structured-name
   fallback allocation after FN.
+- Make checked zero-bit writes with a zero value leave the bit stream and
+  metadata unchanged instead of inserting a zero byte into an aligned stream;
+  continue rejecting nonzero values.
 
 ### Added
 
