@@ -4,8 +4,9 @@
 
 ### Changed
 
-- Declare Rust 1.88 across the workspace to match the image dependency,
-  inherit member MSRV declarations, and gate releases on locked MSRV checks.
+- Keep Rust 1.88 explicit in split-crate manifests and gate releases on locked
+  MSRV checks; omit `rust-version` from the root package and workspace package
+  declarations.
 - Reuse parsed segments during automatic encoding and skip dynamic-programming
   allocations for empty or single-segment payloads while preserving the
   optimal merge plan.

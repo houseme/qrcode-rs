@@ -29,8 +29,9 @@ It is designed to cover the common cases well out of the box while still exposin
 
 ## Installation
 
-Rust 1.88 or newer is required across the workspace, including the image
-backends and CLI. CI checks this minimum version with the locked dependencies.
+The split crates declare Rust 1.88 as their minimum supported version. CI also
+checks the facade and the complete workspace with Rust 1.88 and locked
+dependencies.
 
 Use the default feature set if you want the most common renderers enabled:
 
