@@ -254,6 +254,8 @@ impl<'a> Canvas<'a> {
 /// [`Mode::Table`], `<div>` in [`Mode::Grid`]). If no container is found the
 /// input is returned unchanged. A missing or unclosed opening tag is also
 /// returned unchanged. Quoted `>` characters are preserved.
+/// Raw-text containers are skipped; `noscript` is treated conservatively as
+/// raw text with browser scripting enabled, and `plaintext` consumes to EOF.
 ///
 /// # Example
 ///
@@ -270,7 +272,7 @@ impl<'a> Canvas<'a> {
 /// assert!(html[start..tag_end].contains(r#"class="qr""#));
 /// ```
 pub fn inject_attributes(html: &str, attrs: &[(&str, &str)]) -> String {
-    let Some(start) = html.find("<table").or_else(|| html.find("<div")) else {
+    let Some(start) = opening_tag_start(html, "table").or_else(|| opening_tag_start(html, "div")) else {
         return html.to_owned();
     };
     let Some(close) = opening_tag_end(html, start) else {
@@ -292,6 +294,117 @@ pub fn inject_attributes(html: &str, attrs: &[(&str, &str)]) -> String {
     }
     result.push_str(&html[close..]);
     result
+}
+
+fn opening_tag_start(markup: &str, target: &str) -> Option<usize> {
+    let bytes = markup.as_bytes();
+    let mut cursor = 0;
+    while cursor < bytes.len() {
+        let start = cursor + bytes[cursor..].iter().position(|&byte| byte == b'<')?;
+        let tail = &markup[start..];
+        if tail.starts_with("<!--") {
+            cursor = start + 4 + markup[start + 4..].find("-->")? + 3;
+            continue;
+        }
+        if tail.starts_with("<?") {
+            cursor = if let Some(end) = markup[start + 2..].find("?>") {
+                start + 2 + end + 2
+            } else {
+                // HTML treats non-XML processing instructions as bogus comments.
+                start + 2 + markup[start + 2..].find('>')? + 1
+            };
+            continue;
+        }
+        if tail.starts_with("<![CDATA[") {
+            cursor = start + 9 + markup[start + 9..].find("]]>")? + 3;
+            continue;
+        }
+        if tail.starts_with("<!") {
+            cursor = declaration_end(markup, start)?;
+            continue;
+        }
+        if tail.starts_with("</") {
+            cursor = opening_tag_end(markup, start)? + 1;
+            continue;
+        }
+        let name_start = start + 1;
+        let name_end = name_start
+            + bytes[name_start..]
+                .iter()
+                .position(|&byte| byte.is_ascii_whitespace() || byte == b'/' || byte == b'>')
+                .unwrap_or(bytes.len() - name_start);
+        let tag_name = &markup[name_start..name_end];
+        if tag_name.eq_ignore_ascii_case(target) {
+            return Some(start);
+        }
+        if tag_name.eq_ignore_ascii_case("plaintext") {
+            return None;
+        }
+        cursor = opening_tag_end(markup, start)? + 1;
+        if ["script", "style", "title", "textarea", "iframe", "xmp", "noembed", "noframes", "noscript"]
+            .iter()
+            .any(|name| tag_name.eq_ignore_ascii_case(name))
+        {
+            cursor = raw_text_end(markup, cursor, tag_name)?;
+        }
+    }
+    None
+}
+
+// Ignore quoted identifiers and internal DTD subsets, including their comments
+// and processing instructions. No entity expansion or external reads occur.
+fn declaration_end(markup: &str, start: usize) -> Option<usize> {
+    let bytes = markup.as_bytes();
+    let mut cursor = start + 2;
+    let mut quote = None;
+    let mut subset_depth = 0usize;
+    while cursor < bytes.len() {
+        if quote.is_none() {
+            if bytes[cursor..].starts_with(b"<!--") {
+                cursor += 4 + markup[cursor + 4..].find("-->")? + 3;
+                continue;
+            }
+            if bytes[cursor..].starts_with(b"<?") {
+                cursor += 2 + markup[cursor + 2..].find("?>")? + 2;
+                continue;
+            }
+        }
+        let byte = bytes[cursor];
+        if let Some(delimiter) = quote {
+            if byte == delimiter {
+                quote = None;
+            }
+        } else {
+            match byte {
+                b'\'' | b'"' => quote = Some(byte),
+                b'[' => subset_depth += 1,
+                b']' => subset_depth = subset_depth.saturating_sub(1),
+                b'>' if subset_depth == 0 => return Some(cursor + 1),
+                _ => {}
+            }
+        }
+        cursor += 1;
+    }
+    None
+}
+
+fn raw_text_end(markup: &str, start: usize, name: &str) -> Option<usize> {
+    let bytes = markup.as_bytes();
+    let mut cursor = start;
+    while cursor < bytes.len() {
+        let close = cursor + bytes[cursor..].iter().position(|&byte| byte == b'<')?;
+        if bytes[close..].starts_with(b"</") {
+            let name_start = close + 2;
+            let name_end = name_start.checked_add(name.len())?;
+            if bytes.get(name_start..name_end).is_some_and(|actual| actual.eq_ignore_ascii_case(name.as_bytes()))
+                && bytes.get(name_end).is_some_and(|byte| byte.is_ascii_whitespace() || *byte == b'>' || *byte == b'/')
+            {
+                return opening_tag_end(markup, close).map(|end| end + 1);
+            }
+        }
+        cursor = close + 1;
+    }
+    None
 }
 
 fn opening_tag_end(html: &str, tag_start: usize) -> Option<usize> {
@@ -487,6 +600,69 @@ mod tests {
         assert_eq!(super::inject_attributes("<div/>", &invalid_attrs), "<div/>");
         assert_eq!(super::injected_attr_capacity(isize::MAX as usize, &[("class", "qr")]), None);
         assert_eq!(super::injected_attr_capacity(usize::MAX, &[]), None);
+    }
+
+    #[test]
+    fn attributes_target_real_containers_after_non_markup_sections() {
+        let cases = [
+            (r#"<!-- example <table> --><table/>"#, r#"<!-- example <table> --><table class="qr"/>"#),
+            (r#"<?example fake="<table>"?><table/>"#, r#"<?example fake="<table>"?><table class="qr"/>"#),
+            (r#"<?example><table/>"#, r#"<?example><table class="qr"/>"#),
+            (
+                r#"<!DOCTYPE html [<!ENTITY example "<table>">]><table/>"#,
+                r#"<!DOCTYPE html [<!ENTITY example "<table>">]><table class="qr"/>"#,
+            ),
+            (r#"<![CDATA[<table/>]]><table/>"#, r#"<![CDATA[<table/>]]><table class="qr"/>"#),
+            (r#"<table-shadow/><table/>"#, r#"<table-shadow/><table class="qr"/>"#),
+            (r#"<div-shadow/><div/>"#, r#"<div-shadow/><div class="qr"/>"#),
+            (r#"<TABLE data-note='a>b'/>"#, r#"<TABLE data-note='a>b' class="qr"/>"#),
+            (
+                r#"<section data-example='<table>'><table/></section>"#,
+                r#"<section data-example='<table>'><table class="qr"/></section>"#,
+            ),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(super::inject_attributes(input, &[("class", "qr")]), expected);
+        }
+    }
+
+    #[test]
+    fn raw_text_elements_do_not_supply_fake_containers_and_table_priority_is_preserved() {
+        for element in ["script", "STYLE", "title", "textarea", "iframe", "XMP", "noembed", "noframes", "noscript"] {
+            let input = alloc::format!("<{element}>'<table>'; '<div>'</{element}><div/><table/>");
+            let expected = alloc::format!("<{element}>'<table>'; '<div>'</{element}><div/><table class=\"qr\"/>");
+            assert_eq!(super::inject_attributes(&input, &[("class", "qr")]), expected);
+            let input = alloc::format!("<{element}>'<table>'; '<div>'</{element}><div/>");
+            let expected = alloc::format!("<{element}>'<table>'; '<div>'</{element}><div class=\"qr\"/>");
+            assert_eq!(super::inject_attributes(&input, &[("class", "qr")]), expected);
+        }
+    }
+
+    #[test]
+    fn plaintext_consumes_fake_containers_through_eof() {
+        for input in [
+            "<plaintext><table/><div/>",
+            "<PLAINTEXT>example </plaintext><table/><div/>",
+            "<plaintext/>example<table/><div/>",
+        ] {
+            assert_eq!(super::inject_attributes(input, &[("class", "qr")]), input);
+        }
+        let input = "<div/><plaintext><table/>";
+        assert_eq!(super::inject_attributes(input, &[("class", "qr")]), "<div class=\"qr\"/><plaintext><table/>");
+    }
+
+    #[test]
+    fn malformed_or_fake_only_markup_keeps_html_unchanged() {
+        for input in [
+            "<!-- <table>",
+            "<?fake <table>",
+            "<![CDATA[<table>",
+            "<!DOCTYPE html [<table>",
+            "<table-shadow/>",
+            "<script>'<table>'",
+        ] {
+            assert_eq!(super::inject_attributes(input, &[("class", "qr")]), input);
+        }
     }
 
     #[test]

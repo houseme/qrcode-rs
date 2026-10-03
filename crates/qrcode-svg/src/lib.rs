@@ -202,7 +202,7 @@ impl<'a> RenderCanvas for Canvas<'a> {
 /// ```
 pub fn inject_attributes(svg: &str, attrs: &[(&str, &str)]) -> String {
     // Target the root <svg …> opening tag (skipping any leading <?xml ?> declaration).
-    let tag_start = svg.find("<svg").expect("invalid SVG: no <svg> element");
+    let tag_start = opening_tag_start(svg, "svg").expect("invalid SVG: no <svg> element");
     let tag_end = opening_tag_end(svg, tag_start).expect("invalid SVG: no closing '>' in <svg>");
     let insert_pos = if svg.as_bytes()[tag_end - 1] == b'/' { tag_end - 1 } else { tag_end };
     let capacity = injected_attr_capacity(svg.len(), attrs).expect("SVG attribute output exceeds platform limits");
@@ -220,6 +220,84 @@ pub fn inject_attributes(svg: &str, attrs: &[(&str, &str)]) -> String {
     }
     result.push_str(&svg[insert_pos..]);
     result
+}
+
+fn opening_tag_start(markup: &str, target: &str) -> Option<usize> {
+    let bytes = markup.as_bytes();
+    let mut cursor = 0;
+    while cursor < bytes.len() {
+        let start = cursor + bytes[cursor..].iter().position(|&byte| byte == b'<')?;
+        let tail = &markup[start..];
+        if tail.starts_with("<!--") {
+            cursor = start + 4 + markup[start + 4..].find("-->")? + 3;
+            continue;
+        }
+        if tail.starts_with("<?") {
+            cursor = start + 2 + markup[start + 2..].find("?>")? + 2;
+            continue;
+        }
+        if tail.starts_with("<![CDATA[") {
+            cursor = start + 9 + markup[start + 9..].find("]]>")? + 3;
+            continue;
+        }
+        if tail.starts_with("<!") {
+            cursor = declaration_end(markup, start)?;
+            continue;
+        }
+        if tail.starts_with("</") {
+            cursor = opening_tag_end(markup, start)? + 1;
+            continue;
+        }
+        let name_start = start + 1;
+        let name_end = name_start
+            + bytes[name_start..]
+                .iter()
+                .position(|&byte| byte.is_ascii_whitespace() || byte == b'/' || byte == b'>')
+                .unwrap_or(bytes.len() - name_start);
+        let tag_name = &markup[name_start..name_end];
+        if tag_name.rsplit(':').next() == Some(target) {
+            return Some(start);
+        }
+        cursor = opening_tag_end(markup, start)? + 1;
+    }
+    None
+}
+
+// Ignore quoted identifiers and internal DTD subsets, including their comments
+// and processing instructions. No entity expansion or external reads occur.
+fn declaration_end(markup: &str, start: usize) -> Option<usize> {
+    let bytes = markup.as_bytes();
+    let mut cursor = start + 2;
+    let mut quote = None;
+    let mut subset_depth = 0usize;
+    while cursor < bytes.len() {
+        if quote.is_none() {
+            if bytes[cursor..].starts_with(b"<!--") {
+                cursor += 4 + markup[cursor + 4..].find("-->")? + 3;
+                continue;
+            }
+            if bytes[cursor..].starts_with(b"<?") {
+                cursor += 2 + markup[cursor + 2..].find("?>")? + 2;
+                continue;
+            }
+        }
+        let byte = bytes[cursor];
+        if let Some(delimiter) = quote {
+            if byte == delimiter {
+                quote = None;
+            }
+        } else {
+            match byte {
+                b'\'' | b'"' => quote = Some(byte),
+                b'[' => subset_depth += 1,
+                b']' => subset_depth = subset_depth.saturating_sub(1),
+                b'>' if subset_depth == 0 => return Some(cursor + 1),
+                _ => {}
+            }
+        }
+        cursor += 1;
+    }
+    None
 }
 
 fn opening_tag_end(svg: &str, tag_start: usize) -> Option<usize> {
@@ -495,28 +573,53 @@ pub fn animate(svg: &str, animation: Animation) -> String {
 
     // Insert the style after the opening <svg ...> tag, not after a leading
     // XML declaration.
-    let tag_start = svg.find("<svg").expect("invalid SVG: no <svg> element");
+    let tag_start = opening_tag_start(svg, "svg").expect("invalid SVG: no <svg> element");
     let tag_end = opening_tag_end(svg, tag_start).expect("invalid SVG: no closing '>' found");
     let self_closing = svg.as_bytes()[tag_end - 1] == b'/';
     let tag_name = svg[tag_start + 1..tag_end]
         .split(|ch: char| ch.is_ascii_whitespace() || ch == '/')
         .next()
         .expect("SVG opening tag has a name");
-    let extra_bytes = if self_closing { tag_name.len() + 2 } else { 0 };
-    let mut result = String::with_capacity(svg.len() + css.len() + extra_bytes);
+    let namespace_prefix = tag_name.rsplit_once(':').map(|(prefix, _)| prefix);
+    let style_extra = namespace_prefix
+        .map(|prefix| prefix.len().checked_add(1).and_then(|bytes| bytes.checked_mul(2)))
+        .unwrap_or(Some(0));
+    let root_extra = if self_closing { tag_name.len().checked_add(2) } else { Some(0) };
+    let capacity = svg
+        .len()
+        .checked_add(css.len())
+        .and_then(|bytes| bytes.checked_add(style_extra?))
+        .and_then(|bytes| bytes.checked_add(root_extra?))
+        .filter(|&bytes| bytes <= isize::MAX as usize)
+        .expect("SVG animation output exceeds platform limits");
+    let mut result = String::with_capacity(capacity);
     if self_closing {
         result.push_str(&svg[..tag_end - 1]);
         result.push('>');
-        result.push_str(css);
+        push_animation_style(&mut result, css, namespace_prefix);
         result.push_str("</");
         result.push_str(tag_name);
         result.push('>');
     } else {
         result.push_str(&svg[..tag_end + 1]);
-        result.push_str(css);
+        push_animation_style(&mut result, css, namespace_prefix);
     }
     result.push_str(&svg[tag_end + 1..]);
     result
+}
+
+fn push_animation_style(out: &mut String, css: &str, namespace_prefix: Option<&str>) {
+    if let Some(prefix) = namespace_prefix {
+        out.push('<');
+        out.push_str(prefix);
+        out.push_str(":style>");
+        out.push_str(&css["<style>".len()..css.len() - "</style>".len()]);
+        out.push_str("</");
+        out.push_str(prefix);
+        out.push_str(":style>");
+    } else {
+        out.push_str(css);
+    }
 }
 
 #[cfg(test)]
@@ -606,6 +709,50 @@ mod tests {
         assert_eq!(inject_attributes("<svg/>", &invalid_attrs), "<svg/>");
         assert_eq!(injected_attr_capacity(isize::MAX as usize, &[("class", "qr")]), None);
         assert_eq!(injected_attr_capacity(usize::MAX, &[]), None);
+    }
+
+    #[test]
+    fn attributes_target_real_svg_after_comments_processing_instructions_and_doctype() {
+        let cases = [
+            (r#"<!-- example <svg> --><svg/>"#, r#"<!-- example <svg> --><svg class="qr"/>"#),
+            (r#"<?example fake="<svg>"?><svg/>"#, r#"<?example fake="<svg>"?><svg class="qr"/>"#),
+            (
+                r#"<!DOCTYPE svg [<!ELEMENT svg ANY><!ENTITY example "<svg>">]><svg/>"#,
+                r#"<!DOCTYPE svg [<!ELEMENT svg ANY><!ENTITY example "<svg>">]><svg class="qr"/>"#,
+            ),
+            (
+                r#"<!DOCTYPE svg [<!-- ]> <svg> --><?example " <svg> ?><!ELEMENT svg ANY>]><svg/>"#,
+                r#"<!DOCTYPE svg [<!-- ]> <svg> --><?example " <svg> ?><!ELEMENT svg ANY>]><svg class="qr"/>"#,
+            ),
+            (
+                r#"<wrapper><![CDATA[<svg/>]]><svg data-note="a>b"/></wrapper>"#,
+                r#"<wrapper><![CDATA[<svg/>]]><svg data-note="a>b" class="qr"/></wrapper>"#,
+            ),
+            (
+                r#"<wrapper><svg-shadow/><svg data-note="a>b"/></wrapper>"#,
+                r#"<wrapper><svg-shadow/><svg data-note="a>b" class="qr"/></wrapper>"#,
+            ),
+            (
+                r#"<s:svg xmlns:s="http://www.w3.org/2000/svg"/>"#,
+                r#"<s:svg xmlns:s="http://www.w3.org/2000/svg" class="qr"/>"#,
+            ),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(inject_attributes(input, &[("class", "qr")]), expected);
+        }
+    }
+
+    #[test]
+    fn animation_skips_fake_svg_roots_without_changing_the_preamble() {
+        let input = r#"<!-- example <svg> --><?example <svg> ?><svg/>"#;
+        let style = animate("<svg/>", Animation::Pulse);
+        assert_eq!(animate(input, Animation::Pulse), format!("<!-- example <svg> --><?example <svg> ?>{style}"));
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid SVG: no <svg> element")]
+    fn fake_svg_tag_names_do_not_satisfy_the_root_contract() {
+        let _ = inject_attributes("<svg-shadow/>", &[("class", "qr")]);
     }
 
     #[test]
@@ -766,14 +913,33 @@ mod tests {
                 r#"<?xml version="1.0"?><svg data-note="/>">"#,
                 "</svg><!-- tail -->",
             ),
-            (
-                r#"<svg:svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg"/>"#,
-                r#"<svg:svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg">"#,
-                "</svg:svg>",
-            ),
         ];
         for (input, prefix, suffix) in cases {
             assert_eq!(animate(input, Animation::FadeIn), format!("{prefix}{css}{suffix}"));
         }
+    }
+
+    #[test]
+    fn prefixed_svg_animations_put_styles_in_the_svg_namespace() {
+        let css_body = concat!(
+            "@keyframes qr-fade{0%{opacity:0}100%{opacity:1}}",
+            "path:last-of-type{animation:qr-fade 1.5s ease-out forwards}",
+        );
+        for prefix in ["s", "svg", "二维码"] {
+            let input = format!("<{prefix}:svg xmlns:{prefix}=\"http://www.w3.org/2000/svg\"/>");
+            let expected = format!(
+                "<{prefix}:svg xmlns:{prefix}=\"http://www.w3.org/2000/svg\"><{prefix}:style>{css_body}</{prefix}:style></{prefix}:svg>"
+            );
+            assert_eq!(animate(&input, Animation::FadeIn), expected);
+        }
+        let input = r#"<s:svg xmlns="urn:other" xmlns:s="http://www.w3.org/2000/svg"/>"#;
+        let expected = format!(
+            "<s:svg xmlns=\"urn:other\" xmlns:s=\"http://www.w3.org/2000/svg\"><s:style>{css_body}</s:style></s:svg>"
+        );
+        assert_eq!(animate(input, Animation::FadeIn), expected);
+        let input = r#"<s:svg xmlns:s="http://www.w3.org/2000/svg"><s:path/></s:svg>"#;
+        let expected =
+            format!("<s:svg xmlns:s=\"http://www.w3.org/2000/svg\"><s:style>{css_body}</s:style><s:path/></s:svg>");
+        assert_eq!(animate(input, Animation::FadeIn), expected);
     }
 }

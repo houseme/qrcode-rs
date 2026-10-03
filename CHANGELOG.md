@@ -159,6 +159,9 @@
 - Count UTF-8 module and quiet-zone bytes in plain-text plugin output, check
   platform and shared buffer limits before allocation, and return RenderFailed
   for output-budget or reservation failures.
+- Skip comments, declarations and raw-text regions when locating SVG/HTML
+  injection targets, respect tag-name boundaries, and preserve root QName
+  namespaces for SVG animation styles.
 
 ### Added
 
