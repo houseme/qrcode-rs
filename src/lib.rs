@@ -1784,6 +1784,10 @@ impl Info {
     /// Lower scores indicate a visually better matrix according to the QR mask
     /// evaluation rules. Serializable legacy payloads do not contain this
     /// metadata, so codes rebuilt from [`QrCodeData`] return `None`.
+    ///
+    /// Scores above [`u16::MAX`] are reported as `u16::MAX`. Mask selection
+    /// compares the full scores internally; this saturation affects only the
+    /// exposed metadata.
     #[must_use]
     pub const fn mask_penalty_score(&self) -> Option<u16> {
         self.mask_penalty_score

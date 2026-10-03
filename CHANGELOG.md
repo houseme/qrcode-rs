@@ -9,12 +9,17 @@
 - Reuse parsed segments during automatic encoding and skip dynamic-programming
   allocations for empty or single-segment payloads while preserving the
   optimal merge plan.
+- Traverse masks by contiguous rows and reuse two candidate canvases,
+  preserving mask order and equal-score selection.
 
 ### Fixed
 
 - Select Micro QR versions that support payload modes, reject unsupported
   error correction consistently, report exact encoding-mode iterator lengths,
   and validate direct mode input before changing the bit stream.
+- Use full u32 mask penalties for scalar and accelerated scoring and candidate
+  selection, preventing large-version overflow; preserve public u16 score
+  types with saturation only at the return boundary.
 
 ### Added
 

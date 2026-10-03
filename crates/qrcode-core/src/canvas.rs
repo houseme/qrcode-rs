@@ -1581,10 +1581,11 @@ impl Canvas {
     /// patterns.
     pub fn apply_mask(&mut self, pattern: MaskPattern) {
         let mask_fn = get_mask_function(pattern);
-        for x in 0..self.width {
-            for y in 0..self.width {
-                let module = self.get_mut(x, y);
-                *module = module.mask(mask_fn(x, y));
+        let width = self.width.as_usize();
+        for y in 0..self.width {
+            let row_start = y.as_usize() * width;
+            for (x, module) in self.modules[row_start..row_start + width].iter_mut().enumerate() {
+                *module = module.mask(mask_fn(x.as_i16(), y));
             }
         }
 
@@ -1770,7 +1771,7 @@ impl Canvas {
     /// Every 5+N adjacent modules in the same column/row having the same color
     /// will contribute 3+N points.
     #[cfg(test)]
-    fn compute_adjacent_penalty_score(&self, is_horizontal: bool) -> u16 {
+    fn compute_adjacent_penalty_score(&self, is_horizontal: bool) -> u32 {
         compute_adjacent_penalty_score(self.width.as_usize(), &module_bytes(&self.modules), is_horizontal)
     }
 
@@ -1780,7 +1781,7 @@ impl Canvas {
     /// Every 2×2 blocks (with overlapping counted) having the same color will
     /// contribute 3 points.
     #[cfg(test)]
-    fn compute_block_penalty_score(&self) -> u16 {
+    fn compute_block_penalty_score(&self) -> u32 {
         compute_block_penalty_score(self.width.as_usize(), &module_bytes(&self.modules))
     }
 
@@ -1790,7 +1791,7 @@ impl Canvas {
     /// Every pattern that looks like `#.###.#....` in any orientation will add
     /// 40 points.
     #[cfg(test)]
-    fn compute_finder_penalty_score(&self, is_horizontal: bool) -> u16 {
+    fn compute_finder_penalty_score(&self, is_horizontal: bool) -> u32 {
         compute_finder_penalty_score(self.width.as_usize(), &module_bytes(&self.modules), is_horizontal)
     }
 
@@ -1803,7 +1804,7 @@ impl Canvas {
     /// round the result every 5%, but the difference should be negligible and
     /// should not affect which mask is chosen.
     #[cfg(test)]
-    fn compute_balance_penalty_score(&self) -> u16 {
+    fn compute_balance_penalty_score(&self) -> u32 {
         compute_balance_penalty_score(&module_bytes(&self.modules))
     }
 
@@ -1815,35 +1816,38 @@ impl Canvas {
     /// has the inverse meaning of this method, but it is very easy to convert
     /// between the two (this score is (16×width − standard-score)).
     #[cfg(test)]
-    fn compute_light_side_penalty_score(&self) -> u16 {
+    fn compute_light_side_penalty_score(&self) -> u32 {
         compute_light_side_penalty_score(self.width.as_usize(), &module_bytes(&self.modules))
     }
 
     /// Compute the total penalty scores. A QR code having higher points is less
     /// desirable.
     #[cfg(test)]
-    fn compute_total_penalty_scores(&self) -> u16 {
+    fn compute_total_penalty_scores(&self) -> u32 {
         compute_total_penalty_score_scalar(self.version, self.width, &self.modules)
     }
 
-    fn compute_total_penalty_scores_with_scratch(&self, scratch: &mut Vec<u8>) -> u16 {
+    fn compute_total_penalty_scores_with_scratch(&self, scratch: &mut Vec<u8>) -> u32 {
         debug_assert_eq!((self.width * self.width).as_usize(), self.modules.len());
         write_module_bytes(&self.modules, scratch);
         compute_total_penalty_score_from_bytes(self.version, self.width.as_usize(), scratch)
     }
 
+    /// Scores the mask, clipping unusually high penalties to `u16::MAX`.
     #[cfg(feature = "bench-internals")]
     #[doc(hidden)]
     pub fn score_mask_for_bench(&self, scratch: &mut Vec<u8>) -> u16 {
-        self.compute_total_penalty_scores_with_scratch(scratch)
+        u16::try_from(self.compute_total_penalty_scores_with_scratch(scratch)).unwrap_or(u16::MAX)
     }
 
+    /// Scores the mask with the scalar path, clipping high penalties to `u16::MAX`.
     #[cfg(feature = "bench-internals")]
     #[doc(hidden)]
     pub fn score_mask_scalar_for_bench(&self, scratch: &mut Vec<u8>) -> u16 {
         debug_assert_eq!((self.width * self.width).as_usize(), self.modules.len());
         write_module_bytes(&self.modules, scratch);
-        compute_total_penalty_score_from_bytes_scalar(self.version, self.width.as_usize(), scratch)
+        u16::try_from(compute_total_penalty_score_from_bytes_scalar(self.version, self.width.as_usize(), scratch))
+            .unwrap_or(u16::MAX)
     }
 }
 
@@ -1894,30 +1898,30 @@ fn count_dark_modules_scalar(modules: &[u8]) -> usize {
     modules.iter().filter(|&&module| module != 0).count()
 }
 
-fn compute_balance_penalty_score(modules: &[u8]) -> u16 {
+fn compute_balance_penalty_score(modules: &[u8]) -> u32 {
     let dark_modules = count_dark_modules(modules);
     let total_modules = modules.len();
     let ratio = dark_modules * 200 / total_modules;
-    ratio.abs_diff(100).as_u16()
+    ratio.abs_diff(100).as_u32()
 }
 
 #[cfg(any(test, feature = "bench-internals"))]
-fn compute_balance_penalty_score_scalar(modules: &[u8]) -> u16 {
+fn compute_balance_penalty_score_scalar(modules: &[u8]) -> u32 {
     let dark_modules = count_dark_modules_scalar(modules);
     let total_modules = modules.len();
     let ratio = dark_modules * 200 / total_modules;
-    ratio.abs_diff(100).as_u16()
+    ratio.abs_diff(100).as_u32()
 }
 
-fn compute_light_side_penalty_score(width: usize, modules: &[u8]) -> u16 {
+fn compute_light_side_penalty_score(width: usize, modules: &[u8]) -> u32 {
     let bottom_row = &modules[(width - 1) * width..][..width];
     let h = (1..width).filter(|&x| bottom_row[x] == 0).count();
     let v = (1..width).filter(|&y| modules[y * width + width - 1] == 0).count();
 
-    (h + v + 15 * max(h, v)).as_u16()
+    (h + v + 15 * max(h, v)).as_u32()
 }
 
-fn compute_adjacent_penalty_score(width: usize, modules: &[u8], is_horizontal: bool) -> u16 {
+fn compute_adjacent_penalty_score(width: usize, modules: &[u8], is_horizontal: bool) -> u32 {
     if is_horizontal {
         compute_horizontal_adjacent_penalty_score(width, modules)
     } else {
@@ -1925,16 +1929,16 @@ fn compute_adjacent_penalty_score(width: usize, modules: &[u8], is_horizontal: b
     }
 }
 
-fn compute_horizontal_adjacent_penalty_score(width: usize, modules: &[u8]) -> u16 {
+fn compute_horizontal_adjacent_penalty_score(width: usize, modules: &[u8]) -> u32 {
     modules.chunks_exact(width).map(compute_line_adjacent_penalty_score).sum()
 }
 
-fn compute_vertical_adjacent_penalty_score(width: usize, modules: &[u8]) -> u16 {
+fn compute_vertical_adjacent_penalty_score(width: usize, modules: &[u8]) -> u32 {
     let mut total_score = 0;
 
     for x in 0..width {
         let mut last_color = 2;
-        let mut consecutive_len = 1_u16;
+        let mut consecutive_len = 1_u32;
 
         for y in 0..width {
             let color = modules[y * width + x];
@@ -1955,10 +1959,10 @@ fn compute_vertical_adjacent_penalty_score(width: usize, modules: &[u8]) -> u16 
     total_score
 }
 
-fn compute_line_adjacent_penalty_score(line: &[u8]) -> u16 {
+fn compute_line_adjacent_penalty_score(line: &[u8]) -> u32 {
     let mut total_score = 0;
     let mut last_color = 2;
-    let mut consecutive_len = 1_u16;
+    let mut consecutive_len = 1_u32;
 
     for &color in line {
         if color == last_color {
@@ -1975,7 +1979,7 @@ fn compute_line_adjacent_penalty_score(line: &[u8]) -> u16 {
     total_score + adjacent_run_score(consecutive_len)
 }
 
-fn adjacent_run_score(consecutive_len: u16) -> u16 {
+fn adjacent_run_score(consecutive_len: u32) -> u32 {
     if consecutive_len >= 5 { consecutive_len - 2 } else { 0 }
 }
 
@@ -1983,7 +1987,7 @@ const FINDER_LIKE_PATTERN_BITS: u8 = 0b1011101;
 const FINDER_LIKE_PATTERN_WIDTH: usize = 7;
 const FINDER_LIKE_PATTERN_MASK: u8 = (1 << FINDER_LIKE_PATTERN_WIDTH) - 1;
 
-fn compute_finder_penalty_score(width: usize, modules: &[u8], is_horizontal: bool) -> u16 {
+fn compute_finder_penalty_score(width: usize, modules: &[u8], is_horizontal: bool) -> u32 {
     let total_score = if is_horizontal {
         compute_horizontal_finder_penalty_score(width, modules)
     } else {
@@ -1993,11 +1997,11 @@ fn compute_finder_penalty_score(width: usize, modules: &[u8], is_horizontal: boo
     total_score - 360
 }
 
-fn compute_horizontal_finder_penalty_score(width: usize, modules: &[u8]) -> u16 {
+fn compute_horizontal_finder_penalty_score(width: usize, modules: &[u8]) -> u32 {
     modules.chunks_exact(width).map(compute_line_finder_penalty_score).sum()
 }
 
-fn compute_vertical_finder_penalty_score(width: usize, modules: &[u8]) -> u16 {
+fn compute_vertical_finder_penalty_score(width: usize, modules: &[u8]) -> u32 {
     let mut total_score = 0;
 
     for x in 0..width {
@@ -2029,7 +2033,7 @@ fn compute_vertical_finder_penalty_score(width: usize, modules: &[u8]) -> u16 {
     total_score
 }
 
-fn compute_line_finder_penalty_score(line: &[u8]) -> u16 {
+fn compute_line_finder_penalty_score(line: &[u8]) -> u32 {
     let mut total_score = 0;
     let mut window = initial_finder_window(line);
 
@@ -2076,7 +2080,7 @@ fn line_range_has_dark(line: &[u8], start: usize, end: usize) -> bool {
     line[start..end].iter().any(|&module| module != 0)
 }
 
-fn compute_block_penalty_score(width: usize, modules: &[u8]) -> u16 {
+fn compute_block_penalty_score(width: usize, modules: &[u8]) -> u32 {
     #[cfg(target_arch = "aarch64")]
     {
         // SAFETY: AArch64 guarantees NEON support; the helper only performs
@@ -2115,7 +2119,7 @@ fn compute_block_penalty_score(width: usize, modules: &[u8]) -> u16 {
     target_arch = "x86_64",
     not(any(target_arch = "aarch64", target_arch = "x86_64"))
 ))]
-fn compute_block_penalty_score_scalar(width: usize, modules: &[u8]) -> u16 {
+fn compute_block_penalty_score_scalar(width: usize, modules: &[u8]) -> u32 {
     let mut total_score = 0;
 
     for y in 0..width.saturating_sub(1) {
@@ -2227,7 +2231,7 @@ fn count_dark_modules_sse2_remainder(modules: &[u8]) -> usize {
 
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
-unsafe fn compute_block_penalty_score_neon(width: usize, modules: &[u8]) -> u16 {
+unsafe fn compute_block_penalty_score_neon(width: usize, modules: &[u8]) -> u32 {
     use core::arch::aarch64::{vaddvq_u8, vandq_u8, vceqq_u8, vcntq_u8, vld1q_u8};
 
     let mut total_score = 0;
@@ -2252,7 +2256,7 @@ unsafe fn compute_block_penalty_score_neon(width: usize, modules: &[u8]) -> u16 
             let vertical = vceqq_u8(row_chunk, next_chunk);
             let diagonal = vceqq_u8(row_chunk, next_right_chunk);
             let blocks = vandq_u8(vandq_u8(horizontal, vertical), diagonal);
-            total_score += (vaddvq_u8(vcntq_u8(blocks)) / 8) as u16 * 3;
+            total_score += u32::from(vaddvq_u8(vcntq_u8(blocks)) / 8) * 3;
             x += 16;
         }
 
@@ -2264,7 +2268,7 @@ unsafe fn compute_block_penalty_score_neon(width: usize, modules: &[u8]) -> u16 
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
-unsafe fn compute_block_penalty_score_avx2(width: usize, modules: &[u8]) -> u16 {
+unsafe fn compute_block_penalty_score_avx2(width: usize, modules: &[u8]) -> u32 {
     use core::arch::x86_64::{__m256i, _mm256_and_si256, _mm256_cmpeq_epi8, _mm256_loadu_si256, _mm256_movemask_epi8};
 
     let mut total_score = 0;
@@ -2295,7 +2299,7 @@ unsafe fn compute_block_penalty_score_avx2(width: usize, modules: &[u8]) -> u16 
             let vertical = _mm256_cmpeq_epi8(row_chunk, next_chunk);
             let diagonal = _mm256_cmpeq_epi8(row_chunk, next_right_chunk);
             let blocks = _mm256_and_si256(_mm256_and_si256(horizontal, vertical), diagonal);
-            total_score += (_mm256_movemask_epi8(blocks) as u32).count_ones() as u16 * 3;
+            total_score += (_mm256_movemask_epi8(blocks) as u32).count_ones() * 3;
             x += 32;
         }
 
@@ -2307,7 +2311,7 @@ unsafe fn compute_block_penalty_score_avx2(width: usize, modules: &[u8]) -> u16 
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "sse2")]
-unsafe fn compute_block_penalty_score_sse2(width: usize, modules: &[u8]) -> u16 {
+unsafe fn compute_block_penalty_score_sse2(width: usize, modules: &[u8]) -> u32 {
     use core::arch::x86_64::{__m128i, _mm_and_si128, _mm_cmpeq_epi8, _mm_loadu_si128, _mm_movemask_epi8};
 
     let mut total_score = 0;
@@ -2337,7 +2341,7 @@ unsafe fn compute_block_penalty_score_sse2(width: usize, modules: &[u8]) -> u16 
             let vertical = _mm_cmpeq_epi8(row_chunk, next_chunk);
             let diagonal = _mm_cmpeq_epi8(row_chunk, next_right_chunk);
             let blocks = _mm_and_si128(_mm_and_si128(horizontal, vertical), diagonal);
-            total_score += (_mm_movemask_epi8(blocks) as u32).count_ones() as u16 * 3;
+            total_score += (_mm_movemask_epi8(blocks) as u32).count_ones() * 3;
             x += 16;
         }
 
@@ -2348,7 +2352,7 @@ unsafe fn compute_block_penalty_score_sse2(width: usize, modules: &[u8]) -> u16 
 }
 
 #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
-fn compute_block_penalty_score_scalar_tail(row: &[u8], next_row: &[u8], start: usize) -> u16 {
+fn compute_block_penalty_score_scalar_tail(row: &[u8], next_row: &[u8], start: usize) -> u32 {
     let mut total_score = 0;
     let mut x = start;
 
@@ -2363,7 +2367,7 @@ fn compute_block_penalty_score_scalar_tail(row: &[u8], next_row: &[u8], start: u
     total_score
 }
 
-fn compute_total_penalty_score_from_bytes(version: Version, width: usize, modules: &[u8]) -> u16 {
+fn compute_total_penalty_score_from_bytes(version: Version, width: usize, modules: &[u8]) -> u32 {
     match version {
         Version::Normal(_) => {
             let s1_a = compute_adjacent_penalty_score(width, modules, true);
@@ -2379,7 +2383,7 @@ fn compute_total_penalty_score_from_bytes(version: Version, width: usize, module
 }
 
 #[cfg(any(test, feature = "bench-internals"))]
-fn compute_total_penalty_score_from_bytes_scalar(version: Version, width: usize, modules: &[u8]) -> u16 {
+fn compute_total_penalty_score_from_bytes_scalar(version: Version, width: usize, modules: &[u8]) -> u32 {
     match version {
         Version::Normal(_) => {
             let s1_a = compute_adjacent_penalty_score(width, modules, true);
@@ -2395,7 +2399,7 @@ fn compute_total_penalty_score_from_bytes_scalar(version: Version, width: usize,
 }
 
 #[cfg(test)]
-fn compute_total_penalty_score_scalar(version: Version, width: i16, modules: &[Module]) -> u16 {
+fn compute_total_penalty_score_scalar(version: Version, width: i16, modules: &[Module]) -> u32 {
     debug_assert_eq!((width * width).as_usize(), modules.len());
     let modules = modules.iter().map(|module| u8::from(module.is_dark())).collect::<Vec<_>>();
     compute_total_penalty_score_from_bytes_scalar(version, width.as_usize(), &modules)
@@ -2662,6 +2666,9 @@ impl Canvas {
 
     /// Construct a new canvas with the best mask and return the selected mask
     /// pattern and its penalty score.
+    ///
+    /// Masks are compared using full `u32` scores. Unusually high scores exceeding
+    /// `u16::MAX` are clipped to `u16::MAX` in the returned score.
     #[must_use]
     pub fn apply_best_mask_with_score(&self) -> (Self, MaskPattern, u16) {
         let patterns: &[MaskPattern] = match self.version {
@@ -2669,27 +2676,228 @@ impl Canvas {
             Version::Micro(_) => &ALL_PATTERNS_MICRO_QR,
         };
         let mut scratch = Vec::with_capacity(self.modules.len());
-        let mut best_canvas = None;
         let mut best_pattern = patterns[0];
-        let mut best_score = u16::MAX;
+        let mut best_canvas = self.clone();
+        best_canvas.apply_mask(best_pattern);
+        let mut best_score = best_canvas.compute_total_penalty_scores_with_scratch(&mut scratch);
+        let mut candidate = self.clone();
 
-        for &pattern in patterns {
-            let mut c = self.clone();
-            c.apply_mask(pattern);
-            let score = c.compute_total_penalty_scores_with_scratch(&mut scratch);
+        for &pattern in &patterns[1..] {
+            // Every candidate starts from the unmasked input, even after swapping
+            // its buffer with the previous best candidate.
+            candidate.modules.copy_from_slice(&self.modules);
+            candidate.apply_mask(pattern);
+            let score = candidate.compute_total_penalty_scores_with_scratch(&mut scratch);
             if score < best_score {
                 best_score = score;
                 best_pattern = pattern;
-                best_canvas = Some(c);
+                core::mem::swap(&mut best_canvas, &mut candidate);
             }
         }
 
-        (best_canvas.expect("at least one pattern"), best_pattern, best_score)
+        (best_canvas, best_pattern, u16::try_from(best_score).unwrap_or(u16::MAX))
     }
 
     /// Convert the modules into a vector of colors.
     pub fn into_colors(self) -> Vec<Color> {
         self.modules.into_iter().map(Color::from).collect()
+    }
+}
+
+#[cfg(test)]
+mod mask_selection_tests {
+    use crate::canvas::{ALL_PATTERNS_MICRO_QR, ALL_PATTERNS_QR, Canvas, MaskPattern, Module, get_mask_function};
+    use crate::types::{Color, EcLevel, Version};
+
+    const VERSIONS: [Version; 9] = [
+        Version::Normal(1),
+        Version::Normal(10),
+        Version::Normal(20),
+        Version::Normal(30),
+        Version::Normal(40),
+        Version::Micro(1),
+        Version::Micro(2),
+        Version::Micro(3),
+        Version::Micro(4),
+    ];
+
+    fn supported_ec_levels(version: Version) -> &'static [EcLevel] {
+        match version {
+            Version::Normal(_) => &[EcLevel::L, EcLevel::M, EcLevel::Q, EcLevel::H],
+            Version::Micro(1) => &[EcLevel::L],
+            Version::Micro(2 | 3) => &[EcLevel::L, EcLevel::M],
+            Version::Micro(4) => &[EcLevel::L, EcLevel::M, EcLevel::Q],
+            Version::Micro(_) => unreachable!(),
+        }
+    }
+
+    fn patterns_for_version(version: Version) -> &'static [MaskPattern] {
+        match version {
+            Version::Normal(_) => &ALL_PATTERNS_QR,
+            Version::Micro(_) => &ALL_PATTERNS_MICRO_QR,
+        }
+    }
+
+    fn create_canvas(version: Version, ec_level: EcLevel, data_pattern: usize) -> Canvas {
+        let mut canvas = Canvas::new(version, ec_level);
+        canvas.draw_all_functional_patterns();
+        for (index, module) in canvas.modules.iter_mut().enumerate() {
+            if *module != Module::Empty {
+                continue;
+            }
+            *module = match data_pattern {
+                0 => Module::Empty,
+                1 => Module::Unmasked(Color::Light),
+                2 => Module::Unmasked(Color::Dark),
+                3 => Module::Unmasked(if index % 2 == 0 { Color::Light } else { Color::Dark }),
+                4 => match (index * 7 + index / 3) % 5 {
+                    0 => Module::Empty,
+                    1 => Module::Masked(Color::Light),
+                    2 => Module::Masked(Color::Dark),
+                    3 => Module::Unmasked(Color::Light),
+                    _ => Module::Unmasked(Color::Dark),
+                },
+                _ => unreachable!(),
+            };
+        }
+        canvas
+    }
+
+    fn apply_mask_column_major(canvas: &mut Canvas, pattern: MaskPattern) {
+        let mask_fn = get_mask_function(pattern);
+        for x in 0..canvas.width {
+            for y in 0..canvas.width {
+                let module = canvas.get_mut(x, y);
+                *module = module.mask(mask_fn(x, y));
+            }
+        }
+        canvas.draw_format_info_patterns(pattern);
+    }
+
+    fn select_mask_by_cloning(canvas: &Canvas) -> (Canvas, MaskPattern, u32) {
+        let patterns = patterns_for_version(canvas.version);
+        let mut best_canvas = None;
+        let mut best_pattern = patterns[0];
+        let mut best_score = u32::MAX;
+        for &pattern in patterns {
+            let mut candidate = canvas.clone();
+            apply_mask_column_major(&mut candidate, pattern);
+            let score = candidate.compute_total_penalty_scores();
+            if score < best_score {
+                best_canvas = Some(candidate);
+                best_pattern = pattern;
+                best_score = score;
+            }
+        }
+        (best_canvas.expect("at least one candidate"), best_pattern, best_score)
+    }
+
+    #[test]
+    fn row_major_mask_matches_column_major_for_every_pattern() {
+        for version in VERSIONS {
+            for &pattern in patterns_for_version(version) {
+                let mut actual = create_canvas(version, EcLevel::L, 4);
+                let mut expected = actual.clone();
+                actual.apply_mask(pattern);
+                apply_mask_column_major(&mut expected, pattern);
+                assert_eq!(actual.modules, expected.modules, "version {version:?}, pattern {pattern:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn reusable_candidates_match_cloned_reference_for_all_versions_and_data_patterns() {
+        for version in VERSIONS {
+            for &ec_level in supported_ec_levels(version) {
+                for data_pattern in 0..5 {
+                    let canvas = create_canvas(version, ec_level, data_pattern);
+                    let (actual, actual_pattern, actual_score) = canvas.apply_best_mask_with_score();
+                    let (expected, expected_pattern, expected_score) = select_mask_by_cloning(&canvas);
+                    assert_eq!(
+                        (actual_pattern, actual_score, actual.modules),
+                        (expected_pattern, u16::try_from(expected_score).unwrap_or(u16::MAX), expected.modules),
+                        "version {version:?}, ec level {ec_level:?}, data pattern {data_pattern}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn high_penalty_scores_remain_exact_and_match_scalar_scoring() {
+        for (version, expected_total, expected_block) in
+            [(Version::Normal(30), 87_333, 52_005), (Version::Normal(40), 148_032, 88_395)]
+        {
+            let mut canvas = create_canvas(version, EcLevel::L, 3);
+            canvas.apply_mask(MaskPattern::Checkerboard);
+            let accelerated = canvas.compute_total_penalty_scores_with_scratch(&mut Vec::new());
+            let scalar = canvas.compute_total_penalty_scores();
+            assert_eq!(
+                (accelerated, scalar, canvas.compute_block_penalty_score()),
+                (expected_total, expected_total, expected_block),
+                "version {version:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn mask_selection_compares_full_scores_before_clipping_the_result() {
+        for (version, expected_best_score) in [(Version::Normal(30), 87_296), (Version::Normal(40), 147_995)] {
+            let mut canvas = create_canvas(version, EcLevel::L, 2);
+            for module in &mut canvas.modules {
+                if let Module::Unmasked(color) = *module {
+                    *module = Module::Masked(color);
+                }
+            }
+            for &pattern in &ALL_PATTERNS_QR {
+                let mut candidate = canvas.clone();
+                apply_mask_column_major(&mut candidate, pattern);
+                assert!(candidate.compute_total_penalty_scores() > u32::from(u16::MAX));
+            }
+            let (expected, expected_pattern, expected_score) = select_mask_by_cloning(&canvas);
+            assert_eq!((expected_pattern, expected_score), (MaskPattern::Meadow, expected_best_score));
+            let (actual, actual_pattern, actual_score) = canvas.apply_best_mask_with_score();
+            assert_eq!(
+                (actual_pattern, actual_score, actual.modules),
+                (MaskPattern::Meadow, u16::MAX, expected.modules),
+                "version {version:?}"
+            );
+        }
+    }
+
+    #[cfg(feature = "bench-internals")]
+    #[test]
+    fn benchmark_score_hooks_clip_high_penalties_consistently() {
+        for version in [Version::Normal(30), Version::Normal(40)] {
+            let mut canvas = create_canvas(version, EcLevel::L, 3);
+            canvas.apply_mask(MaskPattern::Checkerboard);
+            assert_eq!(
+                (canvas.score_mask_for_bench(&mut Vec::new()), canvas.score_mask_scalar_for_bench(&mut Vec::new())),
+                (u16::MAX, u16::MAX),
+                "version {version:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn equal_micro_mask_scores_keep_the_first_pattern() {
+        for version in [Version::Micro(1), Version::Micro(2), Version::Micro(3), Version::Micro(4)] {
+            let mut canvas = Canvas::new(version, EcLevel::L);
+            canvas.modules.fill(Module::Masked(Color::Dark));
+            let (actual, actual_pattern, actual_score) = canvas.apply_best_mask_with_score();
+            for &pattern in &ALL_PATTERNS_MICRO_QR {
+                let mut candidate = canvas.clone();
+                apply_mask_column_major(&mut candidate, pattern);
+                assert_eq!(candidate.compute_total_penalty_scores(), u32::from(actual_score));
+            }
+            let mut expected = canvas.clone();
+            apply_mask_column_major(&mut expected, MaskPattern::HorizontalLines);
+            assert_eq!(
+                (actual_pattern, actual.modules),
+                (MaskPattern::HorizontalLines, expected.modules),
+                "version {version:?}"
+            );
+        }
     }
 }
 
