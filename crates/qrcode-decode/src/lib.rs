@@ -67,6 +67,7 @@ impl<'a> GrayPixels<'a> {
     /// Panics if `(x, y)` is out of bounds.
     #[must_use]
     pub fn get(&self, x: u32, y: u32) -> u8 {
+        assert!(x < self.width && y < self.height, "grayscale pixel coordinates are out of bounds");
         self.data[(y as usize) * (self.width as usize) + (x as usize)]
     }
 }
@@ -138,4 +139,36 @@ pub trait QrDecoder {
     ///
     /// Returns `Self::Error` if decoding fails.
     fn decode(&self, image: GrayPixels<'_>) -> Result<Vec<DecodedQrCode>, Self::Error>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GrayPixels;
+
+    #[test]
+    fn grayscale_pixels_use_row_major_coordinates() {
+        let pixels = GrayPixels::new(2, 2, &[1, 2, 3, 4]);
+        assert_eq!(pixels.get(0, 0), 1);
+        assert_eq!(pixels.get(1, 0), 2);
+        assert_eq!(pixels.get(0, 1), 3);
+        assert_eq!(pixels.get(1, 1), 4);
+    }
+
+    #[test]
+    #[should_panic(expected = "grayscale pixel coordinates are out of bounds")]
+    fn grayscale_x_coordinate_cannot_alias_the_next_row() {
+        let _ = GrayPixels::new(2, 2, &[1, 2, 3, 4]).get(2, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "grayscale pixel coordinates are out of bounds")]
+    fn grayscale_y_coordinate_cannot_read_outside_the_image() {
+        let _ = GrayPixels::new(2, 2, &[1, 2, 3, 4]).get(0, 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "grayscale pixel coordinates are out of bounds")]
+    fn empty_grayscale_image_has_no_valid_coordinates() {
+        let _ = GrayPixels::new(0, 0, &[]).get(0, 0);
+    }
 }

@@ -109,8 +109,13 @@ impl<'a> BitReader<'a> {
 ///
 /// Returns [`SaParseError::NotStructuredAppend`] if the stream does not begin
 /// with the Structured Append mode indicator (`0011`), or
-/// [`SaParseError::MalformedStream`] if the bits run out mid-field.
+/// [`SaParseError::MalformedStream`] if the version is not a normal QR version
+/// in `1..=40`, the bits run out mid-field, a value is invalid for its mode, or
+/// a segment uses an unsupported mode (including ECI and FNC1).
 pub fn parse_sa_datastream(bits: &[u8], version: Version) -> Result<SaSymbolData, SaParseError> {
+    if !matches!(version, Version::Normal(1..=40)) {
+        return Err(SaParseError::MalformedStream);
+    }
     let mut r = BitReader::new(bits);
 
     let mode = r.read_bits(4).ok_or(SaParseError::MalformedStream)?;
@@ -134,8 +139,8 @@ pub fn parse_sa_datastream(bits: &[u8], version: Version) -> Result<SaSymbolData
             0b0010 => decode_alpha(&mut r, version, &mut data)?,
             0b0100 => decode_byte(&mut r, version, &mut data)?,
             0b1000 => decode_kanji(&mut r, version, &mut data)?,
-            // FNC1 / ECI / unknown — stop with the payload parsed so far.
-            _ => break,
+            // Unsupported modes must not make a partial payload look complete.
+            _ => return Err(SaParseError::MalformedStream),
         }
     }
 
@@ -156,6 +161,9 @@ fn decode_numeric(r: &mut BitReader<'_>, version: Version, out: &mut Vec<u8>) ->
         r.read_bits(Mode::Numeric.length_bits_count(version)).ok_or(SaParseError::MalformedStream)? as usize;
     while remaining >= 3 {
         let v = r.read_bits(10).ok_or(SaParseError::MalformedStream)?;
+        if v >= 1000 {
+            return Err(SaParseError::MalformedStream);
+        }
         out.push(b'0' + (v / 100) as u8);
         out.push(b'0' + ((v / 10) % 10) as u8);
         out.push(b'0' + (v % 10) as u8);
@@ -163,10 +171,16 @@ fn decode_numeric(r: &mut BitReader<'_>, version: Version, out: &mut Vec<u8>) ->
     }
     if remaining == 2 {
         let v = r.read_bits(7).ok_or(SaParseError::MalformedStream)?;
+        if v >= 100 {
+            return Err(SaParseError::MalformedStream);
+        }
         out.push(b'0' + (v / 10) as u8);
         out.push(b'0' + (v % 10) as u8);
     } else if remaining == 1 {
         let v = r.read_bits(4).ok_or(SaParseError::MalformedStream)?;
+        if v >= 10 {
+            return Err(SaParseError::MalformedStream);
+        }
         out.push(b'0' + v as u8);
     }
     Ok(())
@@ -327,5 +341,80 @@ mod tests {
         // Starts with the SA mode `0011`, but only 4 bits remain — not enough
         // for the 8-bit symbol-sequence indicator.
         assert_eq!(parse_sa_datastream(&[0b0011_0000], Version::Normal(1)), Err(SaParseError::MalformedStream));
+    }
+
+    #[test]
+    fn numeric_values_outside_their_decimal_width_are_rejected() {
+        // SA header (position 1 of 2), Numeric mode, count 3 / 2 / 1,
+        // then the largest 10 / 7 / 4-bit value instead of decimal digits.
+        for bytes in [
+            &[0x30, 0x10, 0x01, 0x00, 0xff, 0xf0][..],
+            &[0x30, 0x10, 0x01, 0x00, 0xbf, 0x80][..],
+            &[0x30, 0x10, 0x01, 0x00, 0x7c, 0x00][..],
+        ] {
+            assert_eq!(parse_sa_datastream(bytes, Version::Normal(1)), Err(SaParseError::MalformedStream));
+        }
+    }
+
+    #[test]
+    fn largest_valid_numeric_values_round_trip() {
+        for data in [b"999".as_slice(), b"99", b"9"] {
+            let bytes = sa_bytes(1, 2, 0x00, |bits| {
+                bits.push_numeric_data(data).unwrap();
+            });
+            assert_eq!(parse_sa_datastream(&bytes, Version::Normal(1)).unwrap().data, data);
+        }
+    }
+
+    #[test]
+    fn unsupported_modes_do_not_return_a_partial_payload() {
+        for mode in [0b0011, 0b0101, 0b0110, 0b0111, 0b1001, 0b1111] {
+            let mut bytes = sa_bytes(1, 2, 0x00, |bits| {
+                bits.push_byte_data(b"a").unwrap();
+            });
+            // Replace the terminator immediately after the byte payload with
+            // an unsupported mode, leaving a valid decoded prefix before it.
+            bytes[5] = mode << 4;
+            assert_eq!(parse_sa_datastream(&bytes, Version::Normal(1)), Err(SaParseError::MalformedStream));
+        }
+    }
+
+    #[test]
+    fn invalid_or_micro_versions_are_rejected_before_reading_counts() {
+        let bytes = sa_bytes(1, 2, 0x00, |bits| {
+            bits.push_numeric_data(b"123").unwrap();
+        });
+        for version in [
+            Version::Normal(0),
+            Version::Normal(41),
+            Version::Normal(i16::MIN),
+            Version::Normal(i16::MAX),
+            Version::Micro(-1),
+            Version::Micro(1),
+            Version::Micro(4),
+        ] {
+            assert_eq!(parse_sa_datastream(&bytes, version), Err(SaParseError::MalformedStream));
+        }
+    }
+
+    #[test]
+    fn all_data_modes_round_trip_across_normal_version_count_tiers() {
+        let expected = b"0123AC-\xff\x93\x5f\xe4\xaa";
+        for number in [1, 9, 10, 26, 27, 40] {
+            let version = Version::Normal(number);
+            let mut bits = Bits::new(version);
+            bits.push_structured_append_header(2, 3, 0x5a).unwrap();
+            bits.push_numeric_data(b"0123").unwrap();
+            bits.push_alphanumeric_data(b"AC-").unwrap();
+            bits.push_byte_data(b"\xff").unwrap();
+            bits.push_kanji_data(b"\x93\x5f\xe4\xaa").unwrap();
+            bits.push_terminator(EcLevel::L).unwrap();
+
+            let parsed = parse_sa_datastream(&bits.into_bytes(), version).unwrap();
+            assert_eq!(parsed.position, 2, "version {number}");
+            assert_eq!(parsed.total, 3, "version {number}");
+            assert_eq!(parsed.parity, 0x5a, "version {number}");
+            assert_eq!(parsed.data, expected, "version {number}");
+        }
     }
 }

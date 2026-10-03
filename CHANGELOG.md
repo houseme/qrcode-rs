@@ -30,6 +30,9 @@
   preallocation independently of oversized pixel dimensions.
 - Fill PDF light modules and quiet zones with the configured RGB or CMYK
   background before drawing dark rectangles.
+- Reject invalid Structured Append numeric values, unsupported modes, and
+  non-normal versions instead of returning partial payloads; enforce
+  two-dimensional GrayPixels coordinate bounds.
 
 ### Added
 
