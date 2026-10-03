@@ -41,6 +41,9 @@ image, so oversized module or quiet-zone settings return an error. Requests
 that exceed the shared backend pixel-buffer budget also return
 `ImageRenderError::Render(RenderError::OutputTooLarge)`; the source-to-PNG/JPEG
 helpers preserve this error through `EncodeError::Render`.
+`encode_jpeg` renders directly in RGB8 and avoids a temporary RGBA8 image and
+conversion; it uses the three-byte-per-pixel RGB buffer budget, so it may accept
+dimensions rejected by an RGBA8 rendering request. PNG retains the RGBA8 path.
 Module dimensions must be non-zero; invalid options return
 `ImageRenderError::InvalidModuleDimensions` instead of being silently
 clamped. Options can also be checked ahead of time with

@@ -260,7 +260,12 @@ fn encode_source<S>(source: &S, options: RenderOptions, format: ImageFormat) -> 
 where
     S: ModuleSource + ?Sized,
 {
-    let image = render_dynamic(source, options).map_err(EncodeError::Render)?;
+    let image = match format {
+        ImageFormat::Jpeg => {
+            DynamicImage::ImageRgb8(render::<Rgb<u8>, _>(source, options).map_err(EncodeError::Render)?)
+        }
+        _ => render_dynamic(source, options).map_err(EncodeError::Render)?,
+    };
     encode_to_format(&image, format).map_err(EncodeError::Image)
 }
 
@@ -275,6 +280,10 @@ where
 
 #[cfg(feature = "image")]
 /// Renders and encodes a module source as JPEG bytes.
+///
+/// Renders directly in RGB8, avoiding an intermediate RGBA8 image and its
+/// conversion. The shared pixel-buffer budget therefore counts three bytes per
+/// output pixel; this can fit dimensions rejected by the four-byte RGBA8 path.
 pub fn encode_jpeg<S>(source: &S, options: RenderOptions) -> Result<Vec<u8>, EncodeError>
 where
     S: ModuleSource + ?Sized,
@@ -321,6 +330,37 @@ mod tests {
 
         assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
         assert!(jpeg.starts_with(&[0xff, 0xd8, 0xff]));
+    }
+
+    #[test]
+    fn direct_rgb_jpeg_matches_previous_rgba_pipeline_byte_for_byte() {
+        let modules = [
+            Color::Dark,
+            Color::Light,
+            Color::Dark,
+            Color::Light,
+            Color::Dark,
+            Color::Light,
+            Color::Dark,
+            Color::Light,
+            Color::Light,
+        ];
+        let source = ModuleView::new(&modules, 3).expect("valid test grid");
+        for options in [
+            RenderOptions::default(),
+            RenderOptions::default().module_size(1, 1).without_quiet_zone(),
+            RenderOptions::default().module_size(2, 7).without_quiet_zone(),
+            RenderOptions::default().module_size(7, 8).quiet_zone(1),
+            RenderOptions::default().module_size(8, 8).quiet_zone(2),
+            RenderOptions::default().module_size(32, 8).quiet_zone(1),
+            RenderOptions::default().module_size(8, 64).quiet_zone(1),
+            RenderOptions::default().module_size(32, 64).without_quiet_zone(),
+        ] {
+            let previous_image = render_dynamic(&source, options).unwrap();
+            let previous = super::encode_to_format(&previous_image, super::ImageFormat::Jpeg).unwrap();
+            let actual = encode_jpeg(&source, options).unwrap();
+            assert_eq!(actual, previous, "options {options:?}");
+        }
     }
 
     #[test]

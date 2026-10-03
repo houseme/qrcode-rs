@@ -56,6 +56,9 @@
 - Use a periodic 512-byte finite-field exponent table for Reed-Solomon
   correction, removing modulo from coefficient lookups while preserving
   error-correction bytes; add same-binary modulo benchmark controls.
+- Render JPEG sources directly as RGB8, avoiding a full RGBA-to-RGB image
+  conversion; count three bytes per pixel against the existing image-buffer
+  budget.
 
 ### Fixed
 
