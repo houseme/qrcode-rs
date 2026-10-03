@@ -148,6 +148,9 @@
 - Add direct and template-styled PNG grid methods on BatchOutput<QrCode>,
   drawing symbols into one final canvas with the shared 256 MiB budget and no
   retained tile images.
+- Add QrCode::try_from_serializable and QrCodeDataError to check supported
+  version/correction combinations and exact matrix shape without cloning;
+  preserve the trusted constructor and existing serde layout.
 
 ## [2.1.1] - 2026-09-16
 

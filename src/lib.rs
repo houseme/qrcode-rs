@@ -1803,6 +1803,10 @@ impl Info {
 /// A serializable view of a [`QrCode`] (matrix + metadata), enabled by the
 /// `serde` feature. Round-trips via [`QrCode::to_serializable`] and
 /// [`QrCode::from_serializable`].
+///
+/// Deserialization preserves the fields without validating the version or
+/// matrix dimensions. Use [`QrCode::try_from_serializable`] when the data comes
+/// from an untrusted source.
 #[cfg(feature = "serde")]
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct QrCodeData {
@@ -1816,6 +1820,58 @@ pub struct QrCodeData {
     pub content: Vec<Color>,
 }
 
+/// Errors returned when checking serialized QR metadata and matrix dimensions.
+///
+/// A successful check establishes a supported version / error-correction-level
+/// combination and a square matrix of the required size. It does not establish
+/// that the module colors represent a decodable QR symbol.
+#[cfg(feature = "serde")]
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QrCodeDataError {
+    /// The version or its error-correction-level combination is unsupported.
+    InvalidVersion {
+        /// The supplied QR version.
+        version: Version,
+        /// The supplied error-correction level.
+        ec_level: EcLevel,
+    },
+    /// The supplied matrix width does not match the supported version.
+    WidthMismatch {
+        /// Required number of modules per side.
+        expected: usize,
+        /// Supplied number of modules per side.
+        actual: usize,
+    },
+    /// The matrix does not contain exactly one color per module.
+    ContentLengthMismatch {
+        /// Required number of module colors.
+        expected: usize,
+        /// Supplied number of module colors.
+        actual: usize,
+    },
+}
+
+#[cfg(feature = "serde")]
+impl core::fmt::Display for QrCodeDataError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidVersion { version, ec_level } => {
+                write!(f, "invalid serialized QR version {version:?} for error correction level {ec_level:?}")
+            }
+            Self::WidthMismatch { expected, actual } => {
+                write!(f, "serialized QR width mismatch: expected {expected} modules, got {actual}")
+            }
+            Self::ContentLengthMismatch { expected, actual } => {
+                write!(f, "serialized QR content length mismatch: expected {expected} module colors, got {actual}")
+            }
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl core::error::Error for QrCodeDataError {}
+
 #[cfg(feature = "serde")]
 impl QrCode {
     /// Serializes this QR code into a [`QrCodeData`] (requires the `serde` feature).
@@ -1826,8 +1882,11 @@ impl QrCode {
 
     /// Reconstructs a [`QrCode`] from [`QrCodeData`] (requires the `serde` feature).
     ///
-    /// `data` is trusted: `content.len()` must equal `width * width` (checked in
-    /// debug builds). Pair with [`QrCode::to_serializable`].
+    /// `data` is trusted: the version / error-correction-level combination must
+    /// be supported, `width` must match the version, and `content.len()` must
+    /// equal `width * width` (the length is checked in debug builds). Pair with
+    /// [`QrCode::to_serializable`]. For data from an untrusted source, use
+    /// [`Self::try_from_serializable`].
     #[must_use]
     pub fn from_serializable(data: QrCodeData) -> Self {
         debug_assert_eq!(data.content.len(), data.width * data.width, "malformed QrCodeData");
@@ -1841,6 +1900,169 @@ impl QrCode {
             encoding_modes: EncodingModes::empty(),
             remaining_capacity_bits: None,
         }
+    }
+
+    /// Reconstructs a [`QrCode`] after checking serialized metadata and matrix
+    /// dimensions (requires the `serde` feature).
+    ///
+    /// The supplied version and error-correction level must be supported, the
+    /// width must match that version, and there must be exactly `width * width`
+    /// module colors. The checks run in both debug and release builds and do
+    /// not clone the matrix. Encoding-time metadata remains unavailable, as
+    /// with [`Self::from_serializable`].
+    ///
+    /// This validates the matrix shape, not its QR patterns, encoded payload,
+    /// or error-correction bytes. A matrix with valid dimensions may still be
+    /// undecodable.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QrCodeDataError::InvalidVersion`] before computing dimensions
+    /// when the version / correction-level combination is unsupported, then
+    /// [`QrCodeDataError::WidthMismatch`] or
+    /// [`QrCodeDataError::ContentLengthMismatch`] for inconsistent dimensions.
+    pub fn try_from_serializable(data: QrCodeData) -> Result<Self, QrCodeDataError> {
+        bits::data_capacity_bits(data.version, data.ec_level)
+            .map_err(|_| QrCodeDataError::InvalidVersion { version: data.version, ec_level: data.ec_level })?;
+        // Only supported versions reach this point: the required width is
+        // 11..=177, so computing its square is representable on every target.
+        let expected_width = data.version.width().as_usize();
+        if data.width != expected_width {
+            return Err(QrCodeDataError::WidthMismatch { expected: expected_width, actual: data.width });
+        }
+        let expected = expected_width * expected_width;
+        if data.content.len() != expected {
+            return Err(QrCodeDataError::ContentLengthMismatch { expected, actual: data.content.len() });
+        }
+        Ok(Self::from_serializable(data))
+    }
+}
+
+#[cfg(all(test, feature = "serde"))]
+mod serialized_data_tests {
+    use super::{Color, EcLevel, ModuleSource, QrCode, QrCodeData, QrCodeDataError, Version};
+    use alloc::{format, vec};
+
+    fn data(version: Version, ec_level: EcLevel, width: usize, length: usize) -> QrCodeData {
+        QrCodeData { version, ec_level, width, content: vec![Color::Light; length] }
+    }
+
+    #[test]
+    fn checked_reconstruction_round_trips_normal_and_micro_without_cloning_modules() {
+        for (version, ec_level) in [
+            (Version::Normal(1), EcLevel::M),
+            (Version::Normal(40), EcLevel::H),
+            (Version::Micro(1), EcLevel::L),
+            (Version::Micro(4), EcLevel::Q),
+        ] {
+            let code = QrCode::with_version(b"1", version, ec_level).unwrap();
+            let serialized = code.to_serializable();
+            let modules = serialized.content.as_ptr();
+            let rebuilt = QrCode::try_from_serializable(serialized).unwrap();
+            assert_eq!(rebuilt.to_serializable(), code.to_serializable());
+            assert_eq!(rebuilt.colors().as_ptr(), modules);
+            assert_eq!(rebuilt.info().mask_pattern(), None);
+            assert_eq!(rebuilt.info().mask_penalty_score(), None);
+            assert!(rebuilt.info().encoding_modes().is_empty());
+            assert_eq!(rebuilt.info().remaining_capacity(), None);
+        }
+    }
+
+    #[test]
+    fn checked_reconstruction_accepts_every_supported_normal_version_and_correction_level() {
+        for number in 1..=40 {
+            let version = Version::Normal(number);
+            let width = version.width() as usize;
+            for ec_level in [EcLevel::L, EcLevel::M, EcLevel::Q, EcLevel::H] {
+                let code = QrCode::try_from_serializable(data(version, ec_level, width, width * width)).unwrap();
+                assert_eq!(code.info().version(), version);
+                assert_eq!(code.info().ec_level(), ec_level);
+                assert_eq!(code.module_view().width(), width);
+            }
+        }
+    }
+
+    #[test]
+    fn checked_reconstruction_checks_micro_correction_level_compatibility() {
+        for number in 1..=4 {
+            let version = Version::Micro(number);
+            let width = version.width() as usize;
+            for ec_level in [EcLevel::L, EcLevel::M, EcLevel::Q, EcLevel::H] {
+                let actual = QrCode::try_from_serializable(data(version, ec_level, width, width * width));
+                let supported =
+                    matches!((number, ec_level), (1..=4, EcLevel::L) | (2..=4, EcLevel::M) | (4, EcLevel::Q));
+                if supported {
+                    assert_eq!(actual.unwrap().info().version(), version);
+                } else {
+                    assert_eq!(actual.err(), Some(QrCodeDataError::InvalidVersion { version, ec_level }));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn checked_reconstruction_rejects_invalid_versions_before_width_arithmetic() {
+        for version in [
+            Version::Normal(i16::MIN),
+            Version::Normal(0),
+            Version::Normal(41),
+            Version::Normal(i16::MAX),
+            Version::Micro(i16::MIN),
+            Version::Micro(0),
+            Version::Micro(5),
+            Version::Micro(i16::MAX),
+        ] {
+            assert_eq!(
+                QrCode::try_from_serializable(data(version, EcLevel::M, usize::MAX, 0)).err(),
+                Some(QrCodeDataError::InvalidVersion { version, ec_level: EcLevel::M })
+            );
+        }
+    }
+
+    #[test]
+    fn checked_reconstruction_rejects_wrong_width_before_matrix_area_arithmetic() {
+        for width in [0, 1, 20, 22, usize::MAX] {
+            assert_eq!(
+                QrCode::try_from_serializable(data(Version::Normal(1), EcLevel::M, width, 0)).err(),
+                Some(QrCodeDataError::WidthMismatch { expected: 21, actual: width })
+            );
+        }
+    }
+
+    #[test]
+    fn checked_reconstruction_rejects_short_and_long_module_buffers() {
+        for length in [0, 440, 442] {
+            assert_eq!(
+                QrCode::try_from_serializable(data(Version::Normal(1), EcLevel::M, 21, length)).err(),
+                Some(QrCodeDataError::ContentLengthMismatch { expected: 441, actual: length })
+            );
+        }
+    }
+
+    #[test]
+    fn checked_reconstruction_validates_shape_without_claiming_scan_validity() {
+        let code = QrCode::try_from_serializable(data(Version::Normal(1), EcLevel::M, 21, 441)).unwrap();
+        assert!(code.colors().iter().all(|color| *color == Color::Light));
+        assert_eq!(code.rows().flatten().count(), 441);
+        assert_eq!(code.analyze().dark_ratio(), 0.0);
+    }
+
+    #[test]
+    fn checked_reconstruction_rejects_untrusted_deserialized_metadata() {
+        let json = r#"{"version":{"Normal":32767},"ec_level":"M","width":0,"content":[]}"#;
+        let decoded: QrCodeData = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            QrCode::try_from_serializable(decoded).err(),
+            Some(QrCodeDataError::InvalidVersion { version: Version::Normal(i16::MAX), ec_level: EcLevel::M })
+        );
+    }
+
+    #[test]
+    fn serialized_data_errors_implement_core_error_and_report_rejected_values() {
+        fn assert_error<T: core::error::Error>() {}
+        assert_error::<QrCodeDataError>();
+        let error = QrCodeDataError::WidthMismatch { expected: 21, actual: 0 };
+        assert_eq!(format!("{error}"), "serialized QR width mismatch: expected 21 modules, got 0");
     }
 }
 
