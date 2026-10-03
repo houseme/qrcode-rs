@@ -41,6 +41,9 @@
 - Escape and decode vCard TEXT values, preserve escaped structured separators,
   and read only the first card while retaining incomplete-card tolerance and
   raw URL/address accessors.
+- Preserve inherited, explicitly cleared, and set module sizes through
+  template JSON round trips while retaining the existing binary serde field
+  and nested-option layout.
 
 ### Added
 

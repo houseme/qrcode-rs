@@ -1901,17 +1901,70 @@ pub struct QrTemplate {
 /// `None` means the value is inherited from the parent template. Module size
 /// uses a nested option so a patch can either inherit, set, or explicitly clear
 /// the parent's size.
+///
+/// With `serde`, human-readable formats omit inherited fields and represent a
+/// cleared module size as `null`. Binary formats retain all four fields and
+/// the nested module-size option representation.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 pub struct QrTemplatePatch {
     /// Optional dark module color override.
     pub dark_color: Option<String>,
     /// Optional light module color override.
     pub light_color: Option<String>,
     /// Optional module-size override; `Some(None)` clears the inherited size.
+    #[cfg_attr(feature = "serde", serde(default, deserialize_with = "deserialize_module_size_patch"))]
     pub module_size: Option<Option<(u32, u32)>>,
     /// Optional quiet-zone override.
     pub quiet_zone: Option<bool>,
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for QrTemplatePatch {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+
+        let human_readable = serializer.is_human_readable();
+        let field_count = if human_readable {
+            usize::from(self.dark_color.is_some())
+                + usize::from(self.light_color.is_some())
+                + usize::from(self.module_size.is_some())
+                + usize::from(self.quiet_zone.is_some())
+        } else {
+            4
+        };
+        let mut state = serializer.serialize_struct("QrTemplatePatch", field_count)?;
+        if !human_readable || self.dark_color.is_some() {
+            state.serialize_field("dark_color", &self.dark_color)?;
+        }
+        if !human_readable || self.light_color.is_some() {
+            state.serialize_field("light_color", &self.light_color)?;
+        }
+        if !human_readable || self.module_size.is_some() {
+            state.serialize_field("module_size", &self.module_size)?;
+        }
+        if !human_readable || self.quiet_zone.is_some() {
+            state.serialize_field("quiet_zone", &self.quiet_zone)?;
+        }
+        state.end()
+    }
+}
+
+#[cfg(feature = "serde")]
+fn deserialize_module_size_patch<'de, D>(deserializer: D) -> Result<Option<Option<(u32, u32)>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    if deserializer.is_human_readable() {
+        // The field's default handles absence; a present null must remain an
+        // explicit clear rather than becoming the same value as an absent field.
+        <Option<(u32, u32)> as serde::Deserialize>::deserialize(deserializer).map(Some)
+    } else {
+        <Option<Option<(u32, u32)>> as serde::Deserialize>::deserialize(deserializer)
+    }
 }
 
 impl QrTemplatePatch {
@@ -2069,13 +2122,7 @@ impl QrTemplatePatch {
     /// does not match the [`QrTemplatePatch`] schema.
     #[cfg(feature = "template-json")]
     pub fn from_json_str(input: &str) -> Result<Self, serde_json::Error> {
-        let value: serde_json::Value = serde_json::from_str(input)?;
-        let clears_module_size = value.get("module_size").is_some_and(serde_json::Value::is_null);
-        let mut patch: Self = serde_json::from_value(value)?;
-        if clears_module_size {
-            patch.module_size = Some(None);
-        }
-        Ok(patch)
+        serde_json::from_str(input)
     }
 
     /// Serializes this patch to a compact JSON string.
@@ -3027,6 +3074,57 @@ mod api_tests {
     fn template_json_helpers_report_malformed_input() {
         assert!(crate::QrTemplate::from_json_str("{").is_err());
         assert!(crate::QrTemplatePatch::from_json_str(r#"{"quiet_zone":"yes"}"#).is_err());
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn template_patch_serde_preserves_absent_clear_and_set_module_sizes() {
+        let base = crate::QrTemplate::minimal().with_module_size(4, 5);
+        for (json, expected_patch, expected_size) in [
+            ("{}", None, Some((4, 5))),
+            (r#"{"module_size":null}"#, Some(None), None),
+            (r#"{"module_size":[2,3]}"#, Some(Some((2, 3))), Some((2, 3))),
+        ] {
+            let patch: crate::QrTemplatePatch = serde_json::from_str(json).unwrap();
+            assert_eq!(patch.module_size, expected_patch);
+            let encoded = serde_json::to_string(&patch).unwrap();
+            let decoded: crate::QrTemplatePatch = serde_json::from_str(&encoded).unwrap();
+            assert_eq!(decoded, patch);
+            assert_eq!(base.extend(&decoded).module_size, expected_size);
+        }
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn template_patch_json_serializes_only_overridden_fields() {
+        assert_eq!(serde_json::to_string(&crate::QrTemplatePatch::new()).unwrap(), "{}");
+        assert_eq!(
+            serde_json::to_string(&crate::QrTemplatePatch::new().clear_module_size()).unwrap(),
+            r#"{"module_size":null}"#
+        );
+        let patch = crate::QrTemplatePatch::new()
+            .dark_color("#123456")
+            .light_color("#abcdef")
+            .module_size(2, 3)
+            .quiet_zone(false);
+        let encoded = serde_json::to_string(&patch).unwrap();
+        assert_eq!(
+            encoded,
+            r##"{"dark_color":"#123456","light_color":"#abcdef","module_size":[2,3],"quiet_zone":false}"##
+        );
+        assert_eq!(serde_json::from_str::<crate::QrTemplatePatch>(&encoded).unwrap(), patch);
+    }
+
+    #[cfg(feature = "template-json")]
+    #[test]
+    fn template_json_patch_export_keeps_inherited_module_size() {
+        let base = crate::QrTemplate::minimal().with_module_size(4, 5);
+        let patch = crate::QrTemplatePatch::new().dark_color("#123456");
+        let exported = patch.to_json_string().unwrap();
+        assert!(!exported.contains("module_size"));
+        let imported = crate::QrTemplatePatch::from_json_str(&exported).unwrap();
+        assert_eq!(base.extend(&imported).module_size, Some((4, 5)));
+        assert_eq!(base.extend(&imported).dark_color, "#123456");
     }
 
     #[test]
