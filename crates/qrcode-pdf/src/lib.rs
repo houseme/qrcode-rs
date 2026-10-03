@@ -151,9 +151,12 @@ impl RenderCanvas for Canvas {
     type Pixel = Color;
     type Image = Vec<u8>;
 
-    fn new(width: u32, height: u32, dark_pixel: Color, _light_pixel: Color) -> Self {
+    fn new(width: u32, height: u32, dark_pixel: Color, light_pixel: Color) -> Self {
+        let mut stream = String::with_capacity(stream_capacity(width, height, 48));
+        writeln!(stream, "{} {} {} rg 0 0 {width} {height} re f", light_pixel.0[0], light_pixel.0[1], light_pixel.0[2])
+            .unwrap();
         Canvas {
-            stream: String::with_capacity(stream_capacity(width, height, 48)),
+            stream,
             width,
             height,
             fg_r: dark_pixel.0[0],
@@ -287,9 +290,16 @@ impl RenderCanvas for CmykCanvas {
     type Pixel = CmykColor;
     type Image = Vec<u8>;
 
-    fn new(width: u32, height: u32, dark_pixel: CmykColor, _light_pixel: CmykColor) -> Self {
+    fn new(width: u32, height: u32, dark_pixel: CmykColor, light_pixel: CmykColor) -> Self {
+        let mut stream = String::with_capacity(stream_capacity(width, height, 56));
+        writeln!(
+            stream,
+            "{} {} {} {} k 0 0 {width} {height} re f",
+            light_pixel.0[0], light_pixel.0[1], light_pixel.0[2], light_pixel.0[3]
+        )
+        .unwrap();
         CmykCanvas {
-            stream: String::with_capacity(stream_capacity(width, height, 56)),
+            stream,
             width,
             height,
             fg_c: dark_pixel.0[0],
@@ -397,6 +407,10 @@ mod tests {
     use qrcode_core::Color as ModuleColor;
     use qrcode_render::{Renderer, StyledPixel};
 
+    fn content_stream(pdf: &[u8]) -> &str {
+        core::str::from_utf8(pdf).unwrap().split_once("stream\n").unwrap().1.split_once("\nendstream").unwrap().0
+    }
+
     #[test]
     fn test_pdf_header() {
         let colors = vec![ModuleColor::Dark; 4];
@@ -431,6 +445,7 @@ mod tests {
         // All-light produces no dark rects, but PDF is still valid.
         assert!(pdf.starts_with(b"%PDF-1.4"));
         assert!(pdf.ends_with(b"%%EOF\n"));
+        assert_eq!(content_stream(&pdf), "1 1 1 rg 0 0 2 2 re f\n");
     }
 
     #[test]
@@ -453,6 +468,47 @@ mod tests {
 
         assert!(content.contains("1 0 0 0.25 k"));
         assert!(!content.contains(" rg"));
+    }
+
+    #[test]
+    fn pdf_rgb_background_covers_light_modules_and_quiet_zone_before_dark_rectangles() {
+        let colors = [ModuleColor::Dark, ModuleColor::Light, ModuleColor::Light, ModuleColor::Dark];
+        let pdf = Renderer::<Color>::new(&colors, 2, 1)
+            .dark_color(Color([1.0, 0.0, 0.0]))
+            .light_color(Color([0.25, 0.5, 0.75]))
+            .module_dimensions(2, 3)
+            .build();
+
+        assert_eq!(
+            content_stream(&pdf),
+            "0.25 0.5 0.75 rg 0 0 8 12 re f\n1 0 0 rg 2 6 2 3 re f\n1 0 0 rg 4 3 2 3 re f\n"
+        );
+    }
+
+    #[test]
+    fn pdf_cmyk_background_covers_light_modules_and_quiet_zone_before_dark_rectangles() {
+        let colors = [ModuleColor::Dark, ModuleColor::Light, ModuleColor::Light, ModuleColor::Dark];
+        let pdf = Renderer::<CmykColor>::new(&colors, 2, 1)
+            .dark_color(CmykColor([1.0, 0.0, 0.0, 0.25]))
+            .light_color(CmykColor([0.0, 0.25, 0.5, 0.0]))
+            .module_dimensions(2, 3)
+            .build();
+
+        assert_eq!(
+            content_stream(&pdf),
+            "0 0.25 0.5 0 k 0 0 8 12 re f\n1 0 0 0.25 k 2 6 2 3 re f\n1 0 0 0.25 k 4 3 2 3 re f\n"
+        );
+    }
+
+    #[test]
+    fn pdf_cmyk_all_light_canvas_is_filled_with_configured_background() {
+        let colors = [ModuleColor::Light; 4];
+        let pdf = Renderer::<CmykColor>::new(&colors, 2, 0)
+            .light_color(CmykColor([0.0, 0.25, 0.5, 0.0]))
+            .module_dimensions(2, 3)
+            .build();
+
+        assert_eq!(content_stream(&pdf), "0 0.25 0.5 0 k 0 0 4 6 re f\n");
     }
 
     #[test]

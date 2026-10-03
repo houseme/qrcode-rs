@@ -28,6 +28,8 @@
   template module dimensions consistently.
 - Correct RGB and CMYK EPS rectangle coordinates and bound vector-stream
   preallocation independently of oversized pixel dimensions.
+- Fill PDF light modules and quiet zones with the configured RGB or CMYK
+  background before drawing dark rectangles.
 
 ### Added
 
