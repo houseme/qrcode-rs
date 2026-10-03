@@ -123,6 +123,9 @@
 - Handle quoted tag delimiters and self-closing roots when injecting SVG/HTML
   attributes, and insert SVG animation styles inside expanded self-closing
   roots.
+- Read quoted vCard URI parameters and grouped contact properties without
+  mistaking parameter colons for value separators; skip unused structured-name
+  fallback allocation after FN.
 
 ### Added
 

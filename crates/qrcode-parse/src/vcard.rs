@@ -2,7 +2,8 @@
 //!
 //! The encoder emits a minimal vCard 3.0 card; the parser is tolerant of vCard
 //! 2.1 / 3.0 / 4.0, accepts `\n` or `\r\n` line endings, unfolds folded lines,
-//! and ignores property parameters (e.g. the `;TYPE=cell` in `TEL;TYPE=cell:`).
+//! and accepts grouped properties and quoted parameters (e.g. `item1.TEL` or
+//! the `;GEO="geo:12.3457,78.910"` in an address property).
 //! The `qrcode-rs` facade uses this same module for its convenience
 //! constructor, so [`encode_vcard`] and [`VCard::parse`] stay symmetric.
 
@@ -44,7 +45,8 @@ impl VCard {
     /// Parses a vCard payload.
     ///
     /// Tolerant of versions 2.1 / 3.0 / 4.0, either line ending, line folding,
-    /// and property parameters. The name comes from `FN`, or from `N` when no
+    /// grouped properties, and property parameters, including quoted values.
+    /// The name comes from `FN`, or from `N` when no
     /// `FN` is present. Text values are unescaped, while `URL` and the raw
     /// structured `ADR` value are preserved. Only the first card is read;
     /// properties outside its `BEGIN:VCARD` / `END:VCARD` boundaries are ignored.
@@ -64,7 +66,7 @@ impl VCard {
         let mut address = None;
 
         for line in unfold(s) {
-            let Some((prop, value)) = line.split_once(':') else {
+            let Some((prop, value)) = split_content_line(&line) else {
                 continue; // blank or keyless line — skip
             };
             // The property name is the segment before any `;` params.
@@ -78,9 +80,12 @@ impl VCard {
             if key.eq_ignore_ascii_case("END") && value.eq_ignore_ascii_case("VCARD") {
                 break;
             }
+            // Groups associate related contact properties. Keep record
+            // sentinels ungrouped, then match the name after the group prefix.
+            let key = key.rsplit_once('.').map_or(key, |(_, name)| name);
             if key.eq_ignore_ascii_case("FN") && fn_name.is_none() {
                 fn_name = Some(unescape_text(value));
-            } else if key.eq_ignore_ascii_case("N") && n_name.is_none() {
+            } else if key.eq_ignore_ascii_case("N") && n_name.is_none() && fn_name.is_none() {
                 n_name = Some(parse_n(value));
             } else if key.eq_ignore_ascii_case("TEL") && phone.is_none() {
                 phone = Some(unescape_text(value));
@@ -136,6 +141,28 @@ impl VCard {
     pub fn address(&self) -> Option<&str> {
         self.address.as_deref()
     }
+}
+
+/// Finds the property/value separator without consuming colons in quoted
+/// parameters. Malformed quoted headers retain the original tolerant split.
+fn split_content_line(line: &str) -> Option<(&str, &str)> {
+    let first = line.split_once(':')?;
+    if !first.0.contains('"') {
+        return Some(first);
+    }
+
+    let mut quoted = false;
+    for (index, &byte) in line.as_bytes().iter().enumerate() {
+        match byte {
+            b'"' => quoted = !quoted,
+            b':' if !quoted => {
+                // ASCII ':' occupies a complete UTF-8 character.
+                return Some((&line[..index], &line[index + 1..]));
+            }
+            _ => {}
+        }
+    }
+    Some(first)
 }
 
 /// Encodes a minimal vCard 3.0 card.
@@ -424,5 +451,71 @@ mod tests {
         .unwrap();
         assert_eq!(card.name(), Some(r"Family\;Given"));
         assert_eq!(card.organization(), Some(r"Company\;Unit"));
+    }
+
+    #[test]
+    fn quoted_uri_and_label_parameters_do_not_become_address_data() {
+        // The GEO and LABEL parameter forms appear in RFC 6350 section 6.3.1.
+        let card = VCard::parse(concat!(
+            "BEGIN:VCARD\r\nVERSION:4.0\r\n",
+            "FN:John Public\r\n",
+            "ADR;GEO=\"geo:12.3457,78.910\";\r\n",
+            " LABEL=\"Mail Drop: A;中文, 🦀\":;;123 Main Street;Any Town;CA;91921;USA\r\n",
+            "END:VCARD\r\n",
+        ))
+        .unwrap();
+        assert_eq!(card.address(), Some(";;123 Main Street;Any Town;CA;91921;USA"));
+    }
+
+    #[test]
+    fn grouped_contact_properties_keep_first_value_and_record_boundaries() {
+        let card = VCard::parse(concat!(
+            "item0.FN:outside\nitem0.BEGIN:VCARD\n",
+            "BEGIN:VCARD\n",
+            "ITEM-1.fn:First\nitem2.FN:Second\n",
+            "item1.TEL;TYPE=\"work,voice\":tel:+15551234\nitem2.TEL:second\n",
+            "item1.EMAIL:first@example.invalid\nitem2.EMAIL:second@example.invalid\n",
+            "item0.END:VCARD\n",
+            "item1.ORG:Acme;Widgets\n",
+            "item1.URL;ALTID=\"urn:uuid:123\":https://example.invalid/x:y\\n\n",
+            "item1.ADR:;;Street\\;Lane;Town;;123;Country\n",
+            "END:VCARD\nitem2.ORG:outside\n",
+        ))
+        .unwrap();
+        assert_eq!(card.name(), Some("First"));
+        assert_eq!(card.phone(), Some("tel:+15551234"));
+        assert_eq!(card.email(), Some("first@example.invalid"));
+        assert_eq!(card.organization(), Some("Acme; Widgets"));
+        assert_eq!(card.url(), Some("https://example.invalid/x:y\\n"));
+        assert_eq!(card.address(), Some(";;Street\\;Lane;Town;;123;Country"));
+        assert_eq!(VCard::parse("item0.BEGIN:VCARD\nitem1.FN:Outside\n"), Err(ParseError::InvalidFormat));
+    }
+
+    #[test]
+    fn grouped_names_preserve_fn_priority_before_and_after_the_fallback() {
+        let fallback = VCard::parse("BEGIN:VCARD\nitem1.N:Doe\\;Sr;John;;;\n").unwrap();
+        assert_eq!(fallback.name(), Some("Doe;Sr John"));
+        for properties in [
+            "item1.N:Doe;John;;;\nitem2.FN:Preferred\nitem3.FN:Later\n",
+            "item2.FN:Preferred\nitem1.N:Doe;John;;;\nitem3.FN:Later\n",
+        ] {
+            let mut payload = String::from("BEGIN:VCARD\n");
+            payload.push_str(properties);
+            assert_eq!(VCard::parse(&payload).unwrap().name(), Some("Preferred"));
+        }
+    }
+
+    #[test]
+    fn quoted_header_parsing_preserves_plain_values_and_malformed_header_tolerance() {
+        assert_eq!(split_content_line("FN:\"Alice\": Q"), Some(("FN", "\"Alice\": Q")));
+        assert_eq!(split_content_line("FN;ALTID=\"urn:uuid:123\":Alice"), Some(("FN;ALTID=\"urn:uuid:123\"", "Alice")));
+        assert_eq!(
+            split_content_line("FN;X-LABEL=\"unterminated:legacy"),
+            Some(("FN;X-LABEL=\"unterminated", "legacy"))
+        );
+        assert_eq!(split_content_line("TEL;X-LABEL=\"only:param\""), Some(("TEL;X-LABEL=\"only", "param\"")));
+        assert_eq!(split_content_line("no separator"), None);
+        let card = VCard::parse("BEGIN:VCARD\nFN;X-LABEL=\"unterminated:legacy\n").unwrap();
+        assert_eq!(card.name(), Some("legacy"));
     }
 }
