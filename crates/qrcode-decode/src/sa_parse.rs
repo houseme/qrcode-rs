@@ -16,7 +16,7 @@
 use alloc::vec::Vec;
 
 use core::fmt::{Display, Error, Formatter};
-use qrcode_core::{Mode, Version};
+use qrcode_core::{EncodingMode, KanjiMode, Mode, Version};
 
 /// Errors returned while parsing a Structured Append data bit stream.
 #[non_exhaustive]
@@ -111,7 +111,8 @@ impl<'a> BitReader<'a> {
 /// with the Structured Append mode indicator (`0011`), or
 /// [`SaParseError::MalformedStream`] if the version is not a normal QR version
 /// in `1..=40`, the bits run out mid-field, a value is invalid for its mode, or
-/// a segment uses an unsupported mode (including ECI and FNC1).
+/// a segment uses an unsupported mode (including ECI and FNC1), or a shortened
+/// terminator at the end of the stream contains non-zero bits.
 pub fn parse_sa_datastream(bits: &[u8], version: Version) -> Result<SaSymbolData, SaParseError> {
     if !matches!(version, Version::Normal(1..=40)) {
         return Err(SaParseError::MalformedStream);
@@ -134,7 +135,9 @@ pub fn parse_sa_datastream(bits: &[u8], version: Version) -> Result<SaSymbolData
     while r.remaining() >= 4 {
         let segment_mode = r.read_bits(4).ok_or(SaParseError::MalformedStream)?;
         match segment_mode {
-            0b0000 => break, // terminator
+            // A full terminator ends the payload; retain the existing tolerance
+            // for any remaining alignment and pad bytes.
+            0b0000 => return Ok(SaSymbolData { position, total, parity, data }),
             0b0001 => decode_numeric(&mut r, version, &mut data)?,
             0b0010 => decode_alpha(&mut r, version, &mut data)?,
             0b0100 => decode_byte(&mut r, version, &mut data)?,
@@ -142,6 +145,13 @@ pub fn parse_sa_datastream(bits: &[u8], version: Version) -> Result<SaSymbolData
             // Unsupported modes must not make a partial payload look complete.
             _ => return Err(SaParseError::MalformedStream),
         }
+    }
+
+    // A normal QR terminator may be shortened when fewer than four bits remain.
+    // Non-zero residual bits instead indicate a truncated next mode indicator.
+    let remaining = r.remaining();
+    if r.read_bits(remaining) != Some(0) {
+        return Err(SaParseError::MalformedStream);
     }
 
     Ok(SaSymbolData { position, total, parity, data })
@@ -212,8 +222,11 @@ fn decode_kanji(r: &mut BitReader<'_>, version: Version, out: &mut Vec<u8>) -> R
         let low = n % 0xc0;
         let bytes = (high << 8) | low;
         let cp = if bytes < 0x1f00 { bytes + 0x8140 } else { bytes + 0xc140 };
-        out.push((cp >> 8) as u8);
-        out.push((cp & 0xff) as u8);
+        let pair = [(cp >> 8) as u8, (cp & 0xff) as u8];
+        if !KanjiMode::validate(&pair) {
+            return Err(SaParseError::MalformedStream);
+        }
+        out.extend_from_slice(&pair);
     }
     Ok(())
 }
@@ -223,7 +236,7 @@ mod tests {
     use super::{SaParseError, parse_sa_datastream};
     use alloc::vec::Vec;
     use qrcode_core::bits::Bits;
-    use qrcode_core::{EcLevel, Version};
+    use qrcode_core::{EcLevel, EncodingMode, KanjiMode, Version};
 
     /// Builds a single symbol's data stream (SA header + `data` via `push`) and
     /// returns the bytes, mirroring what a decoder would recover.
@@ -415,6 +428,74 @@ mod tests {
             assert_eq!(parsed.total, 3, "version {number}");
             assert_eq!(parsed.parity, 0x5a, "version {number}");
             assert_eq!(parsed.data, expected, "version {number}");
+        }
+    }
+
+    #[test]
+    fn a_truncated_next_mode_does_not_return_an_incomplete_payload() {
+        // SA header, Numeric "1", Byte "b", terminator. The Numeric payload
+        // ends at bit 38, so taking five bytes leaves the next mode's "01".
+        let complete = [0x30, 0x10, 0x01, 0x00, 0x45, 0x00, 0x58, 0x80];
+        assert_eq!(parse_sa_datastream(&complete, Version::Normal(1)).unwrap().data, b"1b");
+        let truncated = [0x30, 0x10, 0x01, 0x00, 0x45];
+        assert_eq!(truncated.as_slice(), &complete[..5]);
+        assert_eq!(parse_sa_datastream(&truncated, Version::Normal(1)), Err(SaParseError::MalformedStream));
+    }
+
+    #[test]
+    fn shortened_terminators_accept_only_zero_bits() {
+        let cases = [
+            (sa_bytes(1, 2, 0, |bits| bits.push_alphanumeric_data(b"A").unwrap()), 5, b"A".as_slice()),
+            (sa_bytes(1, 2, 0, |bits| bits.push_numeric_data(b"1").unwrap()), 5, b"1".as_slice()),
+            (sa_bytes(1, 2, 0, |bits| bits.push_kanji_data(b"\x93\x5f").unwrap()), 6, b"\x93\x5f".as_slice()),
+        ];
+        // These data segments leave respectively one, two, and three bits at
+        // the end of their last byte. Preserve each all-zero shortened ending.
+        for (mut bytes, length, expected) in cases {
+            bytes.truncate(length);
+            assert_eq!(parse_sa_datastream(&bytes, Version::Normal(1)).unwrap().data, expected);
+            *bytes.last_mut().unwrap() |= 1;
+            assert_eq!(parse_sa_datastream(&bytes, Version::Normal(1)), Err(SaParseError::MalformedStream));
+        }
+    }
+
+    #[test]
+    fn a_full_terminator_preserves_tolerance_for_trailing_padding() {
+        let mut bytes = sa_bytes(1, 2, 0, |bits| bits.push_byte_data(b"a").unwrap());
+        // The four-bit terminator starts at bit 40. Leave it intact and replace
+        // every following alignment/pad bit with one.
+        bytes[5] |= 0x0f;
+        bytes[6..].fill(0xff);
+        assert_eq!(parse_sa_datastream(&bytes, Version::Normal(1)).unwrap().data, b"a");
+    }
+
+    #[test]
+    fn reserved_kanji_values_outside_encoder_ranges_are_malformed() {
+        for bytes in [
+            [0x30, 0x10, 0x08, 0x01, 0xb9, 0xe8, 0x00],
+            [0x30, 0x10, 0x08, 0x01, 0xb9, 0xf0, 0x00],
+            [0x30, 0x10, 0x08, 0x01, 0xb9, 0xf8, 0x00],
+        ] {
+            // Values 5949 / 5950 / 5951 would produce 9FFD / 9FFE / 9FFF.
+            assert_eq!(parse_sa_datastream(&bytes, Version::Normal(1)), Err(SaParseError::MalformedStream));
+        }
+    }
+
+    #[test]
+    fn every_kanji_value_matches_the_existing_core_encoder_contract() {
+        for value in 0_u16..=8191 {
+            let bytes = [0x30, 0x10, 0x08, 0x01, (value >> 5) as u8, (value << 3) as u8, 0x00];
+            let parsed = parse_sa_datastream(&bytes, Version::Normal(1));
+            if (5949..=5951).contains(&value) {
+                assert_eq!(parsed, Err(SaParseError::MalformedStream));
+                continue;
+            }
+            let parsed = parsed.unwrap();
+            assert!(KanjiMode::validate(&parsed.data), "Kanji value {value}");
+            let mut encoded = Bits::new(Version::Normal(1));
+            encoded.push_structured_append_header(1, 2, 0).unwrap();
+            encoded.push_kanji_data(&parsed.data).unwrap();
+            assert_eq!(encoded.into_bytes(), &bytes[..6], "Kanji value {value}");
         }
     }
 }

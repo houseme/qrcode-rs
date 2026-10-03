@@ -144,6 +144,9 @@
 - Make checked zero-bit writes with a zero value leave the bit stream and
   metadata unchanged instead of inserting a zero byte into an aligned stream;
   continue rejecting nonzero values.
+- Reject nonzero truncated mode prefixes at natural Structured Append EOF and
+  Kanji values mapping outside the encoder's supported ranges, while accepting
+  zero shortened terminators and preserving full-terminator padding tolerance.
 
 ### Added
 
