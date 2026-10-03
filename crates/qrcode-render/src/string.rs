@@ -121,11 +121,16 @@ impl<P: Element> RenderCanvas for Canvas<P> {
 
     fn into_image(self) -> String {
         let mut result = String::with_capacity(self.capacity);
-        for (i, pixel) in self.buffer.into_iter().enumerate() {
-            if i != 0 && i % self.width == 0 {
+        if self.buffer.is_empty() {
+            return result;
+        }
+        for (row_index, row) in self.buffer.chunks(self.width).enumerate() {
+            if row_index != 0 {
                 result.push('\n');
             }
-            pixel.append_to_string(&mut result);
+            for &pixel in row {
+                pixel.append_to_string(&mut result);
+            }
         }
         result
     }
@@ -158,6 +163,46 @@ fn test_render_to_string() {
 mod tests {
     use super::*;
     use crate::{MAX_BUFFER_BYTES, Renderer};
+    use core::cell::RefCell;
+
+    #[derive(Clone, Copy)]
+    struct ObservedElement<'a> {
+        value: char,
+        calls: &'a RefCell<Vec<(char, char, usize)>>,
+    }
+
+    impl Element for ObservedElement<'_> {
+        fn default_color(_color: Color) -> Self {
+            panic!("the callback regression uses explicit pixels")
+        }
+
+        fn strlen(self) -> usize {
+            self.calls.borrow_mut().push(('s', self.value, 0));
+            self.value.len_utf8()
+        }
+
+        fn append_to_string(self, output: &mut String) {
+            self.calls.borrow_mut().push(('a', self.value, output.len()));
+            output.push(self.value);
+        }
+    }
+
+    #[test]
+    fn row_serialization_preserves_custom_element_callbacks_and_newline_positions() {
+        let calls = RefCell::new(Vec::new());
+        let dark = ObservedElement { value: '🦀', calls: &calls };
+        let light = ObservedElement { value: 'é', calls: &calls };
+        let mut canvas = Canvas::new(3, 2, dark, light);
+        canvas.draw_dark_pixel(1, 0);
+        canvas.draw_dark_pixel(2, 1);
+        calls.borrow_mut().clear();
+
+        assert_eq!(canvas.into_image(), "é🦀é\néé🦀");
+        assert_eq!(
+            *calls.borrow(),
+            [('a', 'é', 0), ('a', '🦀', 2), ('a', 'é', 6), ('a', 'é', 9), ('a', 'é', 11), ('a', '🦀', 13)]
+        );
+    }
 
     #[test]
     fn character_budget_includes_buffer_and_output() {

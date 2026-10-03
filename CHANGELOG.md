@@ -68,6 +68,9 @@
 - Pre-encode the four ANSI foreground/background color sequences into fixed
   stack buffers and reuse them while preserving color deduplication, odd-row
   padding, resets and exact output bytes.
+- Serialize plain-text canvases by contiguous rows, removing per-pixel modulo
+  while preserving custom Element callback order, UTF-8 output and newline
+  positions.
 
 ### Fixed
 
