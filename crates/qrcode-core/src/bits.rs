@@ -27,7 +27,7 @@ use alloc::{
 use core::cmp::min;
 
 use crate::cast::{As, Truncate};
-use crate::mode::EncodingMode;
+use crate::mode::{AlphanumericMode, EncodingMode, KanjiMode, NumericMode};
 use crate::optimize::{Optimizer, Parser, Segment, total_encoded_len};
 use crate::types::{EcLevel, Mode, QrError, QrResult, Version};
 
@@ -117,7 +117,7 @@ impl Iterator for EncodingModesIter {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = self.modes.iter().skip(self.index as usize).count();
+        let remaining = ((self.modes.bits & 0b1111) >> self.index).count_ones() as usize;
         (remaining, Some(remaining))
     }
 }
@@ -314,6 +314,27 @@ mod metadata_tests {
     }
 
     #[test]
+    fn encoding_modes_iterator_reports_exact_remaining_length_for_every_subset() {
+        let order = [Mode::Numeric, Mode::Alphanumeric, Mode::Byte, Mode::Kanji];
+        for mask in 0..=0b1111 {
+            let modes = EncodingModes { bits: mask };
+            let expected = order.iter().copied().filter(|&mode| modes.contains(mode)).collect::<Vec<_>>();
+            let mut iter = modes.iter();
+
+            for (index, &mode) in expected.iter().enumerate() {
+                let remaining = expected.len() - index;
+                assert_eq!(iter.size_hint(), (remaining, Some(remaining)), "mask {mask}");
+                assert_eq!(iter.len(), remaining, "mask {mask}");
+                assert_eq!(iter.next(), Some(mode));
+            }
+            assert_eq!(iter.size_hint(), (0, Some(0)), "mask {mask}");
+            assert_eq!(iter.len(), 0);
+            assert_eq!(iter.next(), None);
+            assert_eq!(iter.next(), None);
+        }
+    }
+
+    #[test]
     fn bits_records_successful_payload_modes() {
         let mut bits = Bits::new(Version::Normal(1));
 
@@ -370,9 +391,16 @@ impl Bits {
     /// If the mode is not supported in the provided version, this method
     /// returns `Err(QrError::UnsupportedCharacterSet)`.
     pub fn push_mode_indicator(&mut self, mode: ExtendedMode) -> QrResult<()> {
+        let (bits, number) = self.mode_indicator_bits(mode)?;
+        if bits > 0 {
+            self.push_number(bits, number.as_u16());
+        }
+        Ok(())
+    }
+
+    fn mode_indicator_bits(&self, mode: ExtendedMode) -> QrResult<(usize, usize)> {
         #[allow(clippy::match_same_arms)]
         let number = match (self.version, mode) {
-            (Version::Micro(1), ExtendedMode::Data(Mode::Numeric)) => return Ok(()),
             (Version::Micro(_), ExtendedMode::Data(Mode::Numeric)) => 0,
             (Version::Micro(_), ExtendedMode::Data(Mode::Alphanumeric)) => 1,
             (Version::Micro(_), ExtendedMode::Data(Mode::Byte)) => 0b10,
@@ -388,7 +416,10 @@ impl Bits {
             (_, ExtendedMode::StructuredAppend) => 0b0011,
         };
         let bits = self.version.mode_bits_count();
-        self.push_number_checked(bits, number).or(Err(QrError::UnsupportedCharacterSet))
+        if bits > 16 || number >= (1 << bits) {
+            return Err(QrError::UnsupportedCharacterSet);
+        }
+        Ok((bits, number))
     }
 }
 
@@ -501,10 +532,16 @@ mod eci_tests {
 
 impl Bits {
     fn push_header(&mut self, mode: Mode, raw_data_len: usize) -> QrResult<()> {
+        let (mode_bits, mode_number) = self.mode_indicator_bits(ExtendedMode::Data(mode))?;
         let length_bits = mode.length_bits_count(self.version);
-        self.reserve(length_bits + 4 + mode.data_bits_count(raw_data_len));
-        self.push_mode_indicator(ExtendedMode::Data(mode))?;
-        self.push_number_checked(length_bits, raw_data_len)?;
+        if raw_data_len >= (1_usize << length_bits) {
+            return Err(QrError::DataTooLong);
+        }
+        self.reserve(length_bits + mode_bits + mode.data_bits_count(raw_data_len));
+        if mode_bits > 0 {
+            self.push_number(mode_bits, mode_number.as_u16());
+        }
+        self.push_number(length_bits, raw_data_len.as_u16());
         Ok(())
     }
 
@@ -515,7 +552,12 @@ impl Bits {
     /// # Errors
     ///
     /// Returns `Err(QrError::DataTooLong)` on overflow.
+    /// Returns [`QrError::InvalidCharacter`] if `data` contains a non-digit.
     pub fn push_numeric_data(&mut self, data: &[u8]) -> QrResult<()> {
+        self.mode_indicator_bits(ExtendedMode::Data(Mode::Numeric))?;
+        if let Some((position, byte)) = NumericMode::invalid_character(data) {
+            return Err(QrError::InvalidCharacter { position, byte });
+        }
         self.push_header(Mode::Numeric, data.len())?;
         for chunk in data.chunks(3) {
             let number = chunk.iter().map(|b| u16::from(*b - b'0')).fold(0, |a, b| a * 10 + b);
@@ -613,7 +655,13 @@ impl Bits {
     /// # Errors
     ///
     /// Returns `Err(QrError::DataTooLong)` on overflow.
+    /// Returns [`QrError::InvalidCharacter`] if `data` contains a byte outside
+    /// the QR alphanumeric alphabet.
     pub fn push_alphanumeric_data(&mut self, data: &[u8]) -> QrResult<()> {
+        self.mode_indicator_bits(ExtendedMode::Data(Mode::Alphanumeric))?;
+        if let Some((position, byte)) = AlphanumericMode::invalid_character(data) {
+            return Err(QrError::InvalidCharacter { position, byte });
+        }
         self.push_header(Mode::Alphanumeric, data.len())?;
         for chunk in data.chunks(2) {
             let number = chunk.iter().map(|b| alphanumeric_digit(*b)).fold(0, |a, b| a * 45 + b);
@@ -723,13 +771,15 @@ impl Bits {
     /// Returns `Err(QrError::DataTooLong)` on overflow.
     ///
     /// Returns `Err(QrError::InvalidCharacter)` if the data is not Shift JIS
-    /// double-byte data (e.g. if the length of data is not an even number).
+    /// double-byte data in the QR Kanji ranges (e.g. if the length of data is
+    /// not an even number).
     pub fn push_kanji_data(&mut self, data: &[u8]) -> QrResult<()> {
+        self.mode_indicator_bits(ExtendedMode::Data(Mode::Kanji))?;
+        if let Some((position, byte)) = KanjiMode::invalid_character(data) {
+            return Err(QrError::InvalidCharacter { position, byte });
+        }
         self.push_header(Mode::Kanji, data.len() / 2)?;
-        for (i, kanji) in data.chunks(2).enumerate() {
-            if kanji.len() != 2 {
-                return Err(QrError::InvalidCharacter { position: i * 2, byte: kanji[0] });
-            }
+        for kanji in data.as_chunks::<2>().0 {
             let cp = u16::from(kanji[0]) * 256 + u16::from(kanji[1]);
             let bytes = if cp < 0xe040 { cp - 0x8140 } else { cp - 0xc140 };
             let number = (bytes >> 8) * 0xc0 + (bytes & 0xff);
@@ -773,7 +823,7 @@ impl Bits {
 mod typed_mode_tests {
     use crate::bits::Bits;
     use crate::mode::{AlphanumericMode, ByteMode, KanjiMode, NumericMode};
-    use crate::types::{QrError, Version};
+    use crate::types::{EcLevel, Mode, QrError, Version};
 
     #[test]
     fn push_mode_data_matches_numeric_specific_encoder() {
@@ -805,6 +855,96 @@ mod typed_mode_tests {
             Err(QrError::InvalidCharacter { position: 2, byte: b'a' })
         );
         assert!(bits.into_bytes().is_empty());
+    }
+
+    #[test]
+    fn direct_modes_reject_invalid_input_without_changing_existing_bits() {
+        let cases: &[(Mode, &[u8], usize, u8)] = &[
+            (Mode::Numeric, b"12/4", 2, b'/'),
+            (Mode::Alphanumeric, b"ABc", 2, b'c'),
+            (Mode::Kanji, b"\x00\x00", 0, 0),
+            (Mode::Kanji, b"\xeb\xc0", 0, 0xeb),
+            (Mode::Kanji, b"\x93\x5f\x81", 2, 0x81),
+            (Mode::Kanji, b"\x93\x5f\xe0\x00", 2, 0xe0),
+        ];
+        for &(mode, data, position, byte) in cases {
+            let mut bits = Bits::new(Version::Normal(1));
+            bits.push_byte_data(b"seed").unwrap();
+            bits.push_terminator(EcLevel::L).unwrap();
+            let previous_data = bits.data.clone();
+            let previous_modes = bits.encoding_modes();
+            let previous_payload_len = bits.payload_bits_len();
+            let result = match mode {
+                Mode::Numeric => bits.push_numeric_data(data),
+                Mode::Alphanumeric => bits.push_alphanumeric_data(data),
+                Mode::Kanji => bits.push_kanji_data(data),
+                Mode::Byte => unreachable!(),
+            };
+
+            assert_eq!(result, Err(QrError::InvalidCharacter { position, byte }), "{mode:?} {data:?}");
+            assert_eq!(bits.data, previous_data);
+            assert_eq!(bits.encoding_modes(), previous_modes);
+            assert_eq!(bits.payload_bits_len(), previous_payload_len);
+        }
+    }
+
+    #[test]
+    fn mode_length_overflow_does_not_write_a_mode_header() {
+        let mut numeric = Bits::new(Version::Micro(2));
+        let mut alphanumeric = Bits::new(Version::Micro(2));
+        let mut byte = Bits::new(Version::Micro(3));
+        let mut kanji = Bits::new(Version::Micro(3));
+        let kanji_data = b"\x93\x5f".repeat(8);
+
+        assert_eq!(numeric.push_numeric_data(b"0123456789012345"), Err(QrError::DataTooLong));
+        assert_eq!(alphanumeric.push_alphanumeric_data(b"ABCDEFGH"), Err(QrError::DataTooLong));
+        assert_eq!(byte.push_byte_data(b"0123456789012345"), Err(QrError::DataTooLong));
+        assert_eq!(kanji.push_kanji_data(&kanji_data), Err(QrError::DataTooLong));
+
+        for bits in [numeric, alphanumeric, byte, kanji] {
+            assert!(bits.encoding_modes().is_empty());
+            assert!(bits.into_bytes().is_empty());
+        }
+    }
+
+    #[test]
+    fn unsupported_mode_is_rejected_before_length_overflow_without_writing() {
+        let mut alphanumeric = Bits::new(Version::Micro(1));
+        let mut byte = Bits::new(Version::Micro(2));
+
+        assert_eq!(alphanumeric.push_alphanumeric_data(b"ABCDEFGH"), Err(QrError::UnsupportedCharacterSet));
+        assert_eq!(byte.push_byte_data(b"0123456789012345"), Err(QrError::UnsupportedCharacterSet));
+        assert!(alphanumeric.into_bytes().is_empty());
+        assert!(byte.into_bytes().is_empty());
+    }
+
+    #[test]
+    fn direct_mode_errors_preserve_unsupported_mode_precedence() {
+        let cases: &[(Mode, Version, &[u8], QrError)] = &[
+            (Mode::Alphanumeric, Version::Micro(1), b"c", QrError::UnsupportedCharacterSet),
+            (Mode::Kanji, Version::Micro(2), b"?", QrError::UnsupportedCharacterSet),
+            (Mode::Numeric, Version::Micro(1), b"a", QrError::InvalidCharacter { position: 0, byte: b'a' }),
+            (Mode::Alphanumeric, Version::Micro(2), b"c", QrError::InvalidCharacter { position: 0, byte: b'c' }),
+            (Mode::Kanji, Version::Micro(3), b"?", QrError::InvalidCharacter { position: 0, byte: b'?' }),
+        ];
+        for &(mode, version, data, error) in cases {
+            let mut bits = Bits::new(version);
+            bits.push_numeric_data(b"1").unwrap();
+            let previous_data = bits.data.clone();
+            let previous_len = bits.len();
+            let previous_modes = bits.encoding_modes();
+            let result = match mode {
+                Mode::Numeric => bits.push_numeric_data(data),
+                Mode::Alphanumeric => bits.push_alphanumeric_data(data),
+                Mode::Kanji => bits.push_kanji_data(data),
+                Mode::Byte => unreachable!(),
+            };
+
+            assert_eq!(result, Err(error), "{mode:?} {version:?} {data:?}");
+            assert_eq!(bits.data, previous_data);
+            assert_eq!(bits.len(), previous_len);
+            assert_eq!(bits.encoding_modes(), previous_modes);
+        }
     }
 }
 
@@ -1338,6 +1478,8 @@ fn find_min_version_up_to(length: usize, ec_level: EcLevel, max_version: i16) ->
 /// Returns `Err(QrError::InvalidVersion)` if the `ec_level` is not supported
 /// by any Micro QR version (e.g. `EcLevel::H`).
 pub fn encode_auto_micro(data: &[u8], ec_level: EcLevel) -> QrResult<Bits> {
+    // M4 supports every error-correction level available to any Micro version.
+    Version::Micro(4).fetch(ec_level, &DATA_LENGTHS)?;
     if data.len() > crate::limits::DEFAULT_MAX_DATA_LENGTH {
         return Err(QrError::DataTooLong);
     }
@@ -1348,6 +1490,13 @@ pub fn encode_auto_micro(data: &[u8], ec_level: EcLevel) -> QrResult<Bits> {
             Ok(cap) if cap > 0 => cap,
             _ => continue,
         };
+        if !segments.iter().all(|segment| match segment.mode {
+            Mode::Numeric => true,
+            Mode::Alphanumeric => micro_version >= 2,
+            Mode::Byte | Mode::Kanji => micro_version >= 3,
+        }) {
+            continue;
+        }
         let opt_segments = Optimizer::new(segments.iter().copied(), version).collect::<Vec<_>>();
         let total_len = total_encoded_len(&opt_segments, version);
         if total_len <= data_capacity {
@@ -1382,7 +1531,7 @@ pub fn find_min_version(length: usize, ec_level: EcLevel) -> Version {
 
 #[cfg(test)]
 mod encode_auto_tests {
-    use crate::bits::{encode_auto, encode_auto_with_max_version, find_min_version};
+    use crate::bits::{encode_auto, encode_auto_micro, encode_auto_with_max_version, find_min_version};
     use crate::types::{EcLevel, QrError, Version};
 
     #[test]
@@ -1418,6 +1567,39 @@ mod encode_auto_tests {
     fn bounded_auto_encoding_rejects_version_overflow_and_caps_search() {
         assert!(matches!(encode_auto_with_max_version(b"x", EcLevel::M, 0), Err(QrError::InvalidResourceLimits)));
         assert!(matches!(encode_auto_with_max_version(&[0_u8; 128], EcLevel::M, 1), Err(QrError::DataTooLong)));
+    }
+
+    #[test]
+    fn micro_auto_selection_skips_versions_that_cannot_encode_the_payload_mode() {
+        let cases: &[(&[u8], EcLevel, i16)] = &[
+            (b"1", EcLevel::L, 1),
+            (b"A", EcLevel::L, 2),
+            (b"a", EcLevel::L, 3),
+            (b"abc", EcLevel::L, 3),
+            (b"\x93\x5f", EcLevel::L, 3),
+            (b"123A", EcLevel::L, 2),
+            (b"123a", EcLevel::L, 3),
+            (b"\x93\x5f1", EcLevel::L, 3),
+            (b"A", EcLevel::Q, 4),
+        ];
+        for &(data, ec_level, expected) in cases {
+            let bits = encode_auto_micro(data, ec_level).unwrap();
+            assert_eq!(bits.version(), Version::Micro(expected), "{data:?} {ec_level:?}");
+
+            let mut fixed = crate::bits::Bits::new(Version::Micro(expected));
+            fixed.push_optimal_data(data).unwrap();
+            fixed.push_terminator(ec_level).unwrap();
+            assert_eq!(bits.into_bytes(), fixed.into_bytes(), "{data:?} {ec_level:?}");
+        }
+    }
+
+    #[test]
+    fn micro_auto_selection_distinguishes_unsupported_ec_from_payload_overflow() {
+        assert!(matches!(
+            encode_auto_micro(b"1", EcLevel::H),
+            Err(QrError::InvalidVersion { version: Version::Micro(4), ec_level: EcLevel::H })
+        ));
+        assert!(matches!(encode_auto_micro(&[b'1'; 100], EcLevel::L), Err(QrError::DataTooLong)));
     }
 }
 

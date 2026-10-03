@@ -7,6 +7,17 @@
 - Declare Rust 1.88 across the workspace to match the image dependency,
   inherit member MSRV declarations, and gate releases on locked MSRV checks.
 
+### Fixed
+
+- Select Micro QR versions that support payload modes, reject unsupported
+  error correction consistently, report exact encoding-mode iterator lengths,
+  and validate direct mode input before changing the bit stream.
+
+### Added
+
+- Add focused benchmarks for automatic Micro QR encoding across numeric,
+  alphanumeric, byte, Kanji, and mixed payloads.
+
 ## [2.1.1] - 2026-09-16
 
 ### Added

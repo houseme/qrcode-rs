@@ -132,5 +132,21 @@ fn bench_encode(c: &mut Criterion) {
     g.finish();
 }
 
-criterion_group!(benches, bench_encode);
+fn bench_micro_encoding(c: &mut Criterion) {
+    let mut micro = c.benchmark_group("micro_encoding");
+    for (name, payload) in [
+        ("numeric", &b"12345"[..]),
+        ("alphanumeric", &b"A"[..]),
+        ("byte", &b"a"[..]),
+        ("kanji", &b"\x93\x5f"[..]),
+        ("mixed", &b"123a"[..]),
+    ] {
+        micro.bench_function(name, |b| {
+            b.iter(|| qrcode_rs::bits::encode_auto_micro(std::hint::black_box(payload), EcLevel::L).unwrap())
+        });
+    }
+    micro.finish();
+}
+
+criterion_group!(benches, bench_encode, bench_micro_encoding);
 criterion_main!(benches);
