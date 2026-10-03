@@ -26,7 +26,7 @@ use alloc::{
 
 use core::ops::Deref;
 
-use crate::types::{EcLevel, QrResult, Version};
+use crate::types::{EcLevel, QrError, QrResult, Version};
 
 //------------------------------------------------------------------------------
 //{{{ Error correction primitive
@@ -141,6 +141,10 @@ fn test_interleave() {
 /// Returns `Err(QrError::InvalidVersion)` if it is not valid to use the
 ///  `ec_level` for the given version (e.g. `Version::Micro(1)` with
 /// `EcLevel::H`).
+///
+/// Returns [`QrError::InvalidDataLength`] if `rawbits` does not contain exactly
+/// the padded data bytes required by this version and correction level. For
+/// Micro M1 and M3, this includes the byte containing the final half codeword.
 pub fn construct_codewords(rawbits: &[u8], version: Version, ec_level: EcLevel) -> QrResult<(Vec<u8>, Vec<u8>)> {
     let (block_1_size, block_1_count, block_2_size, block_2_count) = version.fetch(ec_level, &DATA_BYTES_PER_BLOCK)?;
 
@@ -148,7 +152,9 @@ pub fn construct_codewords(rawbits: &[u8], version: Version, ec_level: EcLevel) 
     let block_1_end = block_1_size * block_1_count;
     let total_size = block_1_end + block_2_size * block_2_count;
 
-    debug_assert_eq!(rawbits.len(), total_size);
+    if rawbits.len() != total_size {
+        return Err(QrError::InvalidDataLength { expected: total_size, actual: rawbits.len() });
+    }
 
     // Divide the data into blocks.
     let mut blocks = Vec::with_capacity(blocks_count);
@@ -169,8 +175,9 @@ pub fn construct_codewords(rawbits: &[u8], version: Version, ec_level: EcLevel) 
 
 #[cfg(test)]
 mod construct_codewords_test {
+    use crate::bits::data_capacity_bits;
     use crate::ec::construct_codewords;
-    use crate::types::{EcLevel, Version};
+    use crate::types::{EcLevel, QrError, Version};
 
     #[test]
     fn test_add_ec_simple() {
@@ -197,6 +204,43 @@ mod construct_codewords_test {
         assert_eq!(&*blocks_vec, &expected_blocks[..]);
         assert_eq!(&*ec_vec, &expected_ec[..]);
     }
+
+    #[test]
+    fn codeword_construction_rejects_short_and_long_padded_data() {
+        let versions = (1..=40).map(Version::Normal).chain((1..=4).map(Version::Micro));
+        for version in versions {
+            for ec_level in [EcLevel::L, EcLevel::M, EcLevel::Q, EcLevel::H] {
+                let Ok(capacity) = data_capacity_bits(version, ec_level) else {
+                    continue;
+                };
+                let expected = capacity.div_ceil(8);
+                for actual in [0, expected - 1, expected + 1, expected + 2] {
+                    assert_eq!(
+                        construct_codewords(&vec![0; actual], version, ec_level),
+                        Err(QrError::InvalidDataLength { expected, actual }),
+                        "{version:?} {ec_level:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_version_precedes_padded_data_length_errors() {
+        for (version, ec_level) in [
+            (Version::Normal(0), EcLevel::L),
+            (Version::Normal(41), EcLevel::H),
+            (Version::Micro(0), EcLevel::L),
+            (Version::Micro(5), EcLevel::L),
+            (Version::Micro(1), EcLevel::M),
+            (Version::Micro(2), EcLevel::Q),
+            (Version::Micro(3), EcLevel::Q),
+            (Version::Micro(4), EcLevel::H),
+        ] {
+            assert_eq!(construct_codewords(&[], version, ec_level), Err(QrError::InvalidVersion { version, ec_level }));
+        }
+    }
+
 }
 
 //}}}

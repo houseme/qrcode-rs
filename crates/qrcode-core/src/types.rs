@@ -84,6 +84,14 @@ pub enum QrError {
 
     /// Encoding exceeded the configured synchronous timeout budget.
     EncodingTimeout,
+
+    /// Padded encoded data has the wrong byte length for the requested symbol.
+    InvalidDataLength {
+        /// Required number of padded data bytes.
+        expected: usize,
+        /// Number of data bytes supplied by the caller.
+        actual: usize,
+    },
 }
 
 impl Display for QrError {
@@ -108,6 +116,9 @@ impl Display for QrError {
                 write!(fmt, "rendered symbol size {width}x{height} exceeds configured maximum {max_width}x{max_height}")
             }
             QrError::EncodingTimeout => fmt.write_str("encoding exceeded configured timeout"),
+            QrError::InvalidDataLength { expected, actual } => {
+                write!(fmt, "invalid encoded data length: expected {expected} bytes, got {actual}")
+            }
         }
     }
 }
@@ -150,6 +161,9 @@ impl QrError {
             }
             QrError::RenderSizeExceeded { .. } => Some("increase max_render_size or use a lower maximum QR version"),
             QrError::EncodingTimeout => Some("increase encoding_timeout or run encoding in a cancellable worker"),
+            QrError::InvalidDataLength { .. } => Some(
+                "encode and pad the data with Bits::push_terminator for the requested version and correction level",
+            ),
         }
     }
 }
@@ -563,6 +577,14 @@ mod parse_tests {
         assert!(QrError::InvalidCharacter { position: 0, byte: 0 }.suggestion().is_some());
         assert!(QrError::InvalidStructuredAppend { value: 17 }.suggestion().is_some());
         assert!(QrError::EncodingTimeout.suggestion().is_some());
+        assert!(QrError::InvalidDataLength { expected: 16, actual: 15 }.suggestion().is_some());
+    }
+
+    #[test]
+    fn invalid_data_length_diagnostics_include_expected_and_actual_sizes() {
+        let error = QrError::InvalidDataLength { expected: 16, actual: 15 };
+        assert_eq!(error.to_string(), "invalid encoded data length: expected 16 bytes, got 15");
+        assert!(error.suggestion().unwrap().contains("Bits::push_terminator"));
     }
 }
 

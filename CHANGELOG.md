@@ -56,6 +56,9 @@
 - Write CLI ZIP batches to a temporary file and replace the destination only
   after successful finalization, preserving existing output and same-path
   input on errors; apply PNG budgets to the complete contact sheet.
+- Reject incomplete or oversized padded codeword data before slicing or
+  allocation, with InvalidDataLength carrying expected and actual byte counts
+  and existing error-variant serialization order preserved.
 
 ### Added
 
