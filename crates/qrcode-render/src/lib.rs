@@ -320,10 +320,10 @@ impl<'a, P: Pixel> Renderer<'a, P> {
     /// quiet zone. If we request an image of size ≥200×200, we get that each
     /// module's size should be 11×11, so the actual image size will be 209×209.
     pub fn min_dimensions(&mut self, width: u32, height: u32) -> &mut Self {
-        let quiet_zone = if self.has_quiet_zone { 2 } else { 0 } * self.quiet_zone;
-        let width_in_modules = self.modules_count + quiet_zone;
-        let unit_width = width.div_ceil(width_in_modules);
-        let unit_height = height.div_ceil(width_in_modules);
+        let quiet_zone = if self.has_quiet_zone { 2 * u64::from(self.quiet_zone) } else { 0 };
+        let width_in_modules = (u64::from(self.modules_count) + quiet_zone).max(1);
+        let unit_width = u64::from(width).div_ceil(width_in_modules) as u32;
+        let unit_height = u64::from(height).div_ceil(width_in_modules) as u32;
         self.module_dimensions(unit_width, unit_height)
     }
 
@@ -339,10 +339,10 @@ impl<'a, P: Pixel> Renderer<'a, P> {
     /// The module size is at least 1×1, so if the restriction is too small, the
     /// final image *can* be larger than the input.
     pub fn max_dimensions(&mut self, width: u32, height: u32) -> &mut Self {
-        let quiet_zone = if self.has_quiet_zone { 2 } else { 0 } * self.quiet_zone;
-        let width_in_modules = self.modules_count + quiet_zone;
-        let unit_width = width / width_in_modules;
-        let unit_height = height / width_in_modules;
+        let quiet_zone = if self.has_quiet_zone { 2 * u64::from(self.quiet_zone) } else { 0 };
+        let width_in_modules = (u64::from(self.modules_count) + quiet_zone).max(1);
+        let unit_width = (u64::from(width) / width_in_modules) as u32;
+        let unit_height = (u64::from(height) / width_in_modules) as u32;
         self.module_dimensions(unit_width, unit_height)
     }
 
@@ -392,10 +392,14 @@ impl<'a, P: Pixel> Renderer<'a, P> {
     ///
     /// # Errors
     ///
+    /// Returns [`RenderError::InvalidModuleSource`] if the module grid is empty.
     /// Returns [`RenderError::OutputTooLarge`] if the configured quiet zone or
     /// module size would overflow the renderer's coordinate space.
     pub fn try_build(&self) -> Result<P::Image, RenderError> {
         let w = self.modules_count;
+        if w == 0 {
+            return Err(RenderError::InvalidModuleSource { width: 0, height: 0, len: self.content.len() });
+        }
         let qz = if self.has_quiet_zone { self.quiet_zone } else { 0 };
         let quiet = qz.checked_mul(2).ok_or(RenderError::OutputTooLarge)?;
         let width = w.checked_add(quiet).ok_or(RenderError::OutputTooLarge)?;
@@ -421,8 +425,8 @@ impl<'a, P: Pixel> Renderer<'a, P> {
     ///
     /// # Panics
     ///
-    /// Panics if the configured quiet zone or module size would overflow the
-    /// renderer's coordinate space.
+    /// Panics if the module grid is empty, or if the configured quiet zone or
+    /// module size would overflow the renderer's coordinate space.
     pub fn build(&self) -> P::Image {
         self.try_build().unwrap_or_else(|err| panic!("{err}"))
     }
@@ -451,11 +455,7 @@ impl<'a, P: Pixel> qrcode_core::Builder for &'a Renderer<'a, P> {
     type Error = RenderError;
 
     fn build(self) -> Result<Self::Output, Self::Error> {
-        // `Renderer::new` and `try_from_source` establish the square-grid
-        // invariant, while the builder methods only update rendering options.
-        // Keep the fallible trait contract aligned with the renderer trait and
-        // return the existing concrete error type for API consistency.
-        Ok(Renderer::build(self))
+        self.try_build()
     }
 }
 
@@ -467,7 +467,7 @@ impl<'a, P: StyledPixel> Renderer<'a, P> {
         self.dark_color = P::from_hex(tmpl.dark_color());
         self.light_color = P::from_hex(tmpl.light_color());
         if let Some((w, h)) = tmpl.module_size() {
-            self.module_size = (w, h);
+            self.module_dimensions(w, h);
         }
         self.has_quiet_zone = tmpl.quiet_zone();
         self
@@ -478,7 +478,7 @@ impl<'a, P: StyledPixel> Renderer<'a, P> {
 
 #[cfg(test)]
 mod tests {
-    use super::{RenderError, Renderer};
+    use super::{RenderError, RenderTemplate, Renderer};
     use qrcode_core::{Color, EcLevel, ModuleSource, QrSymbol, Renderer as CoreRenderer, Version};
 
     struct BadSource {
@@ -574,6 +574,82 @@ mod tests {
         let expected = renderer.build();
 
         assert_eq!(qrcode_core::Builder::build(&renderer), Ok(expected));
+    }
+
+    #[test]
+    fn core_builder_returns_dimension_errors_without_panicking() {
+        let modules = [Color::Dark];
+        for (quiet_zone, module_width, module_height) in [(u32::MAX, 1, 1), (1, u32::MAX, 1), (1, 1, u32::MAX)] {
+            let mut renderer = Renderer::<char>::new(&modules, 1, quiet_zone);
+            renderer.module_dimensions(module_width, module_height);
+
+            assert_eq!(qrcode_core::Builder::build(&renderer), Err(RenderError::OutputTooLarge));
+        }
+    }
+
+    #[test]
+    fn empty_module_grid_returns_errors_before_creating_a_canvas() {
+        let mut renderer = Renderer::<char>::new(&[], 0, 0);
+        let error = RenderError::InvalidModuleSource { width: 0, height: 0, len: 0 };
+
+        assert_eq!(renderer.try_build(), Err(error));
+        assert_eq!(qrcode_core::Builder::build(&renderer), Err(error));
+        assert_eq!(renderer.min_dimensions(100, 100).try_build(), Err(error));
+        assert_eq!(renderer.max_dimensions(100, 100).try_build(), Err(error));
+    }
+
+    #[test]
+    fn dimension_presets_defer_oversized_quiet_zone_errors_to_try_build() {
+        let modules = [Color::Dark; 4];
+        for quiet_zone in [u32::MAX, u32::MAX / 2] {
+            let mut renderer = Renderer::<char>::new(&modules, 2, quiet_zone);
+
+            assert_eq!(renderer.min_dimensions(100, 100).try_build(), Err(RenderError::OutputTooLarge));
+            assert_eq!(renderer.max_dimensions(100, 100).try_build(), Err(RenderError::OutputTooLarge));
+        }
+    }
+
+    #[test]
+    fn dimension_presets_ignore_a_disabled_quiet_zone() {
+        let modules = [Color::Dark];
+        let mut renderer = Renderer::<char>::new(&modules, 1, u32::MAX);
+        renderer.quiet_zone(false).dark_color('#');
+
+        assert_eq!(renderer.min_dimensions(1, 1).try_build(), Ok("#".into()));
+        assert_eq!(renderer.max_dimensions(1, 1).try_build(), Ok("#".into()));
+    }
+
+    #[test]
+    fn template_module_dimensions_follow_the_module_size_setter() {
+        struct ModuleSizeTemplate((u32, u32));
+
+        impl RenderTemplate for ModuleSizeTemplate {
+            fn dark_color(&self) -> &str {
+                "#000"
+            }
+
+            fn light_color(&self) -> &str {
+                "#fff"
+            }
+
+            fn module_size(&self) -> Option<(u32, u32)> {
+                Some(self.0)
+            }
+
+            fn quiet_zone(&self) -> bool {
+                false
+            }
+        }
+
+        let modules = [Color::Dark];
+        for dimensions in [(0, 0), (0, 2), (2, 0), (2, 3)] {
+            let template = ModuleSizeTemplate(dimensions);
+            let renderer = Renderer::<super::ansi::Color>::new(&modules, 1, 0).template(&template);
+            let mut manual = Renderer::<super::ansi::Color>::new(&modules, 1, 0);
+            manual.module_dimensions(dimensions.0, dimensions.1).quiet_zone(false);
+
+            assert_eq!(renderer.try_build(), manual.try_build());
+        }
     }
 
     #[test]

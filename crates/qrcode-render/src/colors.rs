@@ -32,7 +32,7 @@ use alloc::{
     vec::Vec,
 };
 
-/// Parses a `#rrggbb` or `#rrggbbaa` hex color string into RGB or RGBA bytes.
+/// Parses a `#rgb` or `#rrggbb` hex color string into RGB bytes.
 ///
 /// Returns `None` if the format is invalid.
 ///
@@ -45,25 +45,25 @@ use alloc::{
 /// assert_eq!(hex_to_rgb("invalid"), None);
 /// ```
 pub fn hex_to_rgb(hex: &str) -> Option<(u8, u8, u8)> {
-    let hex = hex.strip_prefix('#').unwrap_or(hex);
+    let hex = hex.strip_prefix('#').unwrap_or(hex).as_bytes();
     match hex.len() {
         3 => {
-            let r = u8::from_str_radix(&hex[0..1], 16).ok()? * 17;
-            let g = u8::from_str_radix(&hex[1..2], 16).ok()? * 17;
-            let b = u8::from_str_radix(&hex[2..3], 16).ok()? * 17;
+            let r = hex_nibble(hex[0])? * 17;
+            let g = hex_nibble(hex[1])? * 17;
+            let b = hex_nibble(hex[2])? * 17;
             Some((r, g, b))
         }
         6 => {
-            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            let r = hex_byte(hex[0], hex[1])?;
+            let g = hex_byte(hex[2], hex[3])?;
+            let b = hex_byte(hex[4], hex[5])?;
             Some((r, g, b))
         }
         _ => None,
     }
 }
 
-/// Parses a `#rrggbb` or `#rrggbbaa` hex color string into RGBA bytes.
+/// Parses a `#rgb`, `#rgba`, `#rrggbb`, or `#rrggbbaa` hex color string into RGBA bytes.
 ///
 /// For `#rrggbb` format, alpha defaults to 255 (fully opaque).
 ///
@@ -77,24 +77,38 @@ pub fn hex_to_rgb(hex: &str) -> Option<(u8, u8, u8)> {
 /// ```
 pub fn hex_to_rgba(hex: &str) -> Option<(u8, u8, u8, u8)> {
     let hex = hex.strip_prefix('#').unwrap_or(hex);
-    match hex.len() {
+    let bytes = hex.as_bytes();
+    match bytes.len() {
         3 | 6 => hex_to_rgb(hex).map(|(r, g, b)| (r, g, b, 255)),
         4 => {
-            let r = u8::from_str_radix(&hex[0..1], 16).ok()? * 17;
-            let g = u8::from_str_radix(&hex[1..2], 16).ok()? * 17;
-            let b = u8::from_str_radix(&hex[2..3], 16).ok()? * 17;
-            let a = u8::from_str_radix(&hex[3..4], 16).ok()? * 17;
+            let r = hex_nibble(bytes[0])? * 17;
+            let g = hex_nibble(bytes[1])? * 17;
+            let b = hex_nibble(bytes[2])? * 17;
+            let a = hex_nibble(bytes[3])? * 17;
             Some((r, g, b, a))
         }
         8 => {
-            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-            let a = u8::from_str_radix(&hex[6..8], 16).ok()?;
+            let r = hex_byte(bytes[0], bytes[1])?;
+            let g = hex_byte(bytes[2], bytes[3])?;
+            let b = hex_byte(bytes[4], bytes[5])?;
+            let a = hex_byte(bytes[6], bytes[7])?;
             Some((r, g, b, a))
         }
         _ => None,
     }
+}
+
+fn hex_nibble(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn hex_byte(high: u8, low: u8) -> Option<u8> {
+    Some(hex_nibble(high)? * 16 + hex_nibble(low)?)
 }
 
 /// Converts RGB bytes to a CSS hex string (e.g., `"#ff0080"`).
@@ -512,6 +526,26 @@ mod tests {
         assert_eq!(hex_to_rgb("invalid"), None);
         assert_eq!(hex_to_rgb("#gg0000"), None);
         assert_eq!(hex_to_rgb("#12345"), None);
+    }
+
+    #[test]
+    fn hex_parsers_reject_non_ascii_without_panicking() {
+        for hex in ["#éa", "#aé", "#中0", "#é00", "#00é", "#0é000", "#0é00000", "#00000é0"] {
+            assert_eq!(hex_to_rgb(hex), None, "RGB accepted {hex:?}");
+            assert_eq!(hex_to_rgba(hex), None, "RGBA accepted {hex:?}");
+            assert_eq!(Srgba::from_hex(hex), None, "sRGBA accepted {hex:?}");
+        }
+    }
+
+    #[test]
+    fn hex_parsers_preserve_uppercase_and_optional_hash() {
+        for hex in ["#AbF", "AbF", "#AaBBff", "AaBBff"] {
+            assert_eq!(hex_to_rgb(hex), Some((170, 187, 255)));
+            assert_eq!(hex_to_rgba(hex), Some((170, 187, 255, 255)));
+        }
+        for hex in ["#AbF8", "AbF8", "#AaBBff88", "AaBBff88"] {
+            assert_eq!(hex_to_rgba(hex), Some((170, 187, 255, 136)));
+        }
     }
 
     #[test]

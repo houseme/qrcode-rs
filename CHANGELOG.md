@@ -20,6 +20,9 @@
 - Use full u32 mask penalties for scalar and accelerated scoring and candidate
   selection, preventing large-version overflow; preserve public u16 score
   types with saturation only at the return boundary.
+- Parse hexadecimal colors without UTF-8 boundary panics; make fallible
+  renderer builders report empty sources and overflowing dimensions, and apply
+  template module dimensions consistently.
 
 ### Added
 
