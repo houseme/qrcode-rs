@@ -215,6 +215,11 @@ With `image`, `BatchOutput<RgbaImage>::to_png_grid(...)` builds a PNG contact
 sheet; with `batch-zip-deflate`, `to_zip_with(ZipCompression::Deflated)` writes
 compressed ZIP entries.
 
+`files.write_zip(&mut output)` and `write_zip_with` write directly to a
+`std::io::Write` output without allocating the complete archive. Use a buffered
+output starting at offset zero. The caller owns flushing and publication;
+an error may leave a partial archive in the output.
+
 ## Structured Payload Parsing
 
 The `parse` module can turn QR payload text back into typed domain objects:

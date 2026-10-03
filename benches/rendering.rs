@@ -63,6 +63,20 @@ fn bench_batch_packaging(c: &mut Criterion) {
     {
         use qrcode_rs::batch::{BatchEntry, BatchOutput};
 
+        struct BenchmarkOutput(usize);
+        impl std::io::Write for BenchmarkOutput {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                // Observe each header/payload slice without retaining an archive.
+                let bytes = std::hint::black_box(bytes);
+                self.0 += bytes.len();
+                Ok(bytes.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
         let mut group = c.benchmark_group("batch_zip");
         for length in [128_usize, 32 * 1024, 1024 * 1024] {
             let payload = (0..length).map(|index| (index.wrapping_mul(29) % 256) as u8).collect::<Vec<_>>();
@@ -70,6 +84,13 @@ fn bench_batch_packaging(c: &mut Criterion) {
             group.throughput(criterion::Throughput::Bytes(length as u64));
             group.bench_function(format!("stored_{length}"), |b| {
                 b.iter(|| std::hint::black_box(&batch).to_zip().unwrap())
+            });
+            group.bench_function(format!("stored_to_writer_{length}"), |b| {
+                b.iter(|| {
+                    let mut output = BenchmarkOutput(0);
+                    std::hint::black_box(&batch).write_zip(&mut output).unwrap();
+                    std::hint::black_box(output.0)
+                })
             });
         }
         group.finish();

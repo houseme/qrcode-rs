@@ -260,11 +260,51 @@ impl BatchOutput<Vec<u8>> {
     /// Returns [`BatchPackError`] when names are invalid, compression fails, or
     /// the archive exceeds classic ZIP size/count limits.
     pub fn to_zip_with(&self, compression: ZipCompression) -> Result<Vec<u8>, BatchPackError> {
-        let mut writer = ZipBytesWriter::new();
+        let mut writer = ZipBytesWriter::new(Vec::new());
         for entry in &self.entries {
             writer.write_file(entry.name(), entry.data(), compression)?;
         }
         writer.finish()
+    }
+
+    /// Writes an uncompressed ZIP directly to a caller-supplied output.
+    ///
+    /// Unlike [`Self::to_zip`], this does not allocate a buffer for the complete
+    /// archive. Use a buffered output for files or sockets. The archive must
+    /// start at offset zero in the output; seeking is not required.
+    ///
+    /// The output is neither flushed nor closed. On error it may contain a
+    /// partial archive; the caller controls cleanup or atomic publication.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same validation errors as [`Self::to_zip`], or
+    /// [`BatchPackError::Io`] if writing fails.
+    pub fn write_zip<W: std::io::Write + ?Sized>(&self, output: &mut W) -> Result<(), BatchPackError> {
+        self.write_zip_with(output, ZipCompression::Stored)
+    }
+
+    /// Writes a ZIP directly to an output with the selected compression.
+    ///
+    /// Has the same output ownership and partial-write contract as
+    /// [`Self::write_zip`]. Compressed entries require a temporary buffer for
+    /// one entry, while Stored entries borrow their original payloads.
+    ///
+    /// # Errors
+    ///
+    /// Returns validation/compression errors from [`Self::to_zip_with`], or
+    /// [`BatchPackError::Io`] if writing fails.
+    pub fn write_zip_with<W: std::io::Write + ?Sized>(
+        &self,
+        output: &mut W,
+        compression: ZipCompression,
+    ) -> Result<(), BatchPackError> {
+        let mut writer = ZipBytesWriter::new(output);
+        for entry in &self.entries {
+            writer.write_file(entry.name(), entry.data(), compression)?;
+        }
+        writer.finish()?;
+        Ok(())
     }
 }
 
@@ -488,7 +528,7 @@ pub enum BatchPackError {
     /// PNG encoding failed.
     #[cfg(feature = "image")]
     Image(crate::render::image::image::ImageError),
-    /// Compression failed while building a ZIP archive.
+    /// Compression or output writing failed while building a ZIP archive.
     Io(std::io::Error),
 }
 
@@ -550,8 +590,8 @@ fn validate_zip_name(name: &str) -> Result<(), BatchPackError> {
     Ok(())
 }
 
-struct ZipBytesWriter {
-    bytes: Vec<u8>,
+struct ZipBytesWriter<W> {
+    output: W,
     offset: u64,
     entries: Vec<ZipEntry>,
 }
@@ -565,9 +605,9 @@ struct ZipEntry {
     local_header_offset: u32,
 }
 
-impl ZipBytesWriter {
-    fn new() -> Self {
-        Self { bytes: Vec::new(), offset: 0, entries: Vec::new() }
+impl<W: std::io::Write> ZipBytesWriter<W> {
+    fn new(output: W) -> Self {
+        Self { output, offset: 0, entries: Vec::new() }
     }
 
     fn write_file(&mut self, name: &str, bytes: &[u8], compression: ZipCompression) -> Result<(), BatchPackError> {
@@ -583,19 +623,19 @@ impl ZipBytesWriter {
         let compressed_size = u32::try_from(payload.len())
             .map_err(|_| BatchPackError::EntryTooLarge { name: name.to_string(), len: payload.len() })?;
 
-        self.write_u32(0x0403_4b50);
-        self.write_u16(20);
-        self.write_u16(1 << 11); // Entry names are encoded as UTF-8.
-        self.write_u16(compression_method);
-        self.write_u16(0);
-        self.write_u16(0);
-        self.write_u32(crc32);
-        self.write_u32(compressed_size);
-        self.write_u32(uncompressed_size);
-        self.write_u16(name_len);
-        self.write_u16(0);
-        self.write_all(name_bytes);
-        self.write_all(&payload);
+        self.write_u32(0x0403_4b50)?;
+        self.write_u16(20)?;
+        self.write_u16(1 << 11)?; // Entry names are encoded as UTF-8.
+        self.write_u16(compression_method)?;
+        self.write_u16(0)?;
+        self.write_u16(0)?;
+        self.write_u32(crc32)?;
+        self.write_u32(compressed_size)?;
+        self.write_u32(uncompressed_size)?;
+        self.write_u16(name_len)?;
+        self.write_u16(0)?;
+        self.write_all(name_bytes)?;
+        self.write_all(&payload)?;
         self.entries.push(ZipEntry {
             name: name.to_string(),
             crc32,
@@ -607,40 +647,39 @@ impl ZipBytesWriter {
         Ok(())
     }
 
-    fn finish(mut self) -> Result<Vec<u8>, BatchPackError> {
+    fn finish(mut self) -> Result<W, BatchPackError> {
         let central_dir_offset = u32::try_from(self.offset).map_err(|_| BatchPackError::ArchiveTooLarge)?;
         let entry_count = u16::try_from(self.entries.len())
             .map_err(|_| BatchPackError::TooManyEntries { count: self.entries.len() })?;
 
-        for index in 0..self.entries.len() {
-            let name = self.entries[index].name.clone();
-            let name_bytes = name.as_bytes();
+        // Move metadata out so central headers can borrow names without a
+        // second name allocation for every entry.
+        let entries = core::mem::take(&mut self.entries);
+        for entry in entries {
+            let name_bytes = entry.name.as_bytes();
             let name_len = u16::try_from(name_bytes.len())
-                .map_err(|_| BatchPackError::EntryNameTooLong { name: name.clone(), len: name_bytes.len() })?;
-            let compression_method = self.entries[index].compression_method;
-            let crc32 = self.entries[index].crc32;
-            let compressed_size = self.entries[index].compressed_size;
-            let uncompressed_size = self.entries[index].uncompressed_size;
-            let local_header_offset = self.entries[index].local_header_offset;
+                .map_err(|_| BatchPackError::EntryNameTooLong { name: entry.name.clone(), len: name_bytes.len() })?;
+            let ZipEntry { crc32, compressed_size, uncompressed_size, compression_method, local_header_offset, .. } =
+                entry;
 
-            self.write_u32(0x0201_4b50);
-            self.write_u16(20);
-            self.write_u16(20);
-            self.write_u16(1 << 11); // Match the local header's UTF-8 flag.
-            self.write_u16(compression_method);
-            self.write_u16(0);
-            self.write_u16(0);
-            self.write_u32(crc32);
-            self.write_u32(compressed_size);
-            self.write_u32(uncompressed_size);
-            self.write_u16(name_len);
-            self.write_u16(0);
-            self.write_u16(0);
-            self.write_u16(0);
-            self.write_u16(0);
-            self.write_u32(0);
-            self.write_u32(local_header_offset);
-            self.write_all(name_bytes);
+            self.write_u32(0x0201_4b50)?;
+            self.write_u16(20)?;
+            self.write_u16(20)?;
+            self.write_u16(1 << 11)?; // Match the local header's UTF-8 flag.
+            self.write_u16(compression_method)?;
+            self.write_u16(0)?;
+            self.write_u16(0)?;
+            self.write_u32(crc32)?;
+            self.write_u32(compressed_size)?;
+            self.write_u32(uncompressed_size)?;
+            self.write_u16(name_len)?;
+            self.write_u16(0)?;
+            self.write_u16(0)?;
+            self.write_u16(0)?;
+            self.write_u16(0)?;
+            self.write_u32(0)?;
+            self.write_u32(local_header_offset)?;
+            self.write_all(name_bytes)?;
         }
 
         let central_dir_size = self
@@ -648,28 +687,29 @@ impl ZipBytesWriter {
             .checked_sub(u64::from(central_dir_offset))
             .and_then(|size| u32::try_from(size).ok())
             .ok_or(BatchPackError::ArchiveTooLarge)?;
-        self.write_u32(0x0605_4b50);
-        self.write_u16(0);
-        self.write_u16(0);
-        self.write_u16(entry_count);
-        self.write_u16(entry_count);
-        self.write_u32(central_dir_size);
-        self.write_u32(central_dir_offset);
-        self.write_u16(0);
-        Ok(self.bytes)
+        self.write_u32(0x0605_4b50)?;
+        self.write_u16(0)?;
+        self.write_u16(0)?;
+        self.write_u16(entry_count)?;
+        self.write_u16(entry_count)?;
+        self.write_u32(central_dir_size)?;
+        self.write_u32(central_dir_offset)?;
+        self.write_u16(0)?;
+        Ok(self.output)
     }
 
-    fn write_all(&mut self, bytes: &[u8]) {
-        self.bytes.extend_from_slice(bytes);
+    fn write_all(&mut self, bytes: &[u8]) -> Result<(), BatchPackError> {
+        self.output.write_all(bytes)?;
         self.offset += bytes.len() as u64;
+        Ok(())
     }
 
-    fn write_u16(&mut self, value: u16) {
-        self.write_all(&value.to_le_bytes());
+    fn write_u16(&mut self, value: u16) -> Result<(), BatchPackError> {
+        self.write_all(&value.to_le_bytes())
     }
 
-    fn write_u32(&mut self, value: u32) {
-        self.write_all(&value.to_le_bytes());
+    fn write_u32(&mut self, value: u32) -> Result<(), BatchPackError> {
+        self.write_all(&value.to_le_bytes())
     }
 }
 
@@ -918,6 +958,86 @@ mod tests {
         assert!(archive.starts_with(b"PK\x03\x04"));
         assert!(archive.windows(b"qr-0001.svg".len()).any(|window| window == b"qr-0001.svg"));
         assert!(archive.windows(b"<svg>beta</svg>".len()).any(|window| window == b"<svg>beta</svg>"));
+    }
+
+    #[test]
+    fn zip_output_handles_short_writes_and_interrupted_writes_without_flushing() {
+        struct ShortWriter {
+            bytes: Vec<u8>,
+            interrupted: bool,
+        }
+        impl std::io::Write for ShortWriter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                if !self.interrupted {
+                    self.interrupted = true;
+                    return Err(std::io::ErrorKind::Interrupted.into());
+                }
+                let count = bytes.len().min(3);
+                self.bytes.extend_from_slice(&bytes[..count]);
+                Ok(count)
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                panic!("flushing is the caller's responsibility")
+            }
+        }
+        let files = BatchOutput::from_entries([
+            BatchEntry::new("二维码.txt", b"alpha".to_vec()),
+            BatchEntry::new("sub/empty.bin", Vec::new()),
+        ]);
+        let mut output = ShortWriter { bytes: Vec::new(), interrupted: false };
+        files.write_zip(&mut output as &mut dyn std::io::Write).unwrap();
+        assert_eq!(output.bytes, files.to_zip().unwrap());
+
+        #[cfg(feature = "batch-zip-deflate")]
+        {
+            output.bytes.clear();
+            files.write_zip_with(&mut output, ZipCompression::Deflated).unwrap();
+            assert_eq!(output.bytes, files.to_zip_with(ZipCompression::Deflated).unwrap());
+        }
+    }
+
+    #[test]
+    fn zip_output_preserves_write_errors_at_headers_payloads_and_directory() {
+        struct FailingWriter {
+            remaining: usize,
+        }
+        impl std::io::Write for FailingWriter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                if self.remaining == 0 {
+                    return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "test write failure"));
+                }
+                let count = bytes.len().min(self.remaining);
+                self.remaining -= count;
+                Ok(count)
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                panic!("flushing is the caller's responsibility")
+            }
+        }
+        let files = BatchOutput::from_entries([BatchEntry::new("qr.txt", b"alpha".to_vec())]);
+        let size = files.to_zip().unwrap().len();
+        for offset in [0, 17, 32, 36, 41, size - 1] {
+            let error = files.write_zip(&mut FailingWriter { remaining: offset }).unwrap_err();
+            match error {
+                BatchPackError::Io(error) => {
+                    assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+                    assert_eq!(error.to_string(), "test write failure");
+                }
+                error => panic!("unexpected error at byte {offset}: {error}"),
+            }
+        }
+    }
+
+    #[test]
+    fn zip_output_accepts_empty_archive_and_rejects_invalid_names() {
+        let empty = BatchOutput::<Vec<u8>>::from_entries([]);
+        let mut bytes = Vec::new();
+        empty.write_zip(&mut bytes).unwrap();
+        assert_eq!(bytes, b"PK\x05\x06\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
+        let invalid = BatchOutput::from_entries([BatchEntry::new("../x", Vec::new())]);
+        let mut bytes = Vec::new();
+        assert!(matches!(invalid.write_zip(&mut bytes), Err(BatchPackError::InvalidEntryName { .. })));
+        assert!(bytes.is_empty());
     }
 
     #[test]

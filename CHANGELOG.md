@@ -151,6 +151,9 @@
 - Add QrCode::try_from_serializable and QrCodeDataError to check supported
   version/correction combinations and exact matrix shape without cloning;
   preserve the trusted constructor and existing serde layout.
+- Add BatchOutput byte-entry write_zip/write_zip_with helpers for caller-owned
+  outputs, avoiding a complete archive buffer and redundant central-directory
+  name copies while preserving ZIP bytes and compression options.
 
 ## [2.1.1] - 2026-09-16
 
