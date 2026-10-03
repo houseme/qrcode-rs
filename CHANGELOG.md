@@ -14,6 +14,8 @@
 - Fill image rectangles through contiguous channel rows and update converted
   gradient images in place, removing per-pixel coordinate work and an extra
   RGBA image copy.
+- Borrow unfolded vCard lines until continuation text requires ownership,
+  avoiding copies of ignored properties and temporary uppercase keys.
 
 ### Fixed
 
@@ -33,6 +35,9 @@
 - Reject invalid Structured Append numeric values, unsupported modes, and
   non-normal versions instead of returning partial payloads; enforce
   two-dimensional GrayPixels coordinate bounds.
+- Escape and decode vCard TEXT values, preserve escaped structured separators,
+  and read only the first card while retaining incomplete-card tolerance and
+  raw URL/address accessors.
 
 ### Added
 
