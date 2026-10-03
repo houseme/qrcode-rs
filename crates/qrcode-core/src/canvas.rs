@@ -694,6 +694,25 @@ mod timing_pattern_tests {
 //------------------------------------------------------------------------------
 //{{{ Format info & Version info
 
+fn for_each_format_info_module(version: Version, format_info: u16, mut write: impl FnMut(i16, i16, Color)) {
+    fn emit_bits(format_info: u16, coords: &[(i16, i16)], write: &mut impl FnMut(i16, i16, Color)) {
+        let mut bit = 1_u16 << 14;
+        for &(x, y) in coords {
+            write(x, y, if format_info & bit == 0 { Color::Light } else { Color::Dark });
+            bit >>= 1;
+        }
+    }
+
+    match version {
+        Version::Micro(_) => emit_bits(format_info, &FORMAT_INFO_COORDS_MICRO_QR, &mut write),
+        Version::Normal(_) => {
+            emit_bits(format_info, &FORMAT_INFO_COORDS_QR_MAIN, &mut write);
+            emit_bits(format_info, &FORMAT_INFO_COORDS_QR_SIDE, &mut write);
+            write(8, -8, Color::Dark);
+        }
+    }
+}
+
 impl Canvas {
     /// Draws a big-endian integer onto the canvas with the given coordinates.
     ///
@@ -712,17 +731,7 @@ impl Canvas {
 
     /// Draws the format info patterns for an encoded number.
     fn draw_format_info_patterns_with_number(&mut self, format_info: u16) {
-        let format_info = u32::from(format_info);
-        match self.version {
-            Version::Micro(_) => {
-                self.draw_number(format_info, 15, Color::Dark, Color::Light, &FORMAT_INFO_COORDS_MICRO_QR);
-            }
-            Version::Normal(_) => {
-                self.draw_number(format_info, 15, Color::Dark, Color::Light, &FORMAT_INFO_COORDS_QR_MAIN);
-                self.draw_number(format_info, 15, Color::Dark, Color::Light, &FORMAT_INFO_COORDS_QR_SIDE);
-                self.put(8, -8, Color::Dark); // Dark module.
-            }
-        }
+        for_each_format_info_module(self.version, format_info, |x, y, color| self.put(x, y, color));
     }
 
     /// Reserves area to put in the format information.
@@ -1592,13 +1601,49 @@ impl Canvas {
         self.draw_format_info_patterns(pattern);
     }
 
+    fn write_masked_module_bytes(&self, pattern: MaskPattern, output: &mut [u8]) {
+        debug_assert_eq!(output.len(), self.modules.len());
+        // Function items keep each mask calculation statically dispatched in
+        // the candidate loop while sharing the existing formula definitions.
+        match pattern {
+            MaskPattern::Checkerboard => self.write_masked_bytes_with(mask_functions::checkerboard, output),
+            MaskPattern::HorizontalLines => self.write_masked_bytes_with(mask_functions::horizontal_lines, output),
+            MaskPattern::VerticalLines => self.write_masked_bytes_with(mask_functions::vertical_lines, output),
+            MaskPattern::DiagonalLines => self.write_masked_bytes_with(mask_functions::diagonal_lines, output),
+            MaskPattern::LargeCheckerboard => self.write_masked_bytes_with(mask_functions::large_checkerboard, output),
+            MaskPattern::Fields => self.write_masked_bytes_with(mask_functions::fields, output),
+            MaskPattern::Diamonds => self.write_masked_bytes_with(mask_functions::diamonds, output),
+            MaskPattern::Meadow => self.write_masked_bytes_with(mask_functions::meadow, output),
+        }
+        for_each_format_info_module(self.version, self.format_info_number(pattern), |x, y, color| {
+            output[self.coords_to_index(x, y)] = u8::from(color == Color::Dark);
+        });
+    }
+
+    fn write_masked_bytes_with(&self, mask_fn: impl Fn(i16, i16) -> bool, output: &mut [u8]) {
+        let width = self.width.as_usize();
+        for (y, (row, output_row)) in self.modules.chunks_exact(width).zip(output.chunks_exact_mut(width)).enumerate() {
+            for (x, (&module, byte)) in row.iter().zip(output_row).enumerate() {
+                *byte = match module {
+                    Module::Masked(color) => u8::from(color == Color::Dark),
+                    Module::Empty => u8::from(mask_fn(x.as_i16(), y.as_i16())),
+                    Module::Unmasked(color) => u8::from((color == Color::Dark) ^ mask_fn(x.as_i16(), y.as_i16())),
+                };
+            }
+        }
+    }
+
     /// Draws the format information to encode the error correction level and
     /// mask pattern.
     ///
     /// If the error correction level or mask pattern is not supported in the
     /// current QR code version, this method will fail.
     fn draw_format_info_patterns(&mut self, pattern: MaskPattern) {
-        let format_number = match self.version {
+        self.draw_format_info_patterns_with_number(self.format_info_number(pattern));
+    }
+
+    fn format_info_number(&self, pattern: MaskPattern) -> u16 {
+        match self.version {
             Version::Normal(_) => {
                 let simple_format_number = ((self.ec_level as usize) ^ 1) << 3 | (pattern as usize);
                 FORMAT_INFOS_QR[simple_format_number]
@@ -1625,15 +1670,17 @@ impl Canvas {
                 let simple_format_number = symbol_number << 2 | micro_pattern_number;
                 FORMAT_INFOS_MICRO_QR[simple_format_number]
             }
-        };
-        self.draw_format_info_patterns_with_number(format_number);
+        }
     }
 }
 
 #[cfg(test)]
 mod mask_tests {
-    use crate::canvas::{Canvas, FORMAT_INFOS_MICRO_QR, FORMAT_INFOS_QR, MaskPattern};
-    use crate::types::{EcLevel, Version};
+    use crate::canvas::{
+        Canvas, FORMAT_INFO_COORDS_MICRO_QR, FORMAT_INFO_COORDS_QR_MAIN, FORMAT_INFO_COORDS_QR_SIDE,
+        FORMAT_INFOS_MICRO_QR, FORMAT_INFOS_QR, MaskPattern,
+    };
+    use crate::types::{Color, EcLevel, Version};
 
     #[test]
     fn test_apply_mask_qr() {
@@ -1728,6 +1775,33 @@ mod mask_tests {
         assert_eq!(FORMAT_INFOS_QR[31], 0x2bed);
         assert_eq!(FORMAT_INFOS_MICRO_QR[0], 0x4445);
         assert_eq!(FORMAT_INFOS_MICRO_QR[31], 0x3bba);
+    }
+
+    #[test]
+    fn format_module_callback_matches_original_number_writes() {
+        for version in [Version::Normal(1), Version::Normal(40), Version::Micro(1), Version::Micro(4)] {
+            let format_infos = match version {
+                Version::Normal(_) => &FORMAT_INFOS_QR,
+                Version::Micro(_) => &FORMAT_INFOS_MICRO_QR,
+            };
+            for &format_info in format_infos {
+                let mut actual = Canvas::new(version, EcLevel::L);
+                let mut expected = actual.clone();
+                actual.draw_format_info_patterns_with_number(format_info);
+                let number = u32::from(format_info);
+                match version {
+                    Version::Normal(_) => {
+                        expected.draw_number(number, 15, Color::Dark, Color::Light, &FORMAT_INFO_COORDS_QR_MAIN);
+                        expected.draw_number(number, 15, Color::Dark, Color::Light, &FORMAT_INFO_COORDS_QR_SIDE);
+                        expected.put(8, -8, Color::Dark);
+                    }
+                    Version::Micro(_) => {
+                        expected.draw_number(number, 15, Color::Dark, Color::Light, &FORMAT_INFO_COORDS_MICRO_QR);
+                    }
+                }
+                assert_eq!(actual.modules, expected.modules, "version {version:?}, format {format_info:04x}");
+            }
+        }
     }
 }
 
@@ -1827,6 +1901,7 @@ impl Canvas {
         compute_total_penalty_score_scalar(self.version, self.width, &self.modules)
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     fn compute_total_penalty_scores_with_scratch(&self, scratch: &mut Vec<u8>) -> u32 {
         debug_assert_eq!((self.width * self.width).as_usize(), self.modules.len());
         write_module_bytes(&self.modules, scratch);
@@ -1856,6 +1931,7 @@ fn module_bytes(modules: &[Module]) -> Vec<u8> {
     modules.iter().map(|module| u8::from(module.is_dark())).collect()
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 fn write_module_bytes(modules: &[Module], output: &mut Vec<u8>) {
     output.clear();
     output.extend(modules.iter().map(|module| u8::from(module.is_dark())));
@@ -2675,26 +2751,22 @@ impl Canvas {
             Version::Normal(_) => &ALL_PATTERNS_QR,
             Version::Micro(_) => &ALL_PATTERNS_MICRO_QR,
         };
-        let mut scratch = Vec::with_capacity(self.modules.len());
+        let mut scratch = vec![0; self.modules.len()];
         let mut best_pattern = patterns[0];
-        let mut best_canvas = self.clone();
-        best_canvas.apply_mask(best_pattern);
-        let mut best_score = best_canvas.compute_total_penalty_scores_with_scratch(&mut scratch);
-        let mut candidate = self.clone();
+        self.write_masked_module_bytes(best_pattern, &mut scratch);
+        let mut best_score = compute_total_penalty_score_from_bytes(self.version, self.width.as_usize(), &scratch);
 
         for &pattern in &patterns[1..] {
-            // Every candidate starts from the unmasked input, even after swapping
-            // its buffer with the previous best candidate.
-            candidate.modules.copy_from_slice(&self.modules);
-            candidate.apply_mask(pattern);
-            let score = candidate.compute_total_penalty_scores_with_scratch(&mut scratch);
+            self.write_masked_module_bytes(pattern, &mut scratch);
+            let score = compute_total_penalty_score_from_bytes(self.version, self.width.as_usize(), &scratch);
             if score < best_score {
                 best_score = score;
                 best_pattern = pattern;
-                core::mem::swap(&mut best_canvas, &mut candidate);
             }
         }
 
+        let mut best_canvas = self.clone();
+        best_canvas.apply_mask(best_pattern);
         (best_canvas, best_pattern, u16::try_from(best_score).unwrap_or(u16::MAX))
     }
 
@@ -2706,7 +2778,11 @@ impl Canvas {
 
 #[cfg(test)]
 mod mask_selection_tests {
-    use crate::canvas::{ALL_PATTERNS_MICRO_QR, ALL_PATTERNS_QR, Canvas, MaskPattern, Module, get_mask_function};
+    use crate::canvas::{
+        ALL_PATTERNS_MICRO_QR, ALL_PATTERNS_QR, Canvas, MaskPattern, Module, compute_total_penalty_score_from_bytes,
+        get_mask_function, module_bytes,
+    };
+    use crate::cast::As;
     use crate::types::{Color, EcLevel, Version};
 
     const VERSIONS: [Version; 9] = [
@@ -2792,6 +2868,24 @@ mod mask_selection_tests {
         (best_canvas.expect("at least one candidate"), best_pattern, best_score)
     }
 
+    fn assert_candidate_bytes_and_scores_match_cloned_canvas(canvas: &Canvas) {
+        let original = canvas.modules.clone();
+        let mut output = vec![0; canvas.modules.len()];
+        for &pattern in patterns_for_version(canvas.version) {
+            canvas.write_masked_module_bytes(pattern, &mut output);
+            let mut expected = canvas.clone();
+            apply_mask_column_major(&mut expected, pattern);
+            assert_eq!(output, module_bytes(&expected.modules), "version {:?}, pattern {pattern:?}", canvas.version);
+            assert_eq!(
+                compute_total_penalty_score_from_bytes(canvas.version, canvas.width.as_usize(), &output),
+                expected.compute_total_penalty_scores(),
+                "version {:?}, pattern {pattern:?}",
+                canvas.version
+            );
+        }
+        assert_eq!(canvas.modules, original);
+    }
+
     #[test]
     fn row_major_mask_matches_column_major_for_every_pattern() {
         for version in VERSIONS {
@@ -2806,11 +2900,13 @@ mod mask_selection_tests {
     }
 
     #[test]
-    fn reusable_candidates_match_cloned_reference_for_all_versions_and_data_patterns() {
+    fn byte_candidates_match_cloned_reference_for_all_versions_and_data_patterns() {
         for version in VERSIONS {
             for &ec_level in supported_ec_levels(version) {
                 for data_pattern in 0..5 {
                     let canvas = create_canvas(version, ec_level, data_pattern);
+                    let original = canvas.modules.clone();
+                    assert_candidate_bytes_and_scores_match_cloned_canvas(&canvas);
                     let (actual, actual_pattern, actual_score) = canvas.apply_best_mask_with_score();
                     let (expected, expected_pattern, expected_score) = select_mask_by_cloning(&canvas);
                     assert_eq!(
@@ -2818,8 +2914,43 @@ mod mask_selection_tests {
                         (expected_pattern, u16::try_from(expected_score).unwrap_or(u16::MAX), expected.modules),
                         "version {version:?}, ec level {ec_level:?}, data pattern {data_pattern}"
                     );
+                    assert_eq!(canvas.modules, original);
                 }
             }
+        }
+    }
+
+    #[test]
+    fn direct_bytes_match_cloned_reference_for_random_module_states() {
+        let mut seed = 2_712_u64;
+        for case in 0..64 {
+            let version = VERSIONS[case % VERSIONS.len()];
+            let ec_levels = supported_ec_levels(version);
+            let ec_level = ec_levels[case / VERSIONS.len() % ec_levels.len()];
+            let mut canvas = create_canvas(version, ec_level, 0);
+            for module in &mut canvas.modules {
+                if *module != Module::Empty {
+                    continue;
+                }
+                seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+                *module = match (seed >> 32) % 5 {
+                    0 => Module::Empty,
+                    1 => Module::Masked(Color::Light),
+                    2 => Module::Masked(Color::Dark),
+                    3 => Module::Unmasked(Color::Light),
+                    _ => Module::Unmasked(Color::Dark),
+                };
+            }
+            let original = canvas.modules.clone();
+            assert_candidate_bytes_and_scores_match_cloned_canvas(&canvas);
+            let (actual, actual_pattern, actual_score) = canvas.apply_best_mask_with_score();
+            let (expected, expected_pattern, expected_score) = select_mask_by_cloning(&canvas);
+            assert_eq!(
+                (actual_pattern, actual_score, actual.modules),
+                (expected_pattern, u16::try_from(expected_score).unwrap_or(u16::MAX), expected.modules),
+                "version {version:?}, ec level {ec_level:?}, case {case}"
+            );
+            assert_eq!(canvas.modules, original);
         }
     }
 

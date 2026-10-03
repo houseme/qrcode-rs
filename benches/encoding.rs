@@ -86,6 +86,17 @@ fn bench_encode(c: &mut Criterion) {
         let canvas = prepared_canvas(Version::Normal(v), EcLevel::L, b"mask");
         mask.bench_function(format!("v{v}_apply_best_mask"), |b| b.iter(|| canvas.apply_best_mask()));
     }
+    for v in 1..=4 {
+        let version = Version::Micro(v);
+        let mut bits = Bits::new(version);
+        bits.push_numeric_data(b"1").unwrap();
+        bits.push_terminator(EcLevel::L).unwrap();
+        let (encoded_data, ec_data) = ec::construct_codewords(&bits.into_bytes(), version, EcLevel::L).unwrap();
+        let mut canvas = Canvas::new(version, EcLevel::L);
+        canvas.draw_all_functional_patterns();
+        canvas.draw_data(&encoded_data, &ec_data);
+        mask.bench_function(format!("m{v}_apply_best_mask"), |b| b.iter(|| canvas.apply_best_mask()));
+    }
     mask.finish();
 
     #[cfg(feature = "bench-internals")]

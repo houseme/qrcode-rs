@@ -36,6 +36,9 @@
   ordered errors, and atomic output replacement.
 - Use a constant IEEE CRC-32 lookup table for library and CLI ZIP packaging,
   retaining the existing ZIP checksum format.
+- Score mask candidates directly in one byte buffer with statically dispatched
+  mask functions, then materialize only the winning canvas while preserving
+  module state and mask ties.
 
 ### Fixed
 
