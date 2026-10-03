@@ -587,14 +587,27 @@ fn compress_zip_payload(bytes: &[u8], compression: ZipCompression) -> Result<(u1
     }
 }
 
+const CRC32_TABLE: [u32; 256] = {
+    let mut table = [0; 256];
+    let mut index = 0;
+    while index < table.len() {
+        let mut value = index as u32;
+        let mut bit = 0;
+        while bit < 8 {
+            let mask = 0u32.wrapping_sub(value & 1);
+            value = (value >> 1) ^ (0xedb8_8320 & mask);
+            bit += 1;
+        }
+        table[index] = value;
+        index += 1;
+    }
+    table
+};
+
 fn crc32(bytes: &[u8]) -> u32 {
     let mut crc = 0xffff_ffff;
     for &byte in bytes {
-        crc ^= u32::from(byte);
-        for _ in 0..8 {
-            let mask = 0u32.wrapping_sub(crc & 1);
-            crc = (crc >> 1) ^ (0xedb8_8320 & mask);
-        }
+        crc = (crc >> 8) ^ CRC32_TABLE[((crc ^ u32::from(byte)) & 0xff) as usize];
     }
     !crc
 }
@@ -673,6 +686,36 @@ fn grid_columns(requested: usize, count: usize) -> Result<usize, BatchPackError>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn crc32_bitwise(bytes: &[u8]) -> u32 {
+        let mut crc = 0xffff_ffff;
+        for &byte in bytes {
+            crc ^= u32::from(byte);
+            for _ in 0..8 {
+                let mask = 0u32.wrapping_sub(crc & 1);
+                crc = (crc >> 1) ^ (0xedb8_8320 & mask);
+            }
+        }
+        !crc
+    }
+
+    #[test]
+    fn crc32_matches_ieee_vectors() {
+        assert_eq!(crc32(b""), 0);
+        assert_eq!(crc32(b"123456789"), 0xcbf4_3926);
+        assert_eq!(crc32(b"abc"), 0x3524_41c2);
+    }
+
+    #[test]
+    fn crc32_matches_bitwise_oracle_for_prefixes_and_unaligned_slices() {
+        let bytes = (0..65_539_usize).map(|index| (index.wrapping_mul(73) % 256) as u8).collect::<Vec<_>>();
+        for length in (0..=256).chain([511, 512, 1023, 1024, 32_768, 65_536]) {
+            for offset in 0..3 {
+                let input = &bytes[offset..offset + length];
+                assert_eq!(crc32(input), crc32_bitwise(input), "offset {offset}, length {length}");
+            }
+        }
+    }
 
     #[test]
     fn builder_renders_entries_with_stable_names() {

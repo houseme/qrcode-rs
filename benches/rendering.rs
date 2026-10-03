@@ -58,5 +58,25 @@ fn bench_render(c: &mut Criterion) {
     g.finish();
 }
 
-criterion_group!(benches, bench_render);
+fn bench_batch_packaging(c: &mut Criterion) {
+    #[cfg(feature = "std")]
+    {
+        use qrcode_rs::batch::{BatchEntry, BatchOutput};
+
+        let mut group = c.benchmark_group("batch_zip");
+        for length in [128_usize, 32 * 1024, 1024 * 1024] {
+            let payload = (0..length).map(|index| (index.wrapping_mul(29) % 256) as u8).collect::<Vec<_>>();
+            let batch = BatchOutput::from_entries([BatchEntry::new("二维码.bin", payload)]);
+            group.throughput(criterion::Throughput::Bytes(length as u64));
+            group.bench_function(format!("stored_{length}"), |b| {
+                b.iter(|| std::hint::black_box(&batch).to_zip().unwrap())
+            });
+        }
+        group.finish();
+    }
+    #[cfg(not(feature = "std"))]
+    let _ = c;
+}
+
+criterion_group!(benches, bench_render, bench_batch_packaging);
 criterion_main!(benches);

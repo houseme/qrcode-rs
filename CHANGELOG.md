@@ -35,6 +35,8 @@
 - Render parallel ZIP batches in ordered chunks of at most 64 records,
   releasing rendered payloads after each chunk while preserving global names,
   ordered errors, and atomic output replacement.
+- Use a constant IEEE CRC-32 lookup table for library and CLI ZIP packaging,
+  retaining the existing ZIP checksum format.
 
 ### Fixed
 
@@ -83,6 +85,7 @@
 - Add near-limit alternating-mode optimization and rejected-payload
   benchmarks, with the original dynamic program retained as a correctness
   oracle.
+- Add Stored ZIP packaging benchmarks for small, 32 KiB, and 1 MiB payloads.
 
 ## [2.1.1] - 2026-09-16
 
