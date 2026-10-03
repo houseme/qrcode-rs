@@ -104,6 +104,12 @@
   metadata and duplicate-position error priorities.
 - Prioritize pending earlier encoding errors over later input errors, and
   validate complete JSON input before publishing an archive.
+- Replace regular CLI single, directory-entry, ZIP and grid outputs only after
+  successful writes and flushes; preserve existing permissions and clean
+  failed temporary files.
+- Reject read-only, symlink and special final destinations, and avoid
+  temporary-name case aliases on case-insensitive filesystems while preserving
+  stdout behavior.
 
 ### Added
 

@@ -33,10 +33,19 @@ The `qrcode-rs` facade keeps its feature-gated `qrencodes` binary for
 backward compatibility and for crates.io installations.
 
 Batch input ignores blank or whitespace-only payloads while preserving the exact
-contents of each non-empty payload. Use `--batch -` for a pipe; batch output is
-always written to the directory given by `--output`. CSV input uses a 1-based
+contents of each non-empty payload. Use `--batch -` for a pipe. CSV input uses a 1-based
 `--batch-column`, JSON/JSONL input reads strings or a string field named by
-`--batch-key`, and `--parallel` renders a collected batch concurrently while
-preserving file order. Use `--batch-pack zip` to write the generated batch files
-into a single uncompressed ZIP archive without adding packaging dependencies, or
-`--batch-pack grid` with PNG output to build a single contact sheet.
+`--batch-key`. Directory output preserves file order; its parallel path collects
+the batch before writing. ZIP output consumes records incrementally, including
+JSON arrays, and its parallel path retains at most 64 input records and their
+rendered results at a time. ZIP central-directory metadata and the largest
+individual input record still contribute to memory use.
+
+Use `--batch-pack zip` to write one uncompressed archive, or `--batch-pack grid`
+with PNG output to draw compact QR symbols directly into one contact sheet.
+The direct grid canvas uses the 256 MiB rendering budget.
+
+Regular file outputs are replaced only after a temporary output has been
+successfully written and flushed. Existing permissions are preserved. Read-only
+files, output symlinks, and special file destinations are rejected; stdout and
+`--output -` retain their normal behavior.

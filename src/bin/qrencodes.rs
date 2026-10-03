@@ -3,11 +3,15 @@
 use std::error::Error;
 use std::fmt;
 use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter, IsTerminal, Read, Write};
+use std::io::{BufRead, BufReader, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[path = "qrencodes/atomic_output.rs"]
+mod atomic_output;
+
+use atomic_output::AtomicOutputFile;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use qrcode_render::{ansi, colors, unicode};
@@ -21,7 +25,6 @@ use serde::Deserialize;
 const MAX_PNG_SIDE: u64 = 65_535;
 const MAX_PNG_PIXELS: u64 = 268_435_456;
 const ZIP_PARALLEL_CHUNK_SIZE: usize = 64;
-static TEMP_OUTPUT_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Parser)]
 #[command(name = "qrencodes", version, about = "Generate QR codes in various output formats")]
@@ -282,7 +285,7 @@ fn render_batch_grid(cli: &Cli, quiet_zone: bool) -> Result<usize, Box<dyn Error
     }
     let count = entries.len();
     let bytes = encode_png_grid(BatchOutput::from_entries(entries), cli, quiet_zone)?;
-    std::fs::write(output, bytes)?;
+    atomic_output::write(Path::new(output), &bytes)?;
     eprintln!("wrote {output}");
     Ok(count)
 }
@@ -867,13 +870,13 @@ fn write_output(cli: &Cli, bytes: &[u8], index: usize, batch: bool) -> Result<()
         };
         std::fs::create_dir_all(dir)?;
         let path = Path::new(dir).join(batch_file_name(index, cli.format));
-        std::fs::write(&path, bytes)?;
+        atomic_output::write(&path, bytes)?;
         eprintln!("wrote {}", path.display());
         return Ok(());
     }
     match &cli.output {
         Some(path) if path == "-" => std::io::stdout().lock().write_all(bytes)?,
-        Some(path) => std::fs::write(path, bytes)?,
+        Some(path) => atomic_output::write(Path::new(path), bytes)?,
         None => std::io::stdout().lock().write_all(bytes)?,
     }
     Ok(())
@@ -896,10 +899,7 @@ fn ext_for(format: Format) -> &'static str {
 }
 
 struct ZipStoreWriter {
-    file: Option<BufWriter<File>>,
-    temporary_path: PathBuf,
-    output_path: PathBuf,
-    committed: bool,
+    output: AtomicOutputFile,
     offset: u64,
     entries: Vec<ZipEntry>,
 }
@@ -913,26 +913,7 @@ struct ZipEntry {
 
 impl ZipStoreWriter {
     fn create(path: &Path) -> Result<Self, Box<dyn Error>> {
-        let parent = path.parent().filter(|parent| !parent.as_os_str().is_empty()).unwrap_or(Path::new("."));
-        for _ in 0..128 {
-            let sequence = TEMP_OUTPUT_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-            let temporary_path = parent.join(format!(".qrencodes-{}-{sequence}.tmp", std::process::id()));
-            match File::options().write(true).create_new(true).open(&temporary_path) {
-                Ok(file) => {
-                    return Ok(Self {
-                        file: Some(BufWriter::new(file)),
-                        temporary_path,
-                        output_path: path.to_owned(),
-                        committed: false,
-                        offset: 0,
-                        entries: Vec::new(),
-                    });
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                Err(error) => return Err(error.into()),
-            }
-        }
-        Err("could not create a temporary ZIP output file".into())
+        Ok(Self { output: AtomicOutputFile::create(path)?, offset: 0, entries: Vec::new() })
     }
 
     fn write_file(&mut self, name: &str, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
@@ -1004,18 +985,12 @@ impl ZipStoreWriter {
         self.write_u32(central_dir_size)?;
         self.write_u32(central_dir_offset)?;
         self.write_u16(0)?;
-        let mut file = self.file.take().ok_or("ZIP output file is already closed")?;
-        file.flush()?;
-        // Close the handle before renaming, including when the input and output
-        // paths are identical. Drop removes this temporary file on any error.
-        drop(file);
-        std::fs::rename(&self.temporary_path, &self.output_path)?;
-        self.committed = true;
+        self.output.finish()?;
         Ok(())
     }
 
     fn write_all(&mut self, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
-        self.file.as_mut().ok_or("ZIP output file is already closed")?.write_all(bytes)?;
+        self.output.write_all(bytes)?;
         self.offset += bytes.len() as u64;
         Ok(())
     }
@@ -1026,17 +1001,6 @@ impl ZipStoreWriter {
 
     fn write_u32(&mut self, value: u32) -> Result<(), Box<dyn Error>> {
         self.write_all(&value.to_le_bytes())
-    }
-}
-
-impl Drop for ZipStoreWriter {
-    fn drop(&mut self) {
-        // The handle must be closed before cleanup on platforms that forbid
-        // removing an open file.
-        drop(self.file.take());
-        if !self.committed {
-            let _ = std::fs::remove_file(&self.temporary_path);
-        }
     }
 }
 
@@ -1380,7 +1344,7 @@ mod tests {
         let temporary;
         {
             let mut archive = ZipStoreWriter::create(&output).unwrap();
-            temporary = archive.temporary_path.clone();
+            temporary = archive.output.temporary_path().to_path_buf();
             archive.write_file("qr.txt", b"partially rendered").unwrap();
             assert_eq!(temporary.parent(), output.parent());
             assert_eq!(fs::read(&output).unwrap(), b"original archive");
@@ -1393,10 +1357,10 @@ mod tests {
     #[test]
     fn zip_rename_failure_cleans_up_temporary_file() {
         let output = temporary_path("zip-rename-failure");
-        fs::create_dir(&output).unwrap();
         let mut archive = ZipStoreWriter::create(&output).unwrap();
-        let temporary = archive.temporary_path.clone();
+        let temporary = archive.output.temporary_path().to_path_buf();
         archive.write_file("qr.txt", b"payload").unwrap();
+        fs::create_dir(&output).unwrap();
         assert!(archive.finish().is_err());
         assert!(!temporary.exists());
         assert!(output.is_dir());
