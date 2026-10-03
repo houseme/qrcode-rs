@@ -816,10 +816,13 @@ impl QrCode {
 
     /// Renders the QR code through a named plugin renderer.
     ///
-    /// The method looks up `renderer_name` in `registry`, copies this QR code's
-    /// module grid into a mutable [`ModuleGrid`], applies all registered
-    /// [`PostProcessor`] values in registration order, then renders the
-    /// transformed grid through the selected dynamic renderer.
+    /// Validates this QR code's module grid and applies registered
+    /// [`PostProcessor`] values in registration order before looking up the
+    /// dynamic renderer and validating its configuration.
+    ///
+    /// With no postprocessors, the renderer borrows the original modules.
+    /// Registered postprocessors operate on a private mutable [`ModuleGrid`]
+    /// copy, leaving this QR code unchanged.
     ///
     /// # Errors
     ///
@@ -832,6 +835,10 @@ impl QrCode {
         renderer_name: &str,
         config: &RenderConfig,
     ) -> Result<RenderOutput, PluginError> {
+        if registry.postprocessors().is_empty() {
+            let modules = ModuleView::new(&self.content, self.width).ok_or(PluginError::InvalidModuleGrid)?;
+            return registry.build_renderer(renderer_name, config)?.render(&modules);
+        }
         let mut modules = ModuleGrid::new(self.content.clone(), self.width, self.width)?;
         registry.process_modules(&mut modules)?;
         registry.build_renderer(renderer_name, config)?.render(&modules)
@@ -1246,6 +1253,197 @@ mod module_coordinate_tests {
             assert!(result.is_err());
             assert_eq!(code.colors(), original.as_slice());
         }
+    }
+}
+
+#[cfg(test)]
+mod plugin_borrowed_render_tests {
+    use super::{
+        Color, DynRenderer, EcLevel, ModuleGrid, ModuleSource, ModuleStorage, PluginError, PluginRegistry,
+        PostProcessor, QrCode, RenderConfig, RenderOutput, RendererFactory, Version,
+    };
+    use alloc::{boxed::Box, vec::Vec};
+
+    fn reference_render_with(
+        code: &QrCode,
+        registry: &PluginRegistry,
+        renderer_name: &str,
+        config: &RenderConfig,
+    ) -> Result<RenderOutput, PluginError> {
+        let mut modules = ModuleGrid::new(code.content.clone(), code.width, code.width)?;
+        registry.process_modules(&mut modules)?;
+        registry.build_renderer(renderer_name, config)?.render(&modules)
+    }
+
+    #[derive(Clone, Copy)]
+    struct InspectRenderer {
+        original_pointer: usize,
+        expect_borrowed: bool,
+        expected_first: Color,
+    }
+
+    impl DynRenderer for InspectRenderer {
+        fn render(&self, source: &dyn ModuleSource) -> Result<RenderOutput, PluginError> {
+            let modules = source.modules();
+            assert_eq!(modules.as_ptr() as usize == self.original_pointer, self.expect_borrowed);
+            assert_eq!(modules[0], self.expected_first);
+            Ok(RenderOutput::Bytes(modules.iter().map(|color| *color as u8).collect()))
+        }
+    }
+
+    impl RendererFactory for InspectRenderer {
+        fn build(&self, _config: &RenderConfig) -> Box<dyn DynRenderer> {
+            Box::new(*self)
+        }
+    }
+
+    struct FlipFirst;
+
+    impl PostProcessor for FlipFirst {
+        fn process(&self, modules: &mut dyn ModuleStorage) -> Result<(), PluginError> {
+            modules.set(0, 0, !modules.get(0, 0));
+            Ok(())
+        }
+    }
+
+    struct FailPostprocessor;
+
+    impl PostProcessor for FailPostprocessor {
+        fn process(&self, _modules: &mut dyn ModuleStorage) -> Result<(), PluginError> {
+            Err(PluginError::PostProcessFailed("first processor failed".into()))
+        }
+    }
+
+    #[test]
+    fn unprocessed_plugin_renderers_borrow_the_original_normal_and_micro_modules() {
+        for (version, ec_level) in
+            [(Version::Normal(1), EcLevel::M), (Version::Normal(40), EcLevel::L), (Version::Micro(1), EcLevel::L)]
+        {
+            let code = QrCode::with_version(b"1", version, ec_level).unwrap();
+            let mut registry = PluginRegistry::new();
+            registry.register_renderer(
+                "inspect",
+                Box::new(InspectRenderer {
+                    original_pointer: code.content.as_ptr() as usize,
+                    expect_borrowed: true,
+                    expected_first: code.content[0],
+                }),
+            );
+            let expected = RenderOutput::Bytes(code.content.iter().map(|color| *color as u8).collect());
+            assert_eq!(code.render_with(&registry, "inspect", &RenderConfig::new()), Ok(expected));
+        }
+    }
+
+    #[test]
+    fn registered_postprocessors_keep_the_private_owned_grid_and_original_symbol() {
+        let code = QrCode::new(b"private processing").unwrap();
+        let original = code.to_colors();
+        let mut registry = PluginRegistry::new();
+        registry.register_postprocessor(Box::new(FlipFirst));
+        registry.register_renderer(
+            "inspect",
+            Box::new(InspectRenderer {
+                original_pointer: code.content.as_ptr() as usize,
+                expect_borrowed: false,
+                expected_first: !original[0],
+            }),
+        );
+        let actual = code.render_with(&registry, "inspect", &RenderConfig::new()).unwrap();
+        let mut expected = original.iter().map(|color| *color as u8).collect::<Vec<_>>();
+        expected[0] = (!original[0]) as u8;
+        assert_eq!(actual, RenderOutput::Bytes(expected));
+        assert_eq!(code.colors(), original.as_slice());
+    }
+
+    #[test]
+    fn borrowed_plugin_views_preserve_old_plain_text_payloads_and_styles() {
+        let mut registry = PluginRegistry::new();
+        registry.register_plugin(&crate::render::plugin::PlainTextRendererPlugin);
+        let name = crate::render::plugin::PlainTextRendererPlugin::RENDERER_NAME;
+        for (version, ec_level) in
+            [(Version::Normal(1), EcLevel::M), (Version::Normal(40), EcLevel::L), (Version::Micro(1), EcLevel::L)]
+        {
+            let code = QrCode::with_version(b"1", version, ec_level).unwrap();
+            for config in [
+                RenderConfig::new(),
+                RenderConfig::new().with_option("dark", "X").with_option("light", ".").with_option("quiet_zone", "0"),
+                RenderConfig::new().with_option("dark", "界").with_option("light", ".").with_option("quiet_zone", "2"),
+            ] {
+                assert_eq!(
+                    code.render_with(&registry, name, &config),
+                    reference_render_with(&code, &registry, name, &config)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn malformed_geometry_keeps_the_original_error_before_renderer_lookup_or_configuration() {
+        let code = QrCode::new(b"geometry").unwrap();
+        let empty = PluginRegistry::new();
+        let mut configured = PluginRegistry::new();
+        configured.register_plugin(&crate::render::plugin::PlainTextRendererPlugin);
+        let name = crate::render::plugin::PlainTextRendererPlugin::RENDERER_NAME;
+        let bad_config = RenderConfig::new().with_option("dark", "multiple");
+        for bad_width in [0, code.width, usize::MAX] {
+            let mut invalid = code.clone();
+            invalid.width = bad_width;
+            invalid.content.clear();
+            for registry in [&empty, &configured] {
+                assert_eq!(invalid.render_with(registry, name, &bad_config), Err(PluginError::InvalidModuleGrid));
+                assert_eq!(
+                    invalid.render_with(registry, name, &bad_config),
+                    reference_render_with(&invalid, registry, name, &bad_config)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn processor_errors_keep_priority_over_missing_renderer_and_invalid_configuration() {
+        let code = QrCode::new(b"priority").unwrap();
+        for register_renderer in [false, true] {
+            let mut registry = PluginRegistry::new();
+            registry.register_postprocessor(Box::new(FailPostprocessor));
+            if register_renderer {
+                registry.register_plugin(&crate::render::plugin::PlainTextRendererPlugin);
+            }
+            let config = RenderConfig::new().with_option("dark", "multiple");
+            let name = crate::render::plugin::PlainTextRendererPlugin::RENDERER_NAME;
+            assert_eq!(
+                code.render_with(&registry, name, &config),
+                Err(PluginError::PostProcessFailed("first processor failed".into()))
+            );
+        }
+    }
+
+    struct FailRenderer;
+
+    impl DynRenderer for FailRenderer {
+        fn render(&self, _source: &dyn ModuleSource) -> Result<RenderOutput, PluginError> {
+            Err(PluginError::RenderFailed("renderer failed".into()))
+        }
+    }
+
+    impl RendererFactory for FailRenderer {
+        fn build(&self, _config: &RenderConfig) -> Box<dyn DynRenderer> {
+            Box::new(Self)
+        }
+    }
+
+    #[test]
+    fn borrowed_plugin_path_propagates_configuration_and_renderer_errors() {
+        let code = QrCode::new(b"failures").unwrap();
+        let mut registry = PluginRegistry::new();
+        registry.register_plugin(&crate::render::plugin::PlainTextRendererPlugin);
+        registry.register_renderer("failure", Box::new(FailRenderer));
+        let config = RenderConfig::new().with_option("dark", "multiple");
+        let name = crate::render::plugin::PlainTextRendererPlugin::RENDERER_NAME;
+        assert!(matches!(code.render_with(&registry, name, &config), Err(PluginError::InvalidConfig(_))));
+        assert_eq!(
+            code.render_with(&registry, "failure", &RenderConfig::new()),
+            Err(PluginError::RenderFailed("renderer failed".into()))
+        );
     }
 }
 

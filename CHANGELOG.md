@@ -74,6 +74,9 @@
 - Fill multi-pixel Unicode rectangles by contiguous rows while preserving the
   original single-pixel path, inverted colors, packed glyphs and empty-canvas
   behavior.
+- Borrow the existing module grid for plugin rendering without postprocessors,
+  retaining geometry checks and the existing error order; keep a mutable copy
+  whenever postprocessors are registered.
 
 ### Fixed
 
