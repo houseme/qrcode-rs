@@ -160,6 +160,8 @@ impl<'a> RenderCanvas for Canvas<'a> {
 
 /// Injects custom attributes into the root `<svg>` element of an SVG string.
 ///
+/// Supports self-closing roots and `>` inside quoted attribute values.
+///
 /// # Example
 ///
 /// ```
@@ -178,7 +180,8 @@ impl<'a> RenderCanvas for Canvas<'a> {
 pub fn inject_attributes(svg: &str, attrs: &[(&str, &str)]) -> String {
     // Target the root <svg …> opening tag (skipping any leading <?xml ?> declaration).
     let tag_start = svg.find("<svg").expect("invalid SVG: no <svg> element");
-    let insert_pos = svg[tag_start..].find('>').map(|p| tag_start + p).expect("invalid SVG: no closing '>' in <svg>");
+    let tag_end = opening_tag_end(svg, tag_start).expect("invalid SVG: no closing '>' in <svg>");
+    let insert_pos = if svg.as_bytes()[tag_end - 1] == b'/' { tag_end - 1 } else { tag_end };
     let mut result = String::with_capacity(svg.len() + attrs.iter().map(|(k, v)| k.len() + v.len() + 5).sum::<usize>());
     result.push_str(&svg[..insert_pos]);
     for (key, value) in attrs {
@@ -193,6 +196,24 @@ pub fn inject_attributes(svg: &str, attrs: &[(&str, &str)]) -> String {
     }
     result.push_str(&svg[insert_pos..]);
     result
+}
+
+fn opening_tag_end(svg: &str, tag_start: usize) -> Option<usize> {
+    let mut quote = None;
+    for (offset, &byte) in svg.as_bytes()[tag_start..].iter().enumerate() {
+        if let Some(delimiter) = quote {
+            if byte == delimiter {
+                quote = None;
+            }
+        } else {
+            match byte {
+                b'\'' | b'"' => quote = Some(byte),
+                b'>' => return Some(tag_start + offset),
+                _ => {}
+            }
+        }
+    }
+    None
 }
 
 /// Adds screen-reader accessibility attributes to the root `<svg>` element:
@@ -451,11 +472,26 @@ pub fn animate(svg: &str, animation: Animation) -> String {
     // Insert the style after the opening <svg ...> tag, not after a leading
     // XML declaration.
     let tag_start = svg.find("<svg").expect("invalid SVG: no <svg> element");
-    let tag_end = tag_start + svg[tag_start..].find('>').expect("invalid SVG: no closing '>' found") + 1;
-    let mut result = String::with_capacity(svg.len() + css.len());
-    result.push_str(&svg[..tag_end]);
-    result.push_str(css);
-    result.push_str(&svg[tag_end..]);
+    let tag_end = opening_tag_end(svg, tag_start).expect("invalid SVG: no closing '>' found");
+    let self_closing = svg.as_bytes()[tag_end - 1] == b'/';
+    let tag_name = svg[tag_start + 1..tag_end]
+        .split(|ch: char| ch.is_ascii_whitespace() || ch == '/')
+        .next()
+        .expect("SVG opening tag has a name");
+    let extra_bytes = if self_closing { tag_name.len() + 2 } else { 0 };
+    let mut result = String::with_capacity(svg.len() + css.len() + extra_bytes);
+    if self_closing {
+        result.push_str(&svg[..tag_end - 1]);
+        result.push('>');
+        result.push_str(css);
+        result.push_str("</");
+        result.push_str(tag_name);
+        result.push('>');
+    } else {
+        result.push_str(&svg[..tag_end + 1]);
+        result.push_str(css);
+    }
+    result.push_str(&svg[tag_end + 1..]);
     result
 }
 
@@ -484,6 +520,54 @@ mod tests {
         let original = svg.clone();
         let svg = inject_attributes(&svg, &[]);
         assert_eq!(svg, original);
+    }
+
+    #[test]
+    fn attribute_injection_ignores_tag_delimiters_inside_quoted_values() {
+        let cases = [
+            (r#"<svg data-note="a>b"><path/></svg>"#, r#"<svg data-note="a>b" class="qr"><path/></svg>"#),
+            (
+                r#"<svg data-note='二维码 > "说明"'><path/></svg>"#,
+                r#"<svg data-note='二维码 > "说明"' class="qr"><path/></svg>"#,
+            ),
+            (
+                r#"<?xml version="1.0"?><svg data-first="1>0" data-second='3>2'><path/></svg>"#,
+                r#"<?xml version="1.0"?><svg data-first="1>0" data-second='3>2' class="qr"><path/></svg>"#,
+            ),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(inject_attributes(input, &[("class", "qr")]), expected);
+        }
+    }
+
+    #[test]
+    fn attribute_injection_preserves_self_closing_roots() {
+        let cases = [
+            (r#"<svg/>"#, r#"<svg class="qr"/>"#),
+            (r#"<svg />"#, r#"<svg  class="qr"/>"#),
+            (r#"<svg data-note="/>"/>"#, r#"<svg data-note="/>" class="qr"/>"#),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(inject_attributes(input, &[("class", "qr")]), expected);
+            assert_eq!(inject_attributes(input, &[]), input);
+            assert_eq!(inject_attributes(input, &[("invalid name", "ignored")]), input);
+        }
+    }
+
+    #[test]
+    fn aria_labels_preserve_quoted_and_self_closing_root_syntax() {
+        let input = r#"<svg data-note='a>b'/>"#;
+        let expected = r#"<svg data-note='a>b' role="img" aria-label="二维码 &quot;A&quot; &amp; B"/>"#;
+        assert_eq!(aria_label(input, "二维码 \"A\" & B"), expected);
+    }
+
+    #[test]
+    fn generated_svg_attribute_injection_keeps_legacy_bytes() {
+        let input = sample_svg();
+        let start = input.find("<svg").unwrap();
+        let position = start + input[start..].find('>').unwrap();
+        let expected = format!("{} class=\"qr\"{}", &input[..position], &input[position..]);
+        assert_eq!(inject_attributes(&input, &[("class", "qr")]), expected);
     }
 
     #[test]
@@ -585,5 +669,73 @@ mod tests {
         let svg_tag_end = svg_start + animated[svg_start..].find('>').unwrap();
         assert!(style_pos > svg_tag_end);
         assert!(animated.contains("<path"));
+    }
+
+    #[test]
+    fn animations_preserve_generated_svg_bytes_for_every_style() {
+        let cases = [
+            (
+                Animation::ScanLine,
+                concat!(
+                    "<style>",
+                    "@keyframes qr-scan{0%{clip-path:inset(0 100% 0 0)}100%{clip-path:inset(0 0 0 0)}}",
+                    "path:last-of-type{animation:qr-scan 2s ease-in-out infinite alternate}",
+                    "</style>",
+                ),
+            ),
+            (
+                Animation::FadeIn,
+                concat!(
+                    "<style>",
+                    "@keyframes qr-fade{0%{opacity:0}100%{opacity:1}}",
+                    "path:last-of-type{animation:qr-fade 1.5s ease-out forwards}",
+                    "</style>",
+                ),
+            ),
+            (
+                Animation::Pulse,
+                concat!(
+                    "<style>",
+                    "@keyframes qr-pulse{0%,100%{opacity:1}50%{opacity:0.3}}",
+                    "path:last-of-type{animation:qr-pulse 2s ease-in-out infinite}",
+                    "</style>",
+                ),
+            ),
+        ];
+        let input = sample_svg();
+        let start = input.find("<svg").unwrap();
+        let position = start + input[start..].find('>').unwrap() + 1;
+        for (animation, css) in cases {
+            let expected = format!("{}{css}{}", &input[..position], &input[position..]);
+            assert_eq!(animate(&input, animation), expected);
+        }
+    }
+
+    #[test]
+    fn animation_styles_are_inserted_inside_quoted_or_self_closing_roots() {
+        let css = concat!(
+            "<style>",
+            "@keyframes qr-fade{0%{opacity:0}100%{opacity:1}}",
+            "path:last-of-type{animation:qr-fade 1.5s ease-out forwards}",
+            "</style>",
+        );
+        let cases = [
+            (r#"<svg data-note="a>b"><path/></svg>"#, r#"<svg data-note="a>b">"#, "<path/></svg>"),
+            (r#"<svg data-note='二维码 > "说明"'/>"#, r#"<svg data-note='二维码 > "说明"'>"#, "</svg>"),
+            ("<svg />", "<svg >", "</svg>"),
+            (
+                r#"<?xml version="1.0"?><svg data-note="/>"/><!-- tail -->"#,
+                r#"<?xml version="1.0"?><svg data-note="/>">"#,
+                "</svg><!-- tail -->",
+            ),
+            (
+                r#"<svg:svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg"/>"#,
+                r#"<svg:svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg">"#,
+                "</svg:svg>",
+            ),
+        ];
+        for (input, prefix, suffix) in cases {
+            assert_eq!(animate(input, Animation::FadeIn), format!("{prefix}{css}{suffix}"));
+        }
     }
 }

@@ -120,6 +120,9 @@
   and PNG/JPEG helpers instead of panicking.
 - Return empty QR images in RGBA8 form before resizing and compositing a logo,
   preserving zero-axis dimensions without out-of-bounds pixel access.
+- Handle quoted tag delimiters and self-closing roots when injecting SVG/HTML
+  attributes, and insert SVG animation styles inside expanded self-closing
+  roots.
 
 ### Added
 

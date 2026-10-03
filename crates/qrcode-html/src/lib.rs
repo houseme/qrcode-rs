@@ -241,7 +241,8 @@ impl<'a> Canvas<'a> {
 
 /// Injects custom attributes into the QR container element (`<table>` in
 /// [`Mode::Table`], `<div>` in [`Mode::Grid`]). If no container is found the
-/// input is returned unchanged.
+/// input is returned unchanged. A missing or unclosed opening tag is also
+/// returned unchanged. Quoted `>` characters are preserved.
 ///
 /// # Example
 ///
@@ -261,9 +262,10 @@ pub fn inject_attributes(html: &str, attrs: &[(&str, &str)]) -> String {
     let Some(start) = html.find("<table").or_else(|| html.find("<div")) else {
         return html.to_owned();
     };
-    let Some(close) = html[start..].find('>').map(|p| start + p) else {
+    let Some(close) = opening_tag_end(html, start) else {
         return html.to_owned();
     };
+    let close = if html.as_bytes()[close - 1] == b'/' { close - 1 } else { close };
     let mut result = String::with_capacity(html.len() + attrs.len() * 16);
     result.push_str(&html[..close]);
     for (key, value) in attrs {
@@ -278,6 +280,24 @@ pub fn inject_attributes(html: &str, attrs: &[(&str, &str)]) -> String {
     }
     result.push_str(&html[close..]);
     result
+}
+
+fn opening_tag_end(html: &str, tag_start: usize) -> Option<usize> {
+    let mut quote = None;
+    for (offset, &byte) in html.as_bytes()[tag_start..].iter().enumerate() {
+        if let Some(delimiter) = quote {
+            if byte == delimiter {
+                quote = None;
+            }
+        } else {
+            match byte {
+                b'\'' | b'"' => quote = Some(byte),
+                b'>' => return Some(tag_start + offset),
+                _ => {}
+            }
+        }
+    }
+    None
 }
 
 /// Adds screen-reader accessibility attributes (`role="img"` and
@@ -399,6 +419,48 @@ mod tests {
         let tag_end = start + html[start..].find('>').unwrap();
         assert!(html[start..tag_end].contains(r#"role="img""#));
         assert!(html[start..tag_end].contains(r#"aria-label="a QR code""#));
+    }
+
+    #[test]
+    fn attribute_injection_preserves_quoted_delimiters_and_self_closing_tags() {
+        let cases = [
+            (r#"<table data-note="a>b"><tr></tr></table>"#, r#"<table data-note="a>b" class="qr"><tr></tr></table>"#),
+            (
+                r#"<div data-note='二维码 > "说明"'>text</div>"#,
+                r#"<div data-note='二维码 > "说明"' class="qr">text</div>"#,
+            ),
+            (r#"<div data-note="/>"/>"#, r#"<div data-note="/>" class="qr"/>"#),
+            (r#"<div />"#, r#"<div  class="qr"/>"#),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(super::inject_attributes(input, &[("class", "qr")]), expected);
+            assert_eq!(super::inject_attributes(input, &[]), input);
+            assert_eq!(super::inject_attributes(input, &[("invalid name", "ignored")]), input);
+        }
+    }
+
+    #[test]
+    fn attribute_injection_keeps_missing_or_unclosed_html_unchanged() {
+        for input in
+            ["", "<span>text</span>", "<table", r#"<table data-note="unfinished>"#, "<div data-note='unfinished>"]
+        {
+            assert_eq!(super::inject_attributes(input, &[("class", "qr")]), input);
+        }
+    }
+
+    #[test]
+    fn attribute_injection_keeps_generated_table_and_grid_legacy_bytes() {
+        let mut grid = Canvas::new(2, 2, Color("#000"), Color("#fff"));
+        grid.set_mode(Mode::Grid);
+        grid.draw_dark_pixel(1, 1);
+        for input in [sample_html(), grid.into_image()] {
+            let start = input.find("<table").or_else(|| input.find("<div")).unwrap();
+            let position = start + input[start..].find('>').unwrap();
+            let mut expected = String::from(&input[..position]);
+            expected.push_str(" class=\"qr\"");
+            expected.push_str(&input[position..]);
+            assert_eq!(super::inject_attributes(&input, &[("class", "qr")]), expected);
+        }
     }
 
     #[test]
