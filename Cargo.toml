@@ -235,6 +235,11 @@ harness = false
 name = "ec"
 harness = false
 
+[[bench]]
+name = "batch_grid"
+harness = false
+required-features = ["image"]
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

@@ -45,6 +45,9 @@
 - Reuse parsed segments during Structured Append encoding and reassemble
   symbols through fixed position slots with one exact output-capacity
   reservation.
+- Preserve centering, quiet zones, non-square modules and RGBA replacement
+  semantics; keep the existing pre-rendered image-grid API and its separate
+  pixel-buffer limit.
 
 ### Fixed
 
@@ -113,6 +116,9 @@
   floating-point drawing regressions.
 - Add GrayPixels::try_new, try_get and GrayPixelsError for checked dimensions,
   exact grayscale buffer lengths and optional pixel access.
+- Add direct and template-styled PNG grid methods on BatchOutput<QrCode>,
+  drawing symbols into one final canvas with the shared 256 MiB budget and no
+  retained tile images.
 
 ## [2.1.1] - 2026-09-16
 

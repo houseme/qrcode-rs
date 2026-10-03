@@ -284,6 +284,106 @@ impl BatchOutput<crate::render::image::RgbaImage> {
     }
 }
 
+#[cfg(feature = "image")]
+impl BatchOutput<QrCode> {
+    /// Renders encoded QR symbols directly into a PNG contact sheet.
+    ///
+    /// Uses [`QrTemplate::minimal`](crate::QrTemplate::minimal), with 8×8
+    /// modules and each symbol's standard quiet zone. Only the final RGBA
+    /// canvas is allocated; individual tile images are not retained.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BatchPackError::EmptyBatch`] for an empty batch,
+    /// [`BatchPackError::GridTooLarge`] if dimensions overflow, exceed 65,535
+    /// pixels per side or the shared 256 MiB canvas budget, or allocation
+    /// fails, and [`BatchPackError::Image`] if PNG encoding fails.
+    ///
+    /// The existing grid API for pre-rendered RGBA images retains its separate
+    /// 1 GiB pixel-buffer limit.
+    pub fn to_png_grid(&self, options: BatchGridOptions) -> Result<Vec<u8>, BatchPackError> {
+        self.to_png_grid_with(options, &crate::QrTemplate::minimal())
+    }
+
+    /// Renders encoded QR symbols directly into a styled PNG contact sheet.
+    ///
+    /// Produces the same pixels as rendering each symbol with
+    /// `render::<Rgba<u8>>().template(template)` and passing those images to
+    /// the existing grid API. Tiles are centered in cells sized for the
+    /// largest symbol. Pixels are replaced without alpha blending; unused
+    /// cell space retains [`BatchGridOptions::background`].
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors and observes the same 256 MiB canvas budget as
+    /// [`Self::to_png_grid`].
+    pub fn to_png_grid_with(
+        &self,
+        options: BatchGridOptions,
+        template: &crate::QrTemplate,
+    ) -> Result<Vec<u8>, BatchPackError> {
+        use crate::render::image::{DynamicImage, ImageFormat, Rgba, RgbaImage, encode_to_format};
+        use crate::render::{Canvas, Pixel, StyledPixel};
+
+        let (module_width, module_height) = template.module_size.unwrap_or_else(Rgba::<u8>::default_unit_size);
+        let style = QrGridStyle {
+            module_width: module_width.max(1),
+            module_height: module_height.max(1),
+            quiet_zone: template.quiet_zone,
+            dark: Rgba::<u8>::from_hex(&template.dark_color),
+            light: Rgba::<u8>::from_hex(&template.light_color),
+        };
+        let (cell_width, cell_height) =
+            self.entries.iter().try_fold((0u32, 0u32), |(max_width, max_height), entry| {
+                let (width, height, _) = style.dimensions(entry.data())?;
+                Ok::<_, BatchPackError>((max_width.max(width), max_height.max(height)))
+            })?;
+        let geometry =
+            GridGeometry::new(self.len(), cell_width, cell_height, options.columns, qrcode_render::MAX_BUFFER_BYTES)?;
+        <(Rgba<u8>, RgbaImage) as Canvas>::validate_dimensions(
+            geometry.width,
+            geometry.height,
+            &style.dark,
+            &style.light,
+        )
+        .map_err(|_| BatchPackError::GridTooLarge)?;
+        let sheet = allocate_grid(&geometry)?;
+        let mut canvas = (Rgba(options.background), sheet);
+        canvas.draw_dark_rect(0, 0, geometry.width, geometry.height);
+
+        for (index, entry) in self.entries.iter().enumerate() {
+            let code = entry.data();
+            let (width, height, quiet_zone) = style.dimensions(code)?;
+            let (left, top) = geometry.offset(index, width, height);
+            canvas.0 = style.light;
+            canvas.draw_dark_rect(left, top, width, height);
+            canvas.0 = style.dark;
+
+            for (y, row) in code.colors().chunks_exact(code.width()).enumerate() {
+                let mut x = 0;
+                while x < row.len() {
+                    if row[x] == crate::Color::Light {
+                        x += 1;
+                        continue;
+                    }
+                    let start = x;
+                    while x < row.len() && row[x] != crate::Color::Light {
+                        x += 1;
+                    }
+                    canvas.draw_dark_rect(
+                        left + (quiet_zone + start as u32) * style.module_width,
+                        top + (quiet_zone + y as u32) * style.module_height,
+                        (x - start) as u32 * style.module_width,
+                        style.module_height,
+                    );
+                }
+            }
+        }
+
+        encode_to_format(&DynamicImage::ImageRgba8(canvas.into_image()), ImageFormat::Png).map_err(Into::into)
+    }
+}
+
 /// PNG contact-sheet layout options for batch images.
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
@@ -617,55 +717,119 @@ fn encode_png_grid<'a>(
     images: impl IntoIterator<Item = &'a crate::render::image::RgbaImage>,
     options: BatchGridOptions,
 ) -> Result<Vec<u8>, BatchPackError> {
-    use crate::render::image::{DynamicImage, ImageFormat, Rgba, RgbaImage, encode_to_format};
+    use crate::render::image::{DynamicImage, ImageFormat, Rgba, encode_to_format};
 
     let images = images.into_iter().collect::<Vec<_>>();
     if images.is_empty() {
         return Err(BatchPackError::EmptyBatch);
     }
-    let columns_usize = grid_columns(options.columns, images.len())?;
-    let rows_usize = images.len().div_ceil(columns_usize);
     let cell_width = images.iter().map(|image| image.width()).max().unwrap_or(1);
     let cell_height = images.iter().map(|image| image.height()).max().unwrap_or(1);
-    let columns = u32::try_from(columns_usize).map_err(|_| BatchPackError::GridTooLarge)?;
-    let rows = u32::try_from(rows_usize).map_err(|_| BatchPackError::GridTooLarge)?;
-    let sheet_width = cell_width.checked_mul(columns).ok_or(BatchPackError::GridTooLarge)?;
-    let sheet_height = cell_height.checked_mul(rows).ok_or(BatchPackError::GridTooLarge)?;
-    let buffer_len = grid_buffer_len(sheet_width, sheet_height)?;
-    let mut pixels = Vec::new();
-    pixels.try_reserve_exact(buffer_len).map_err(|_| BatchPackError::GridTooLarge)?;
-    pixels.resize(buffer_len, 0);
-    let mut sheet = RgbaImage::from_raw(sheet_width, sheet_height, pixels).ok_or(BatchPackError::GridTooLarge)?;
+    let geometry = GridGeometry::new(images.len(), cell_width, cell_height, options.columns, 1024 * 1024 * 1024)?;
+    let mut sheet = allocate_grid(&geometry)?;
     for pixel in sheet.pixels_mut() {
         *pixel = Rgba(options.background);
     }
 
     for (index, &image) in images.iter().enumerate() {
-        let col = u32::try_from(index % columns_usize).map_err(|_| BatchPackError::GridTooLarge)?;
-        let row = u32::try_from(index / columns_usize).map_err(|_| BatchPackError::GridTooLarge)?;
-        let left = col * cell_width + (cell_width - image.width()) / 2;
-        let top = row * cell_height + (cell_height - image.height()) / 2;
+        let (left, top) = geometry.offset(index, image.width(), image.height());
         crate::render::image::image::imageops::replace(&mut sheet, image, i64::from(left), i64::from(top));
     }
 
     encode_to_format(&DynamicImage::ImageRgba8(sheet), ImageFormat::Png).map_err(Into::into)
 }
 
-#[cfg(feature = "image")]
+#[cfg(all(test, feature = "image"))]
 fn grid_buffer_len(width: u32, height: u32) -> Result<usize, BatchPackError> {
-    const MAX_GRID_SIDE: u32 = 65_535;
-    const MAX_GRID_PIXELS: u64 = 268_435_456;
+    grid_buffer_len_with_limit(width, height, 1024 * 1024 * 1024)
+}
 
-    let pixels = u64::from(width) * u64::from(height);
-    if width == 0 || height == 0 || width > MAX_GRID_SIDE || height > MAX_GRID_SIDE || pixels > MAX_GRID_PIXELS {
+#[cfg(feature = "image")]
+fn grid_buffer_len_with_limit(width: u32, height: u32, limit: usize) -> Result<usize, BatchPackError> {
+    const MAX_GRID_SIDE: u32 = 65_535;
+
+    if width == 0 || height == 0 || width > MAX_GRID_SIDE || height > MAX_GRID_SIDE {
         return Err(BatchPackError::GridTooLarge);
     }
-    let bytes = pixels.checked_mul(4).ok_or(BatchPackError::GridTooLarge)?;
-    let len = usize::try_from(bytes).map_err(|_| BatchPackError::GridTooLarge)?;
-    if len > isize::MAX as usize {
+    let len = (width as usize)
+        .checked_mul(height as usize)
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or(BatchPackError::GridTooLarge)?;
+    if len > limit || len > isize::MAX as usize {
         return Err(BatchPackError::GridTooLarge);
     }
     Ok(len)
+}
+
+#[cfg(feature = "image")]
+struct QrGridStyle {
+    module_width: u32,
+    module_height: u32,
+    quiet_zone: bool,
+    dark: crate::render::image::Rgba<u8>,
+    light: crate::render::image::Rgba<u8>,
+}
+
+#[cfg(feature = "image")]
+impl QrGridStyle {
+    fn dimensions(&self, code: &QrCode) -> Result<(u32, u32, u32), BatchPackError> {
+        let quiet_zone = if self.quiet_zone { qrcode_core::QrSymbol::quiet_zone(code) } else { 0 };
+        let modules = u32::try_from(code.width())
+            .ok()
+            .and_then(|width| quiet_zone.checked_mul(2).and_then(|quiet| width.checked_add(quiet)))
+            .ok_or(BatchPackError::GridTooLarge)?;
+        let width = modules.checked_mul(self.module_width).ok_or(BatchPackError::GridTooLarge)?;
+        let height = modules.checked_mul(self.module_height).ok_or(BatchPackError::GridTooLarge)?;
+        Ok((width, height, quiet_zone))
+    }
+}
+
+#[cfg(feature = "image")]
+struct GridGeometry {
+    columns: usize,
+    cell_width: u32,
+    cell_height: u32,
+    width: u32,
+    height: u32,
+    buffer_len: usize,
+}
+
+#[cfg(feature = "image")]
+impl GridGeometry {
+    fn new(
+        count: usize,
+        cell_width: u32,
+        cell_height: u32,
+        requested: usize,
+        budget: usize,
+    ) -> Result<Self, BatchPackError> {
+        let columns = grid_columns(requested, count)?;
+        let rows = count.div_ceil(columns);
+        let columns_u32 = u32::try_from(columns).map_err(|_| BatchPackError::GridTooLarge)?;
+        let rows_u32 = u32::try_from(rows).map_err(|_| BatchPackError::GridTooLarge)?;
+        let width = cell_width.checked_mul(columns_u32).ok_or(BatchPackError::GridTooLarge)?;
+        let height = cell_height.checked_mul(rows_u32).ok_or(BatchPackError::GridTooLarge)?;
+        let buffer_len = grid_buffer_len_with_limit(width, height, budget)?;
+        Ok(Self { columns, cell_width, cell_height, width, height, buffer_len })
+    }
+
+    fn offset(&self, index: usize, width: u32, height: u32) -> (u32, u32) {
+        let col = (index % self.columns) as u32;
+        let row = (index / self.columns) as u32;
+        (
+            col * self.cell_width + (self.cell_width - width) / 2,
+            row * self.cell_height + (self.cell_height - height) / 2,
+        )
+    }
+}
+
+#[cfg(feature = "image")]
+fn allocate_grid(geometry: &GridGeometry) -> Result<crate::render::image::RgbaImage, BatchPackError> {
+    let mut pixels = Vec::new();
+    pixels.try_reserve_exact(geometry.buffer_len).map_err(|_| BatchPackError::GridTooLarge)?;
+    pixels.resize(geometry.buffer_len, 0);
+    crate::render::image::RgbaImage::from_raw(geometry.width, geometry.height, pixels)
+        .ok_or(BatchPackError::GridTooLarge)
 }
 
 #[cfg(feature = "image")]
@@ -845,5 +1009,123 @@ mod tests {
         assert_eq!(decoded.get_pixel(0, 0).0, [1, 2, 3, 255]);
         assert_eq!(decoded.get_pixel(1, 0).0, [4, 5, 6, 255]);
         assert_eq!(decoded.get_pixel(2, 0).0, [7, 8, 9, 255]);
+    }
+
+    #[cfg(feature = "image")]
+    fn mixed_grid_codes() -> BatchOutput<QrCode> {
+        use crate::Version;
+
+        BatchOutput::from_entries([
+            BatchEntry::new("micro1", QrCode::with_version(b"123", Version::Micro(1), EcLevel::L).unwrap()),
+            BatchEntry::new("normal1", QrCode::with_version(b"abcd", Version::Normal(1), EcLevel::H).unwrap()),
+            BatchEntry::new("micro3", QrCode::with_version(b"12345", Version::Micro(3), EcLevel::M).unwrap()),
+            BatchEntry::new("normal4", QrCode::with_version(b"alice", Version::Normal(4), EcLevel::Q).unwrap()),
+            BatchEntry::new("normal8", QrCode::with_version(b"bob", Version::Normal(8), EcLevel::L).unwrap()),
+        ])
+    }
+
+    #[cfg(feature = "image")]
+    fn old_tile_grid(codes: &BatchOutput<QrCode>, options: BatchGridOptions, template: &crate::QrTemplate) -> Vec<u8> {
+        use crate::render::image::Rgba;
+
+        BatchOutput::from_entries(
+            codes.iter().map(|entry| {
+                BatchEntry::new(entry.name(), entry.data().render::<Rgba<u8>>().template(template).build())
+            }),
+        )
+        .to_png_grid(options)
+        .unwrap()
+    }
+
+    #[cfg(feature = "image")]
+    #[test]
+    fn direct_qr_grid_matches_decoded_tile_grid_for_styles_and_layouts() {
+        use crate::render::image::image;
+
+        let codes = mixed_grid_codes();
+        let mut alpha_hex = crate::QrTemplate::minimal().with_module_size(0, 0).with_quiet_zone(false);
+        alpha_hex.dark_color = "#ff008080".into();
+        alpha_hex.light_color = "#fff0".into();
+        let mut invalid_hex = crate::QrTemplate::minimal().with_module_size(1, 1);
+        invalid_hex.dark_color = "invalid".into();
+        invalid_hex.light_color = "#aBc".into();
+        let templates = [
+            crate::QrTemplate::minimal(),
+            crate::QrTemplate::corporate().with_module_size(2, 3),
+            crate::QrTemplate::dark_mode().with_module_size(3, 2).with_quiet_zone(false),
+            alpha_hex,
+            invalid_hex,
+        ];
+        for template in templates {
+            for columns in [0, 1, 3, 7] {
+                for background in [[7, 8, 9, 73], [17, 19, 23, 0]] {
+                    let options = BatchGridOptions { columns, background };
+                    let direct = image::load_from_memory(&codes.to_png_grid_with(options, &template).unwrap())
+                        .unwrap()
+                        .to_rgba8();
+                    let old = image::load_from_memory(&old_tile_grid(&codes, options, &template)).unwrap().to_rgba8();
+                    assert_eq!(direct.dimensions(), old.dimensions(), "{template:?}, {options:?}");
+                    assert!(direct.as_raw() == old.as_raw(), "pixel mismatch for {template:?}, {options:?}");
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "image")]
+    #[test]
+    fn direct_qr_grid_defaults_match_minimal_template() {
+        use crate::render::image::image;
+
+        let codes = QrBatchBuilder::new(["alpha", "beta", "gamma"]).encode().unwrap();
+        let options = BatchGridOptions::default().columns(2).background([7, 8, 9, 31]);
+        let direct = image::load_from_memory(&codes.to_png_grid(options).unwrap()).unwrap().to_rgba8();
+        let old =
+            image::load_from_memory(&old_tile_grid(&codes, options, &crate::QrTemplate::minimal())).unwrap().to_rgba8();
+        assert!(direct.as_raw() == old.as_raw());
+        assert_eq!(direct.dimensions(), old.dimensions());
+    }
+
+    #[cfg(feature = "image")]
+    #[test]
+    fn direct_qr_grid_centers_mixed_symbols_and_replaces_transparent_background() {
+        use crate::render::image::image;
+
+        let codes = mixed_grid_codes();
+        let options = BatchGridOptions::default().background([7, 8, 9, 0]);
+        let template = crate::QrTemplate::minimal().with_module_size(2, 3);
+        let image = image::load_from_memory(&codes.to_png_grid_with(options, &template).unwrap()).unwrap().to_rgba8();
+        assert_eq!(image.dimensions(), (342, 342));
+        assert_eq!(image.get_pixel(41, 63).0, options.background);
+        assert_eq!(image.get_pixel(42, 63).0, [255, 255, 255, 255]);
+        assert_eq!(image.get_pixel(46, 69).0, [0, 0, 0, 255]);
+        assert_eq!(image.get_pixel(341, 341).0, options.background);
+    }
+
+    #[cfg(feature = "image")]
+    #[test]
+    fn direct_qr_grid_rejects_empty_overflow_and_canvas_budget_before_allocating() {
+        let empty = BatchOutput::<QrCode>::from_entries([]);
+        assert!(matches!(empty.to_png_grid(BatchGridOptions::default()), Err(BatchPackError::EmptyBatch)));
+        let codes = QrBatchBuilder::new(["small"]).encode().unwrap();
+        for columns in [usize::MAX, 65_536] {
+            assert!(matches!(
+                codes.to_png_grid(BatchGridOptions::default().columns(columns)),
+                Err(BatchPackError::GridTooLarge)
+            ));
+        }
+        for size in [(u32::MAX, 1), (1, u32::MAX), (1000, 1000)] {
+            let template = crate::QrTemplate::minimal().with_module_size(size.0, size.1);
+            assert!(matches!(
+                codes.to_png_grid_with(BatchGridOptions::default(), &template),
+                Err(BatchPackError::GridTooLarge)
+            ));
+        }
+        assert_eq!(grid_buffer_len_with_limit(8192, 8192, qrcode_render::MAX_BUFFER_BYTES).unwrap(), 268_435_456);
+        assert!(matches!(
+            grid_buffer_len_with_limit(8193, 8192, qrcode_render::MAX_BUFFER_BYTES),
+            Err(BatchPackError::GridTooLarge)
+        ));
+        // The existing pre-rendered-image API keeps its original 1 GiB limit.
+        assert_eq!(grid_buffer_len(16_384, 16_384).unwrap(), 1_073_741_824);
     }
 }
