@@ -220,6 +220,13 @@ compressed ZIP entries.
 output starting at offset zero. The caller owns flushing and publication;
 an error may leave a partial archive in the output.
 
+For lazy inputs, `QrCode::batch_builder(inputs).render_zip(&mut output, render)`
+encodes and renders each input immediately into a Stored ZIP. The
+`render_zip_with` variant selects compression. These methods keep only the
+current symbol and payload plus central-directory metadata, and return
+`BatchZipError` for encoding, rendering or packaging failures. They share the
+same caller-controlled flushing and partial-output contract as `write_zip`.
+
 ## Structured Payload Parsing
 
 The `parse` module can turn QR payload text back into typed domain objects:

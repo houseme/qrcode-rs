@@ -178,6 +178,9 @@
 - Add BatchRender::try_build for ordered named outputs with geometry and
   backend-budget errors, preserving the existing build method and supporting
   no_std with alloc.
+- Add QrBatchBuilder::render_zip/render_zip_with and BatchZipError to encode,
+  render and package lazy inputs one at a time, retaining only the current
+  payload and ZIP metadata with caller-controlled flushing and publication.
 
 ## [2.1.1] - 2026-09-16
 

@@ -153,6 +153,67 @@ impl<I> QrBatchBuilder<I> {
         }
         Ok(BatchOutput { entries })
     }
+
+    /// Encodes, renders and writes each input directly to a Stored ZIP archive.
+    ///
+    /// Inputs are consumed lazily in order. Only one QR code and rendered
+    /// payload are retained at a time, plus the ZIP central-directory metadata.
+    /// The input iterator and renderer may retain additional storage.
+    /// `render` receives the code and zero-based input index, as with
+    /// [`Self::render_bytes`]. Generated names use this builder's settings.
+    ///
+    /// The archive must start at offset zero in `output`. Use a buffered writer
+    /// for files or sockets. This method does not flush or close the output;
+    /// errors may leave a partial archive. The caller controls cleanup and
+    /// atomic publication. An empty iterator produces an empty ZIP archive.
+    ///
+    /// # Errors
+    ///
+    /// Each input is encoded, rendered and packed before reading the next one.
+    /// Returns the first [`BatchZipError`] from these steps or finalization.
+    pub fn render_zip<W, F, E>(self, output: &mut W, render: F) -> Result<(), BatchZipError<E>>
+    where
+        W: std::io::Write + ?Sized,
+        I: IntoIterator,
+        I::Item: AsRef<[u8]>,
+        F: FnMut(&QrCode, usize) -> Result<Vec<u8>, E>,
+    {
+        self.render_zip_with(output, ZipCompression::Stored, render)
+    }
+
+    /// Encodes, renders and writes inputs directly to ZIP with compression.
+    ///
+    /// Uses the same lazy-input, naming and partial-output contract as
+    /// [`Self::render_zip`]. Deflated entries additionally retain one compressed
+    /// payload; previously rendered entries are not kept in memory.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first encoding, rendering or packaging error in input order,
+    /// or a packaging error when finalizing the archive.
+    pub fn render_zip_with<W, F, E>(
+        self,
+        output: &mut W,
+        compression: ZipCompression,
+        mut render: F,
+    ) -> Result<(), BatchZipError<E>>
+    where
+        W: std::io::Write + ?Sized,
+        I: IntoIterator,
+        I::Item: AsRef<[u8]>,
+        F: FnMut(&QrCode, usize) -> Result<Vec<u8>, E>,
+    {
+        let Self { inputs, ec_level, file_prefix, file_extension, start_index } = self;
+        let mut writer = ZipBytesWriter::new(output);
+        for (index, input) in inputs.into_iter().enumerate() {
+            let code = QrCode::with_error_correction_level(input, ec_level).map_err(BatchZipError::Encode)?;
+            let bytes = render(&code, index).map_err(BatchZipError::Render)?;
+            let name = batch_file_name(&file_prefix, start_index as u128 + index as u128, &file_extension);
+            writer.write_file(&name, &bytes, compression).map_err(BatchZipError::Pack)?;
+        }
+        writer.finish().map_err(BatchZipError::Pack)?;
+        Ok(())
+    }
 }
 
 /// One named result in a batch output.
@@ -489,6 +550,38 @@ impl<E: fmt::Display> fmt::Display for BatchRenderError<E> {
 }
 
 impl<E> std::error::Error for BatchRenderError<E> where E: std::error::Error + 'static {}
+
+/// Errors returned by a batch that encodes, renders and writes a ZIP stream.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum BatchZipError<E> {
+    /// Encoding the current input failed.
+    Encode(QrError),
+    /// Rendering the current code failed.
+    Render(E),
+    /// ZIP name validation, compression, output writing or finalization failed.
+    Pack(BatchPackError),
+}
+
+impl<E: fmt::Display> fmt::Display for BatchZipError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Encode(error) => error.fmt(f),
+            Self::Render(error) => error.fmt(f),
+            Self::Pack(error) => error.fmt(f),
+        }
+    }
+}
+
+impl<E: std::error::Error + 'static> std::error::Error for BatchZipError<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(match self {
+            Self::Encode(error) => error,
+            Self::Render(error) => error,
+            Self::Pack(error) => error,
+        })
+    }
+}
 
 /// Errors returned by library-level batch packaging helpers.
 #[derive(Debug)]
@@ -958,6 +1051,98 @@ mod tests {
         assert!(archive.starts_with(b"PK\x03\x04"));
         assert!(archive.windows(b"qr-0001.svg".len()).any(|window| window == b"qr-0001.svg"));
         assert!(archive.windows(b"<svg>beta</svg>".len()).any(|window| window == b"<svg>beta</svg>"));
+    }
+
+    #[test]
+    fn lazy_rendered_zip_matches_collected_pipeline_and_preserves_names() {
+        fn render(code: &QrCode, index: usize) -> Result<Vec<u8>, core::convert::Infallible> {
+            let image = code.render::<char>().dark_color('#').quiet_zone(false).build();
+            Ok(format!("index={index}\n{image}").into_bytes())
+        }
+        for compression in [
+            ZipCompression::Stored,
+            #[cfg(feature = "batch-zip-deflate")]
+            ZipCompression::Deflated,
+        ] {
+            let inputs = ["alpha", "12345", "二维码"];
+            let builder = || {
+                QrBatchBuilder::new(inputs)
+                    .file_prefix("目录/二维码")
+                    .file_extension("txt")
+                    .start_index(usize::MAX)
+                    .ec_level(EcLevel::H)
+            };
+            let expected = builder().render_bytes(render).unwrap().to_zip_with(compression).unwrap();
+            let mut actual = Vec::new();
+            builder().render_zip_with(&mut actual as &mut dyn std::io::Write, compression, render).unwrap();
+            assert_eq!(actual, expected);
+        }
+        let mut empty = Vec::new();
+        QrBatchBuilder::new(core::iter::empty::<&str>()).render_zip(&mut empty, render).unwrap();
+        assert_eq!(empty, BatchOutput::<Vec<u8>>::from_entries([]).to_zip().unwrap());
+    }
+
+    #[test]
+    fn lazy_rendered_zip_stops_at_encoding_and_rendering_errors() {
+        use core::cell::Cell;
+
+        let read = Cell::new(0);
+        let rendered = Cell::new(0);
+        let oversized = "x".repeat(4_000);
+        let inputs = ["alpha", oversized.as_str(), "never read"].into_iter().inspect(|_| read.set(read.get() + 1));
+        let mut output = Vec::new();
+        let error = QrBatchBuilder::new(inputs)
+            .render_zip(&mut output, |_, _| {
+                rendered.set(rendered.get() + 1);
+                Ok::<_, &'static str>(b"first".to_vec())
+            })
+            .unwrap_err();
+        assert!(matches!(error, BatchZipError::Encode(QrError::DataTooLong)));
+        assert_eq!((read.get(), rendered.get()), (2, 1));
+        assert!(output.starts_with(b"PK\x03\x04"));
+        assert!(!output.windows(4).any(|bytes| bytes == b"PK\x05\x06"));
+
+        read.set(0);
+        let inputs = ["alpha", "beta", "never read"].into_iter().inspect(|_| read.set(read.get() + 1));
+        let error = QrBatchBuilder::new(inputs)
+            .render_zip(&mut Vec::new(), |_, index| if index == 1 { Err("render failed") } else { Ok(Vec::new()) })
+            .unwrap_err();
+        assert!(matches!(error, BatchZipError::Render("render failed")));
+        assert_eq!(read.get(), 2);
+    }
+
+    #[test]
+    fn lazy_rendered_zip_stops_at_pack_errors_and_preserves_error_sources() {
+        use core::cell::Cell;
+
+        let read = Cell::new(0);
+        let inputs = ["alpha", "never read"].into_iter().inspect(|_| read.set(read.get() + 1));
+        let error = QrBatchBuilder::new(inputs)
+            .file_prefix("../bad")
+            .render_zip(&mut Vec::new(), |_, _| Ok::<_, core::convert::Infallible>(Vec::new()))
+            .unwrap_err();
+        assert!(matches!(error, BatchZipError::Pack(BatchPackError::InvalidEntryName { .. })));
+        assert_eq!(read.get(), 1);
+        assert!(std::error::Error::source(&error).unwrap().is::<BatchPackError>());
+
+        struct FailOutput;
+        impl std::io::Write for FailOutput {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "stream failed"))
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                panic!("the caller owns flushing")
+            }
+        }
+        read.set(0);
+        let inputs = ["alpha", "never read"].into_iter().inspect(|_| read.set(read.get() + 1));
+        let error = QrBatchBuilder::new(inputs)
+            .render_zip(&mut FailOutput, |_, _| Ok::<_, core::convert::Infallible>(Vec::new()))
+            .unwrap_err();
+        assert_eq!(read.get(), 1);
+        assert_eq!(error.to_string(), "stream failed");
+        let BatchZipError::Pack(BatchPackError::Io(error)) = error else { panic!("unexpected ZIP error") };
+        assert_eq!(error.kind(), std::io::ErrorKind::BrokenPipe);
     }
 
     #[test]
