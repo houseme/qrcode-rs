@@ -83,6 +83,9 @@
 - Use a shared portable slicing-by-eight IEEE CRC-32 implementation for larger
   ZIP payloads, retaining the scalar path below 256 bytes, all tail bytes and
   the existing archive format.
+- Cache vertical gradient colors lazily within each image row, preserving
+  pixel selection and interpolation arithmetic without new allocations; keep
+  single-column and other gradient directions on their existing paths.
 
 ### Fixed
 

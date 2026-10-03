@@ -291,6 +291,29 @@ pub fn apply_gradient_background(image: &DynamicImage, gradient: &Gradient) -> D
     let sc = gradient.start_color.0;
     let ec = gradient.end_color.0;
 
+    if gradient.direction == GradientDirection::Vertical && w > 1 {
+        for (y, row) in result.rows_mut().enumerate() {
+            let mut row_color = None;
+            for pixel in row {
+                let [r, g, b, a] = pixel.0;
+                let lum = (r as u32 + g as u32 + b as u32) / 3;
+                if lum > 200 && a > 0 {
+                    // Cache lazily so rows without light pixels need no interpolation.
+                    *pixel = *row_color.get_or_insert_with(|| {
+                        let t = if h <= 1 { 0.0 } else { y as u32 as f32 / (h - 1) as f32 };
+                        let inv = 1.0 - t;
+                        let nr = (sc[0] as f32 * inv + ec[0] as f32 * t) as u8;
+                        let ng = (sc[1] as f32 * inv + ec[1] as f32 * t) as u8;
+                        let nb = (sc[2] as f32 * inv + ec[2] as f32 * t) as u8;
+                        let na = (sc[3] as f32 * inv + ec[3] as f32 * t) as u8;
+                        Rgba([nr, ng, nb, na])
+                    });
+                }
+            }
+        }
+        return DynamicImage::ImageRgba8(result);
+    }
+
     for (x, y, pixel) in result.enumerate_pixels_mut() {
         let [r, g, b, a] = pixel.0;
 
@@ -575,7 +598,7 @@ mod render_tests {
             Rgba([254, 247, 241, 127]),
             Rgba([0, 255, 255, 255]),
         ];
-        for (width, height) in [(0, 0), (0, 3), (3, 0), (1, 1), (1, 7), (7, 1), (5, 3), (9, 7)] {
+        for (width, height) in [(0, 0), (0, 3), (3, 0), (1, 1), (1, 7), (7, 1), (5, 3), (9, 7), (2, 31), (127, 33)] {
             let rgba = DynamicImage::ImageRgba8(ImageBuffer::from_fn(width, height, |x, y| {
                 colors[((y * width + x) as usize) % colors.len()]
             }));
@@ -605,6 +628,41 @@ mod render_tests {
                         scalar_gradient(&image, &gradient).as_rgba8().unwrap().as_raw(),
                         "{direction:?}, {width}x{height}, {:?}",
                         image.color()
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn vertical_gradient_cache_preserves_first_light_pixels_thresholds_and_alpha() {
+        use super::{Gradient, GradientDirection, apply_gradient_background};
+
+        for (width, height) in [(0, 0), (0, 31), (31, 0), (1, 31), (31, 1), (2, 31), (17, 31)] {
+            for phase in [0, 3, 4] {
+                let image =
+                    DynamicImage::ImageRgba8(ImageBuffer::from_fn(width, height, |x, y| match (y + phase) % 7 {
+                        1 => Rgba([255, 255, 255, 0]),
+                        2 => Rgba([200, 200, 202, 255]),
+                        3 if x + 1 == width => Rgba([255, 255, 255, 127]),
+                        4 if x <= 1 => Rgba([201, 200, 202, 1]),
+                        5 if x % 3 == 0 => Rgba([254, 247, 241, 255]),
+                        _ => Rgba([12, 47, 91, 255]),
+                    }));
+                for (start, end) in [
+                    ([23, 117, 251, 19], [250, 61, 9, 231]),
+                    ([255, 255, 255, 0], [0, 0, 0, 255]),
+                    ([1, 2, 3, 255], [255, 254, 253, 0]),
+                ] {
+                    let gradient = Gradient {
+                        direction: GradientDirection::Vertical,
+                        start_color: Rgba(start),
+                        end_color: Rgba(end),
+                    };
+                    assert_eq!(
+                        apply_gradient_background(&image, &gradient).as_rgba8().unwrap().as_raw(),
+                        scalar_gradient(&image, &gradient).as_rgba8().unwrap().as_raw(),
+                        "{width}x{height}, phase {phase}, {start:?} -> {end:?}"
                     );
                 }
             }
