@@ -123,7 +123,8 @@ impl<P: image::Pixel + 'static> Canvas for (P, ImageBuffer<P, Vec<P::Subpixel>>)
 ///
 /// The logo is automatically resized to fit within the specified ratio of the
 /// QR code's dimensions. A white padding margin is added around the logo to
-/// ensure scannability.
+/// ensure scannability. Empty QR images are returned in RGBA8 form without an
+/// overlay.
 ///
 /// Use `image::DynamicImage::from(qr_image)` to convert an `ImageBuffer` to
 /// `DynamicImage` if needed.
@@ -156,6 +157,9 @@ pub fn overlay_logo(qr_image: &DynamicImage, logo: &DynamicImage, size_ratio: f3
 
     // Convert QR image to RGBA8 for compositing.
     let mut result = qr_image.to_rgba8();
+    if qr_w == 0 || qr_h == 0 {
+        return DynamicImage::ImageRgba8(result);
+    }
 
     // Calculate target logo size (with padding margin).
     let max_logo_dim = ((qr_w.min(qr_h) as f32 * ratio) as u32).max(1);
@@ -743,6 +747,28 @@ mod render_tests {
 
         let result = overlay_logo(&qr_dyn, &logo, 0.2);
         assert_eq!(result.dimensions(), (200, 200));
+    }
+
+    #[test]
+    fn overlay_logo_preserves_empty_qr_dimensions_in_rgba8() {
+        use super::overlay_logo;
+
+        for (width, height) in [(0, 0), (0, 1), (1, 0), (0, 9), (13, 0)] {
+            for qr in [
+                DynamicImage::ImageRgba8(ImageBuffer::new(width, height)),
+                DynamicImage::ImageLuma8(ImageBuffer::new(width, height)),
+                DynamicImage::ImageRgb32F(ImageBuffer::new(width, height)),
+            ] {
+                for alpha in [0, 127, 255] {
+                    let logo = DynamicImage::ImageRgba8(ImageBuffer::from_pixel(1, 1, Rgba([17, 43, 89, alpha])));
+                    for ratio in [0.25, f32::NAN, f32::NEG_INFINITY, f32::INFINITY] {
+                        let result = overlay_logo(&qr, &logo, ratio);
+                        assert_eq!(result.dimensions(), (width, height));
+                        assert!(result.as_rgba8().unwrap().as_raw().is_empty());
+                    }
+                }
+            }
+        }
     }
 
     #[test]

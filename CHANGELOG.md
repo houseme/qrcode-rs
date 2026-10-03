@@ -118,6 +118,8 @@
   stdout behavior.
 - Propagate image backend resource-limit errors through high-level rendering
   and PNG/JPEG helpers instead of panicking.
+- Return empty QR images in RGBA8 form before resizing and compositing a logo,
+  preserving zero-axis dimensions without out-of-bounds pixel access.
 
 ### Added
 
