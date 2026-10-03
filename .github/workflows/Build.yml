@@ -11,7 +11,7 @@ on:
 
 jobs:
   msrv:
-    name: Minimum supported Rust
+    name: Rust 1.88 compatibility
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1

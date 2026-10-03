@@ -4,9 +4,8 @@
 
 ### Changed
 
-- Keep Rust 1.88 explicit in split-crate manifests and gate releases on locked
-  MSRV checks; omit `rust-version` from the root package and workspace package
-  declarations.
+- Omit `rust-version` from the facade and split-crate manifests while continuing
+  to check the locked workspace with Rust 1.88 in CI.
 - Reuse parsed segments during automatic encoding and skip dynamic-programming
   allocations for empty or single-segment payloads while preserving the
   optimal merge plan.
