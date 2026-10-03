@@ -10,6 +10,18 @@ on:
     branches: [ "main" ]
 
 jobs:
+  msrv:
+    name: Minimum supported Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.88.0"
+      - name: Check locked workspace at MSRV
+        run: |
+          cargo check --workspace --all-targets --all-features --locked
+          cargo check --workspace --no-default-features --locked
   check:
     name: Check
     runs-on: ubuntu-latest
@@ -233,6 +245,7 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags') # Only on tags
     needs:
+      - msrv
       - check
       - rust_fmt_check
       - clippy_check

@@ -46,13 +46,13 @@ proptest! {
         let automatic = QrCode::with_error_correction_level(&data, ec)?;
         let version = automatic.version();
         prop_assert!(QrCode::with_version(&data, version, ec).is_ok());
-        if let Version::Normal(number) = version {
-            if number > 1 {
-                prop_assert!(
-                    QrCode::with_version(&data, Version::Normal(number - 1), ec).is_err(),
-                    "previous version unexpectedly fits: {number:?}"
-                );
-            }
+        if let Version::Normal(number) = version
+            && number > 1
+        {
+            prop_assert!(
+                QrCode::with_version(&data, Version::Normal(number - 1), ec).is_err(),
+                "previous version unexpectedly fits: {number:?}"
+            );
         }
     }
 

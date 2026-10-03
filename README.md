@@ -29,6 +29,9 @@ It is designed to cover the common cases well out of the box while still exposin
 
 ## Installation
 
+Rust 1.88 or newer is required across the workspace, including the image
+backends and CLI. CI checks this minimum version with the locked dependencies.
+
 Use the default feature set if you want the most common renderers enabled:
 
 ```toml

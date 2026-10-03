@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Declare Rust 1.88 across the workspace to match the image dependency,
+  inherit member MSRV declarations, and gate releases on locked MSRV checks.
+
 ## [2.1.1] - 2026-09-16
 
 ### Added
