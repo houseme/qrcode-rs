@@ -11,6 +11,10 @@ use alloc::vec::Vec;
 use qrcode_core::{EcLevel, Version};
 
 /// A [`QrDecoder`] backed by the [`rqrr`] crate.
+///
+/// Empty dimensions or an invalid grayscale buffer return
+/// [`DeQRError::InvalidGridSize`] before image preparation. Errors from detected
+/// QR grids are propagated without skipping unsuccessful grids.
 #[derive(Default, Debug, Clone, Copy)]
 pub struct RqrrDecoder;
 
@@ -26,6 +30,11 @@ impl QrDecoder for RqrrDecoder {
     type Error = DeQRError;
 
     fn decode(&self, image: GrayPixels<'_>) -> Result<Vec<DecodedQrCode>, Self::Error> {
+        if image.width() == 0 || image.height() == 0 {
+            return Err(DeQRError::InvalidGridSize);
+        }
+        let image =
+            GrayPixels::try_new(image.width(), image.height(), image.data).map_err(|_| DeQRError::InvalidGridSize)?;
         let mut prep =
             rqrr::PreparedImage::prepare_from_greyscale(image.width() as usize, image.height() as usize, |x, y| {
                 image.get(x as u32, y as u32)
@@ -57,5 +66,32 @@ fn map_ec(level: u16) -> EcLevel {
         1 => EcLevel::L, // 01
         2 => EcLevel::H, // 10
         _ => EcLevel::Q, // 11
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DeQRError, RqrrDecoder};
+    use crate::{GrayPixels, QrDecoder};
+
+    #[test]
+    fn decoder_rejects_zero_axes_before_preparing_an_image() {
+        for (width, height) in [(0, 0), (0, 1), (1, 0), (u32::MAX, 0), (0, u32::MAX)] {
+            assert_eq!(RqrrDecoder::new().decode(GrayPixels::new(width, height, &[])), Err(DeQRError::InvalidGridSize));
+        }
+    }
+
+    #[test]
+    fn decoder_rejects_invalid_buffers_before_reading_pixels() {
+        for pixels in
+            [GrayPixels::new(2, 2, &[0]), GrayPixels::new(2, 2, &[0; 5]), GrayPixels::new(u32::MAX, u32::MAX, &[])]
+        {
+            assert_eq!(RqrrDecoder::new().decode(pixels), Err(DeQRError::InvalidGridSize));
+        }
+    }
+
+    #[test]
+    fn decoder_accepts_a_valid_nonempty_image_without_a_qr_code() {
+        assert_eq!(RqrrDecoder::new().decode(GrayPixels::try_new(1, 1, &[255]).unwrap()), Ok(alloc::vec![]));
     }
 }

@@ -27,3 +27,7 @@ qrcode-rs = { version = "2.0", features = ["decode-rqrr"] }
 
 `qrcode-decode` is intentionally adapter-oriented. It does not make `rqrr`
 mandatory for users that only need decoder traits or Structured Append parsing.
+
+Use `GrayPixels::try_new` to validate dimensions and the exact grayscale buffer
+length before decoding, and `try_get` for optional pixel access. The rqrr adapter
+returns `InvalidGridSize` for empty or malformed views before preparing an image.

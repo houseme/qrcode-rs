@@ -19,11 +19,40 @@ extern crate alloc;
 #[allow(unused_imports)]
 use alloc::vec::Vec;
 
+use core::fmt;
 use qrcode_core::{EcLevel, Version};
 
 #[cfg(feature = "rqrr")]
 pub mod rqrr;
 pub mod sa_parse;
+
+/// Errors returned when validating a [`GrayPixels`] buffer.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GrayPixelsError {
+    /// The image dimensions exceed the byte-slice size supported by this target.
+    DimensionsOverflow,
+    /// The buffer does not contain exactly one byte per pixel.
+    BufferLengthMismatch {
+        /// Required byte count for the supplied dimensions.
+        expected: usize,
+        /// Actual byte count in the supplied buffer.
+        actual: usize,
+    },
+}
+
+impl fmt::Display for GrayPixelsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::DimensionsOverflow => f.write_str("grayscale image dimensions exceed the supported buffer size"),
+            Self::BufferLengthMismatch { expected, actual } => {
+                write!(f, "grayscale buffer length mismatch: expected {expected} bytes, got {actual}")
+            }
+        }
+    }
+}
+
+impl ::core::error::Error for GrayPixelsError {}
 
 /// A borrowed grayscale (luma) pixel view: the universal input to a
 /// [`QrDecoder`].
@@ -48,6 +77,29 @@ impl<'a> GrayPixels<'a> {
         Self { width, height, data }
     }
 
+    /// Creates a view after validating its dimensions and buffer length.
+    ///
+    /// Zero-area dimensions are accepted when the buffer is empty. A decoder
+    /// may require a non-empty image even when this view is valid.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GrayPixelsError::DimensionsOverflow`] if the pixel count cannot
+    /// be represented by a byte slice on this target, or
+    /// [`GrayPixelsError::BufferLengthMismatch`] if `data.len()` differs from
+    /// `width * height`.
+    pub fn try_new(width: u32, height: u32, data: &'a [u8]) -> Result<Self, GrayPixelsError> {
+        let expected = u64::from(width)
+            .checked_mul(u64::from(height))
+            .and_then(|length| usize::try_from(length).ok())
+            .filter(|&length| length <= isize::MAX as usize)
+            .ok_or(GrayPixelsError::DimensionsOverflow)?;
+        if data.len() != expected {
+            return Err(GrayPixelsError::BufferLengthMismatch { expected, actual: data.len() });
+        }
+        Ok(Self::new(width, height, data))
+    }
+
     /// The image width in pixels.
     #[must_use]
     pub const fn width(&self) -> u32 {
@@ -69,6 +121,23 @@ impl<'a> GrayPixels<'a> {
     pub fn get(&self, x: u32, y: u32) -> u8 {
         assert!(x < self.width && y < self.height, "grayscale pixel coordinates are out of bounds");
         self.data[(y as usize) * (self.width as usize) + (x as usize)]
+    }
+
+    /// Returns the luma byte at `(x, y)` without panicking.
+    ///
+    /// Returns `None` when the coordinates are out of bounds, their index cannot
+    /// be represented, or a view constructed with [`Self::new`] has no byte for
+    /// that pixel.
+    #[must_use]
+    pub fn try_get(&self, x: u32, y: u32) -> Option<u8> {
+        if x >= self.width || y >= self.height {
+            return None;
+        }
+        let width = usize::try_from(self.width).ok()?;
+        let x = usize::try_from(x).ok()?;
+        let y = usize::try_from(y).ok()?;
+        let index = y.checked_mul(width)?.checked_add(x)?;
+        self.data.get(index).copied()
     }
 }
 
@@ -143,7 +212,7 @@ pub trait QrDecoder {
 
 #[cfg(test)]
 mod tests {
-    use super::GrayPixels;
+    use super::{GrayPixels, GrayPixelsError};
 
     #[test]
     fn grayscale_pixels_use_row_major_coordinates() {
@@ -170,5 +239,50 @@ mod tests {
     #[should_panic(expected = "grayscale pixel coordinates are out of bounds")]
     fn empty_grayscale_image_has_no_valid_coordinates() {
         let _ = GrayPixels::new(0, 0, &[]).get(0, 0);
+    }
+
+    #[test]
+    fn checked_grayscale_view_and_pixel_access_use_the_same_coordinates() {
+        let pixels = GrayPixels::try_new(2, 2, &[1, 2, 3, 4]).unwrap();
+        for y in 0..2 {
+            for x in 0..2 {
+                assert_eq!(pixels.try_get(x, y), Some(pixels.get(x, y)));
+            }
+        }
+        assert_eq!(pixels.try_get(2, 0), None);
+        assert_eq!(pixels.try_get(0, 2), None);
+        assert_eq!(pixels.try_get(u32::MAX, u32::MAX), None);
+    }
+
+    #[test]
+    fn checked_grayscale_view_rejects_short_and_long_buffers() {
+        for (data, actual) in [(&[1, 2, 3][..], 3), (&[1, 2, 3, 4, 5][..], 5)] {
+            assert!(matches!(
+                GrayPixels::try_new(2, 2, data),
+                Err(GrayPixelsError::BufferLengthMismatch { expected: 4, actual: length }) if length == actual
+            ));
+        }
+    }
+
+    #[test]
+    fn checked_grayscale_view_accepts_empty_buffers_for_zero_area() {
+        for (width, height) in [(0, 0), (0, u32::MAX), (u32::MAX, 0)] {
+            let pixels = GrayPixels::try_new(width, height, &[]).unwrap();
+            assert_eq!(pixels.try_get(0, 0), None);
+        }
+    }
+
+    #[test]
+    fn checked_grayscale_view_rejects_unrepresentable_dimensions() {
+        assert!(matches!(GrayPixels::try_new(u32::MAX, u32::MAX, &[]), Err(GrayPixelsError::DimensionsOverflow)));
+    }
+
+    #[test]
+    fn checked_access_is_safe_for_an_unchecked_short_buffer() {
+        let pixels = GrayPixels::new(2, 2, &[7]);
+        assert_eq!(pixels.try_get(0, 0), Some(7));
+        assert_eq!(pixels.try_get(1, 0), None);
+        assert_eq!(pixels.try_get(0, 1), None);
+        assert_eq!(GrayPixels::new(u32::MAX, u32::MAX, &[]).try_get(u32::MAX - 1, u32::MAX - 1), None);
     }
 }

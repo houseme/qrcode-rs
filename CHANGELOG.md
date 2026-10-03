@@ -87,6 +87,8 @@
 - Retain libc 0.2.189 after reviewing MIPS64 and x32 ABI regressions in
   0.2.190; record reviewed cc/Tokio delta audits and check the committed
   cargo-vet store with --locked.
+- Reject empty or malformed grayscale views before rqrr image preparation
+  instead of panicking inside the decoder.
 
 ### Added
 
@@ -104,6 +106,8 @@
   MiB estimate budget for built-in buffered renderers.
 - Add isolated grayscale/RGB/RGBA rectangle benchmarks and bitwise
   floating-point drawing regressions.
+- Add GrayPixels::try_new, try_get and GrayPixelsError for checked dimensions,
+  exact grayscale buffer lengths and optional pixel access.
 
 ## [2.1.1] - 2026-09-16
 
