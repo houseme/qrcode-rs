@@ -65,6 +65,9 @@
 - Pack byte-mode payloads directly at a fixed bit offset, using a contiguous
   copy for aligned data and adjacent-byte shifts for unaligned data; preserve
   headers, errors and metadata, and add isolated scalar benchmark controls.
+- Pre-encode the four ANSI foreground/background color sequences into fixed
+  stack buffers and reuse them while preserving color deduplication, odd-row
+  padding, resets and exact output bytes.
 
 ### Fixed
 

@@ -53,16 +53,36 @@ impl Color {
         Self { r, g, b }
     }
 
-    fn push_fg_ansi(self, out: &mut String) {
-        use core::fmt::Write as _;
-
-        write!(out, "\x1b[38;2;{};{};{}m", self.r, self.g, self.b).expect("writing to String cannot fail");
+    fn escape_sequence(self, foreground: bool) -> EscapeSequence {
+        let mut bytes = [0; 19];
+        bytes[..7].copy_from_slice(if foreground { b"\x1b[38;2;" } else { b"\x1b[48;2;" });
+        let mut len = 7;
+        for component in [self.r, self.g, self.b] {
+            if component >= 100 {
+                bytes[len] = b'0' + component / 100;
+                len += 1;
+            }
+            if component >= 10 {
+                bytes[len] = b'0' + component / 10 % 10;
+                len += 1;
+            }
+            bytes[len] = b'0' + component % 10;
+            bytes[len + 1] = b';';
+            len += 2;
+        }
+        bytes[len - 1] = b'm';
+        EscapeSequence { bytes, len: len as u8 }
     }
+}
 
-    fn push_bg_ansi(self, out: &mut String) {
-        use core::fmt::Write as _;
+struct EscapeSequence {
+    bytes: [u8; 19],
+    len: u8,
+}
 
-        write!(out, "\x1b[48;2;{};{};{}m", self.r, self.g, self.b).expect("writing to String cannot fail");
+impl EscapeSequence {
+    fn as_str(&self) -> &str {
+        core::str::from_utf8(&self.bytes[..usize::from(self.len)]).expect("ANSI escape sequences contain only ASCII")
     }
 }
 
@@ -153,6 +173,14 @@ impl RenderCanvas for CanvasAnsi {
         let reset = "\x1b[0m";
         let row_count = self.canvas.len() / w;
         let mut out = String::with_capacity(self.output_capacity);
+        // Both colors are fixed for this canvas. Encode each escape once on the
+        // stack, preserving the existing heap-buffer budget.
+        let dark_fg = self.dark_color.escape_sequence(true);
+        let dark_bg = self.dark_color.escape_sequence(false);
+        let light_fg = self.light_color.escape_sequence(true);
+        let light_bg = self.light_color.escape_sequence(false);
+        let foregrounds = [dark_fg.as_str(), light_fg.as_str()];
+        let backgrounds = [dark_bg.as_str(), light_bg.as_str()];
 
         for group_start in (0..row_count).step_by(2) {
             if group_start > 0 {
@@ -186,11 +214,11 @@ impl RenderCanvas for CanvasAnsi {
                 };
 
                 if last_bg != Some(bg) {
-                    bg.push_bg_ansi(&mut out);
+                    out.push_str(backgrounds[usize::from(bot != dark)]);
                     last_bg = Some(bg);
                 }
                 if last_fg != Some(fg) {
-                    fg.push_fg_ansi(&mut out);
+                    out.push_str(foregrounds[usize::from(top != dark)]);
                     last_fg = Some(fg);
                 }
 
@@ -215,6 +243,98 @@ impl RenderCanvas for CanvasAnsi {
 mod tests {
     use super::*;
     use crate::Renderer;
+
+    fn legacy_render(canvas: &[u8], width: usize, dark: Color, light: Color) -> String {
+        use core::fmt::Write as _;
+
+        if canvas.is_empty() {
+            return String::new();
+        }
+        let rows = canvas.len() / width;
+        let mut output = String::new();
+        for y in (0..rows).step_by(2) {
+            if y > 0 {
+                output.push('\n');
+            }
+            let mut last_fg = None;
+            let mut last_bg = None;
+            for x in 0..width {
+                let top = canvas[y * width + x] == 1;
+                let bottom = y + 1 < rows && canvas[(y + 1) * width + x] == 1;
+                let fg = if top { dark } else { light };
+                let bg = if bottom { dark } else { light };
+                if last_bg != Some(bg) {
+                    write!(output, "\x1b[48;2;{};{};{}m", bg.r, bg.g, bg.b).unwrap();
+                    last_bg = Some(bg);
+                }
+                if last_fg != Some(fg) {
+                    write!(output, "\x1b[38;2;{};{};{}m", fg.r, fg.g, fg.b).unwrap();
+                    last_fg = Some(fg);
+                }
+                output.push(match (top, bottom) {
+                    (true, true) => '█',
+                    (true, false) => '▀',
+                    (false, true) => '▄',
+                    (false, false) => ' ',
+                });
+            }
+            output.push_str("\x1b[0m");
+        }
+        output
+    }
+
+    #[test]
+    fn cached_escape_sequences_match_decimal_formatting_for_every_component_value() {
+        for component in 0..=255 {
+            for color in [Color::new(component, 0, 255), Color::new(0, component, 255), Color::new(0, 255, component)] {
+                assert_eq!(
+                    color.escape_sequence(true).as_str(),
+                    format!("\x1b[38;2;{};{};{}m", color.r, color.g, color.b)
+                );
+                assert_eq!(
+                    color.escape_sequence(false).as_str(),
+                    format!("\x1b[48;2;{};{};{}m", color.r, color.g, color.b)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn cached_renderer_matches_independent_formatter_for_patterns_and_odd_rows() {
+        let colors = [
+            (Color::new(0, 0, 0), Color::new(255, 255, 255)),
+            (Color::new(0, 9, 10), Color::new(99, 100, 255)),
+            (Color::new(255, 100, 9), Color::new(10, 99, 0)),
+            (Color::new(7, 128, 250), Color::new(7, 128, 250)),
+        ];
+        for width in [1, 2, 3, 7, 21] {
+            for height in [1, 2, 3, 4, 7] {
+                for (dark, light) in colors {
+                    for pattern in 0..4 {
+                        let mut canvas = CanvasAnsi::new(width, height, dark, light);
+                        for y in 0..height {
+                            for x in 0..width {
+                                let is_dark = match pattern {
+                                    0 => false,
+                                    1 => true,
+                                    2 => (x + y) % 2 == 0,
+                                    _ => (x * 7 + y * 3) % 5 < 2,
+                                };
+                                if is_dark {
+                                    canvas.draw_dark_pixel(x, y);
+                                }
+                            }
+                        }
+                        let expected = legacy_render(&canvas.canvas, width as usize, dark, light);
+                        let capacity = canvas.output_capacity;
+                        let actual = canvas.into_image();
+                        assert_eq!(actual, expected, "width {width}, height {height}, pattern {pattern}");
+                        assert!(actual.len() <= capacity);
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn test_ansi_all_dark() {
