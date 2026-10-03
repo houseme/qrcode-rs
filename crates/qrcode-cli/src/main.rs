@@ -231,18 +231,19 @@ fn render_batch(cli: &Cli, quiet_zone: bool) -> Result<usize, Box<dyn Error>> {
 
     if cli.parallel || cli.batch_format == BatchFormat::Json {
         let inputs = read_inputs(cli)?;
+        let count = inputs.len();
         if cli.parallel {
             let rendered = render_many_parallel(&inputs, cli, quiet_zone)?;
-            for (index, bytes) in rendered.iter().enumerate() {
-                write_output(cli, bytes, index, true)?;
+            for (index, bytes) in rendered.into_iter().enumerate() {
+                write_output(cli, &bytes, index, true)?;
             }
         } else {
-            for (index, text) in inputs.iter().enumerate() {
-                let bytes = render_one(text, cli, quiet_zone)?;
+            for (index, text) in inputs.into_iter().enumerate() {
+                let bytes = render_one(&text, cli, quiet_zone)?;
                 write_output(cli, &bytes, index, true)?;
             }
         }
-        return Ok(inputs.len());
+        return Ok(count);
     }
 
     let Some(path) = &cli.batch else {

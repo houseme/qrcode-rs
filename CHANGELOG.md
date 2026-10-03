@@ -59,6 +59,9 @@
 - Render JPEG sources directly as RGB8, avoiding a full RGBA-to-RGB image
   conversion; count three bytes per pixel against the existing image-buffer
   budget.
+- Release sequential JSON directory inputs and successfully published parallel
+  outputs as they are consumed, retaining global parallel scheduling and
+  existing validation, error and publication ordering.
 
 ### Fixed
 
