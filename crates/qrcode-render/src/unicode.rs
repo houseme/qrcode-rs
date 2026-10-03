@@ -45,6 +45,7 @@ macro_rules! impl_bit_canvas {
         pub struct $canvas {
             canvas: Vec<u8>,
             width: u32,
+            height: u32,
             dark_pixel: u8,
             output_capacity: usize,
         }
@@ -57,7 +58,7 @@ macro_rules! impl_bit_canvas {
                 let (area, output_capacity) = layout(width, height, $row_group, $col_step, $glyph_bytes)
                     .unwrap_or_else(|error| panic!("{error}"));
                 let a = vec![light_pixel.value(); area];
-                $canvas { width, canvas: a, dark_pixel: dark_pixel.value(), output_capacity }
+                $canvas { width, height, canvas: a, dark_pixel: dark_pixel.value(), output_capacity }
             }
 
             fn validate_dimensions(
@@ -71,6 +72,27 @@ macro_rules! impl_bit_canvas {
 
             fn draw_dark_pixel(&mut self, x: u32, y: u32) {
                 self.canvas[x as usize + y as usize * self.width as usize] = self.dark_pixel;
+            }
+
+            fn draw_dark_rect(&mut self, left: u32, top: u32, width: u32, height: u32) {
+                if width == 0 || height == 0 {
+                    return;
+                }
+                if width == 1 && height == 1 {
+                    self.draw_dark_pixel(left, top);
+                    return;
+                }
+                assert!(
+                    left < self.width && top < self.height && width <= self.width - left && height <= self.height - top,
+                    "rectangle exceeds canvas dimensions"
+                );
+                let stride = self.width as usize;
+                let left = left as usize;
+                let width = width as usize;
+                for y in top..top + height {
+                    let start = y as usize * stride + left;
+                    self.canvas[start..start + width].fill(self.dark_pixel);
+                }
             }
 
             fn into_image(self) -> String {
@@ -413,6 +435,40 @@ mod budget_tests {
         assert_safe_dimensions::<Dense2x2>();
         assert_safe_dimensions::<Braille>();
         assert_safe_dimensions::<Dense3x2>();
+    }
+
+    fn assert_rectangles_match_pixels<P: Pixel<Image = String>>() {
+        for inverted in [false, true] {
+            let dark = P::default_color(if inverted { Color::Light } else { Color::Dark });
+            let light = P::default_color(if inverted { Color::Dark } else { Color::Light });
+            for (left, top, width, height) in [(0, 0, 1, 1), (1, 1, 3, 5), (6, 0, 1, 9), (0, 8, 7, 1), (0, 0, 7, 9)] {
+                let mut actual = P::Canvas::new(7, 9, dark, light);
+                let mut expected = P::Canvas::new(7, 9, dark, light);
+                actual.draw_dark_rect(left, top, width, height);
+                actual.draw_dark_rect(left, top, width, height);
+                for y in top..top + height {
+                    for x in left..left + width {
+                        expected.draw_dark_pixel(x, y);
+                    }
+                }
+                assert_eq!(actual.into_image(), expected.into_image());
+            }
+        }
+    }
+
+    #[test]
+    fn unicode_rectangles_preserve_all_density_layouts_and_inverted_padding() {
+        assert_rectangles_match_pixels::<Dense1x2>();
+        assert_rectangles_match_pixels::<Dense2x2>();
+        assert_rectangles_match_pixels::<Braille>();
+        assert_rectangles_match_pixels::<Dense3x2>();
+    }
+
+    #[test]
+    #[should_panic(expected = "rectangle exceeds canvas dimensions")]
+    fn unicode_rectangle_cannot_alias_the_next_row() {
+        let mut canvas = Canvas1x2::new(3, 2, Dense1x2::Dark, Dense1x2::Light);
+        canvas.draw_dark_rect(3, 0, 2, 1);
     }
 
     #[test]

@@ -71,6 +71,9 @@
 - Serialize plain-text canvases by contiguous rows, removing per-pixel modulo
   while preserving custom Element callback order, UTF-8 output and newline
   positions.
+- Fill multi-pixel Unicode rectangles by contiguous rows while preserving the
+  original single-pixel path, inverted colors, packed glyphs and empty-canvas
+  behavior.
 
 ### Fixed
 
