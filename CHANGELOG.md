@@ -22,6 +22,9 @@
 - Borrow Stored ZIP payloads instead of allocating an intermediate copy.
 - Buffer ZIP file writes and render sequential JSON ZIP entries one at a time
   rather than retaining every rendered output.
+- Update Tokio to 1.53.2 and locked cc/libc versions, and set the serde_json
+  and proptest minimum versions to the already locked 1.0.151 and 1.11.0
+  releases.
 
 ### Fixed
 
