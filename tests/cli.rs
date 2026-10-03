@@ -141,6 +141,84 @@ fn csv_batch_writes_selected_column_in_parallel() {
 }
 
 #[test]
+fn csv_multiline_records_match_rendered_payloads_in_directory_and_zip_modes() {
+    let dir = temporary_directory("csv_multiline");
+    let input = dir.join("records.csv");
+    std::fs::write(&input, "\n1,\"alpha\nbeta\"\n2,\"say \"\"hello\"\"\r\nnext\"\r\n3,\"\"\r\n").unwrap();
+    let expected = ["alpha\nbeta", "say \"hello\"\r\nnext"].map(|text| {
+        qrcode_rs::QrCode::new(text)
+            .unwrap()
+            .render::<qrcode_rs::render::svg::Color>()
+            .dark_color(qrcode_rs::render::svg::Color("#000000"))
+            .light_color(qrcode_rs::render::svg::Color("#ffffff"))
+            .build()
+            .into_bytes()
+    });
+    for pack in ["directory", "zip"] {
+        for parallel in [false, true] {
+            let output = dir.join(format!("{pack}-{parallel}"));
+            let mut command = bin();
+            command
+                .args(["--batch"])
+                .arg(&input)
+                .args(["--batch-format", "csv", "--batch-column", "2", "--batch-pack", pack, "-f", "svg", "-o"])
+                .arg(&output);
+            if parallel {
+                command.arg("--parallel");
+            }
+            let result = command.output().unwrap();
+            assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+            let actual = if pack == "zip" {
+                stored_zip_entries(&std::fs::read(&output).unwrap())
+            } else {
+                assert_eq!(std::fs::read_dir(&output).unwrap().count(), 2);
+                (1..=2)
+                    .map(|index| {
+                        let name = format!("qr-{index:04}.svg");
+                        let bytes = std::fs::read(output.join(&name)).unwrap();
+                        (name, bytes)
+                    })
+                    .collect()
+            };
+            assert_eq!(actual.len(), expected.len());
+            for (index, ((name, actual), expected)) in actual.iter().zip(&expected).enumerate() {
+                assert_eq!(name, &format!("qr-{:04}.svg", index + 1));
+                assert_eq!(actual, expected);
+            }
+        }
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn csv_invalid_quotes_and_unclosed_multiline_records_preserve_zip_output() {
+    let dir = temporary_directory("csv_errors");
+    let input = dir.join("records.csv");
+    let output = dir.join("output.zip");
+    for record in ["2,bad\"quote\"\n", "2,\"closed\"extra\n", "2,\"unclosed\ncontinued\n"] {
+        std::fs::write(&input, format!("1,valid\n{record}")).unwrap();
+        std::fs::write(&output, b"existing output").unwrap();
+        for parallel in [false, true] {
+            let mut command = bin();
+            command
+                .args(["--batch"])
+                .arg(&input)
+                .args(["--batch-format", "csv", "--batch-column", "2", "--batch-pack", "zip", "-f", "svg", "-o"])
+                .arg(&output);
+            if parallel {
+                command.arg("--parallel");
+            }
+            let result = command.output().unwrap();
+            assert!(!result.status.success());
+            assert!(String::from_utf8_lossy(&result.stderr).contains("batch line 2:"));
+            assert_eq!(std::fs::read(&output).unwrap(), b"existing output");
+            assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2);
+        }
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn jsonl_batch_writes_named_key() {
     let stamp = time::SystemTime::now().duration_since(time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
     let dir = std::env::temp_dir().join(format!("qrencodes_cli_jsonl_batch_{stamp}"));

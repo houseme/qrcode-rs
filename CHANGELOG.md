@@ -65,6 +65,9 @@
 - Reject incomplete or oversized padded codeword data before slicing or
   allocation, with InvalidDataLength carrying expected and actual byte counts
   and existing error-variant serialization order preserved.
+- Parse CSV records consistently across sequential and parallel batch paths,
+  supporting quoted LF/CRLF line endings and escaped quotes while rejecting
+  malformed quoting with the record start line.
 
 ### Added
 

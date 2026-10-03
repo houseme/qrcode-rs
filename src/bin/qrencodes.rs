@@ -54,7 +54,7 @@ struct Cli {
     /// Unicode renderer sub-mode.
     #[arg(long, value_enum, default_value_t = UnicodeMode::Dense1x2)]
     unicode_mode: UnicodeMode,
-    /// Generate one QR code per non-empty line of `<FILE>` (`-` reads stdin).
+    /// Generate QR codes from non-empty records in `<FILE>` (`-` reads stdin).
     #[arg(long, value_name = "FILE")]
     batch: Option<PathBuf>,
     /// Batch record format.
@@ -246,19 +246,7 @@ fn render_batch(cli: &Cli, quiet_zone: bool) -> Result<usize, Box<dyn Error>> {
     let mut source = open_record_source(path)?;
     let mut line_no = 0;
     let mut line = String::new();
-    loop {
-        line.clear();
-        let bytes_read = source.read_line(&mut line)?;
-        if bytes_read == 0 {
-            break;
-        }
-        line_no += 1;
-        trim_line_end(&mut line);
-        let Some(text) = extract_batch_payload(&line, cli.batch_format, cli.batch_column, &cli.batch_key)
-            .map_err(|err| format!("batch line {line_no}: {err}"))?
-        else {
-            continue;
-        };
+    while let Some(text) = read_batch_payload(&mut *source, &mut line, &mut line_no, cli)? {
         let bytes = render_one(&text, cli, quiet_zone)?;
         write_output(cli, &bytes, written, true)?;
         written += 1;
@@ -314,19 +302,7 @@ fn render_batch_zip(cli: &Cli, quiet_zone: bool) -> Result<usize, Box<dyn Error>
         let mut source = open_record_source(path)?;
         let mut line_no = 0;
         let mut line = String::new();
-        loop {
-            line.clear();
-            let bytes_read = source.read_line(&mut line)?;
-            if bytes_read == 0 {
-                break;
-            }
-            line_no += 1;
-            trim_line_end(&mut line);
-            let Some(text) = extract_batch_payload(&line, cli.batch_format, cli.batch_column, &cli.batch_key)
-                .map_err(|err| format!("batch line {line_no}: {err}"))?
-            else {
-                continue;
-            };
+        while let Some(text) = read_batch_payload(&mut *source, &mut line, &mut line_no, cli)? {
             let bytes = render_one(&text, cli, quiet_zone)?;
             archive.write_file(&batch_file_name(written, cli.format), &bytes)?;
             written += 1;
@@ -384,19 +360,8 @@ fn read_inputs(cli: &Cli) -> Result<Vec<String>, Box<dyn Error>> {
         let mut source = open_record_source(path)?;
         let mut line_no = 0;
         let mut line = String::new();
-        loop {
-            line.clear();
-            let bytes_read = source.read_line(&mut line)?;
-            if bytes_read == 0 {
-                break;
-            }
-            line_no += 1;
-            trim_line_end(&mut line);
-            if let Some(text) = extract_batch_payload(&line, cli.batch_format, cli.batch_column, &cli.batch_key)
-                .map_err(|err| format!("batch line {line_no}: {err}"))?
-            {
-                inputs.push(text);
-            }
+        while let Some(text) = read_batch_payload(&mut *source, &mut line, &mut line_no, cli)? {
+            inputs.push(text);
         }
         return Ok(inputs);
     }
@@ -408,6 +373,68 @@ fn read_stdin() -> Result<String, Box<dyn Error>> {
     std::io::stdin().lock().read_to_string(&mut buf)?;
     trim_line_end(&mut buf);
     Ok(buf)
+}
+
+fn read_batch_payload(
+    source: &mut dyn BufRead,
+    line: &mut String,
+    line_no: &mut usize,
+    cli: &Cli,
+) -> Result<Option<String>, Box<dyn Error>> {
+    if cli.batch_format == BatchFormat::Csv {
+        return read_csv_payload(source, line, line_no, cli.batch_column);
+    }
+    loop {
+        line.clear();
+        if source.read_line(line)? == 0 {
+            return Ok(None);
+        }
+        *line_no += 1;
+        trim_line_end(line);
+        if let Some(payload) = extract_batch_payload(line, cli.batch_format, cli.batch_column, &cli.batch_key)
+            .map_err(|err| format!("batch line {line_no}: {err}"))?
+        {
+            return Ok(Some(payload));
+        }
+    }
+}
+
+fn read_csv_payload(
+    source: &mut dyn BufRead,
+    line: &mut String,
+    line_no: &mut usize,
+    column: usize,
+) -> Result<Option<String>, Box<dyn Error>> {
+    let mut parser = CsvRecordParser::default();
+    let mut record_start = None;
+    loop {
+        line.clear();
+        if source.read_line(line)? == 0 {
+            if let Some(start) = record_start {
+                return Err(format!("batch line {start}: unterminated quoted CSV field").into());
+            }
+            return Ok(None);
+        }
+        *line_no += 1;
+        if record_start.is_none() && line.trim().is_empty() {
+            continue;
+        }
+        let start = *record_start.get_or_insert(*line_no);
+        let content = line.strip_suffix('\n').unwrap_or(line.as_str());
+        let content_len = content.strip_suffix('\r').unwrap_or(content).len();
+        parser.push(&line[..content_len]).map_err(|err| format!("batch line {start}: {err}"))?;
+        if parser.state == CsvFieldState::Quoted {
+            // A physical line ending inside quotes is part of the payload.
+            parser.push(&line[content_len..]).map_err(|err| format!("batch line {start}: {err}"))?;
+            continue;
+        }
+        let fields = parser.finish().map_err(|err| format!("batch line {start}: {err}"))?;
+        if let Some(payload) = csv_payload(fields, column).map_err(|err| format!("batch line {start}: {err}"))? {
+            return Ok(Some(payload));
+        }
+        parser = CsvRecordParser::default();
+        record_start = None;
+    }
 }
 
 fn trim_line_end(buf: &mut String) {
@@ -431,13 +458,7 @@ fn extract_batch_payload(
     let text = match format {
         BatchFormat::Lines => record.to_owned(),
         BatchFormat::Csv => {
-            let fields = parse_csv_record(record)?;
-            let field =
-                fields.get(csv_column - 1).ok_or_else(|| format!("CSV record has no column {csv_column}"))?.clone();
-            if field.trim().is_empty() {
-                return Ok(None);
-            }
-            field
+            return csv_payload(parse_csv_record(record)?, csv_column);
         }
         BatchFormat::Json => return Err("JSON records must be read with --batch-format json".into()),
         BatchFormat::Jsonl => {
@@ -488,29 +509,68 @@ fn extract_json_payload(value: &serde_json::Value, json_key: &str) -> Result<Opt
     Ok(Some(text.to_owned()))
 }
 
-fn parse_csv_record(record: &str) -> Result<Vec<String>, Box<dyn Error>> {
-    let mut fields = Vec::new();
-    let mut field = String::new();
-    let mut chars = record.chars().peekable();
-    let mut quoted = false;
-    while let Some(ch) = chars.next() {
-        match ch {
-            '"' if quoted && chars.peek() == Some(&'"') => {
-                chars.next();
-                field.push('"');
+fn csv_payload(fields: Vec<String>, column: usize) -> Result<Option<String>, Box<dyn Error>> {
+    let index = column.checked_sub(1).ok_or("CSV column must be greater than zero")?;
+    let field = fields.into_iter().nth(index).ok_or_else(|| format!("CSV record has no column {column}"))?;
+    if field.trim().is_empty() { Ok(None) } else { Ok(Some(field)) }
+}
+
+#[derive(Default, PartialEq, Eq)]
+enum CsvFieldState {
+    #[default]
+    Start,
+    Unquoted,
+    Quoted,
+    AfterQuote,
+}
+
+#[derive(Default)]
+struct CsvRecordParser {
+    fields: Vec<String>,
+    field: String,
+    state: CsvFieldState,
+}
+
+impl CsvRecordParser {
+    fn push(&mut self, input: &str) -> Result<(), Box<dyn Error>> {
+        for ch in input.chars() {
+            match (&self.state, ch) {
+                (CsvFieldState::Start, '"') => self.state = CsvFieldState::Quoted,
+                (CsvFieldState::Start | CsvFieldState::Unquoted | CsvFieldState::AfterQuote, ',') => {
+                    self.fields.push(core::mem::take(&mut self.field));
+                    self.state = CsvFieldState::Start;
+                }
+                (CsvFieldState::Quoted, '"') => self.state = CsvFieldState::AfterQuote,
+                (CsvFieldState::AfterQuote, '"') => {
+                    self.field.push('"');
+                    self.state = CsvFieldState::Quoted;
+                }
+                (CsvFieldState::Quoted, _) => self.field.push(ch),
+                (CsvFieldState::Unquoted, '"') => return Err("quote inside an unquoted CSV field".into()),
+                (CsvFieldState::AfterQuote, _) => return Err("unexpected character after a quoted CSV field".into()),
+                (_, '\r' | '\n') => return Err("line ending inside an unquoted CSV field".into()),
+                (CsvFieldState::Start | CsvFieldState::Unquoted, _) => {
+                    self.field.push(ch);
+                    self.state = CsvFieldState::Unquoted;
+                }
             }
-            '"' => quoted = !quoted,
-            ',' if !quoted => {
-                fields.push(core::mem::take(&mut field));
-            }
-            _ => field.push(ch),
         }
+        Ok(())
     }
-    if quoted {
-        return Err("unterminated quoted CSV field".into());
+
+    fn finish(mut self) -> Result<Vec<String>, Box<dyn Error>> {
+        if self.state == CsvFieldState::Quoted {
+            return Err("unterminated quoted CSV field".into());
+        }
+        self.fields.push(self.field);
+        Ok(self.fields)
     }
-    fields.push(field);
-    Ok(fields)
+}
+
+fn parse_csv_record(record: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    let mut parser = CsvRecordParser::default();
+    parser.push(record)?;
+    parser.finish()
 }
 
 fn validate_image(path: &Path, expect: Option<&str>, print_payload: bool) -> Result<(), Box<dyn Error>> {
@@ -1000,6 +1060,41 @@ mod tests {
     fn csv_batch_payload_extracts_quoted_columns() {
         let payload = extract_batch_payload(r#"1,"hello, qr",x"#, BatchFormat::Csv, 2, "text").unwrap();
         assert_eq!(payload, Some("hello, qr".to_owned()));
+    }
+
+    #[test]
+    fn csv_parser_preserves_escaped_quotes_and_empty_columns() {
+        assert_eq!(parse_csv_record(r#",,"say ""hello""",last,"#).unwrap(), ["", "", "say \"hello\"", "last", ""]);
+        assert_eq!(parse_csv_record(r#""","#).unwrap(), ["", ""]);
+        assert_eq!(parse_csv_record(r#""""""#).unwrap(), ["\""]);
+    }
+
+    #[test]
+    fn csv_parser_rejects_quotes_outside_field_boundaries() {
+        for input in [r#"a"b",x"#, r#""a"x,b"#, r#""a" ,b"#, r#""unterminated"#, "a\nb,x"] {
+            assert!(parse_csv_record(input).is_err(), "accepted malformed record: {input}");
+        }
+    }
+
+    #[test]
+    fn csv_reader_preserves_multiline_line_endings_and_skips_empty_payloads() {
+        let mut source = std::io::Cursor::new(b"\n1,\"alpha\r\nbeta\"\r\n2,\"say \"\"hi\"\"\"\n3,\n");
+        let mut line = String::new();
+        let mut line_no = 0;
+        assert_eq!(
+            read_csv_payload(&mut source, &mut line, &mut line_no, 2).unwrap().as_deref(),
+            Some("alpha\r\nbeta")
+        );
+        assert_eq!(line_no, 3);
+        assert_eq!(read_csv_payload(&mut source, &mut line, &mut line_no, 2).unwrap().as_deref(), Some("say \"hi\""));
+        assert!(read_csv_payload(&mut source, &mut line, &mut line_no, 2).unwrap().is_none());
+    }
+
+    #[test]
+    fn csv_reader_reports_record_start_for_unclosed_multiline_field() {
+        let mut source = std::io::Cursor::new(b"\n1,\"alpha\nbeta\n");
+        let error = read_csv_payload(&mut source, &mut String::new(), &mut 0, 2).unwrap_err().to_string();
+        assert_eq!(error, "batch line 2: unterminated quoted CSV field");
     }
 
     #[test]
