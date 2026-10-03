@@ -585,6 +585,115 @@ fn grid_batch_writes_contact_sheet_png() {
 }
 
 #[test]
+fn symbol_grid_matches_tile_pixels_for_streamed_json_and_csv() {
+    use qrcode_rs::batch::{BatchEntry, BatchGridOptions, BatchOutput};
+    use qrcode_rs::render::image::{Rgba, image};
+
+    let dir = temporary_directory("symbol_grid_pixels");
+    let input = dir.join("records.txt");
+    let output = dir.join("output.png");
+    let payloads = ["alpha".to_owned(), "x".repeat(180), "gamma\ndelta".to_owned()];
+    for format in ["json", "csv"] {
+        let content = if format == "json" {
+            serde_json::to_string(&payloads).unwrap()
+        } else {
+            payloads.iter().map(|text| format!("\"{}\"", text.replace('"', "\"\""))).collect::<Vec<_>>().join("\n")
+        };
+        std::fs::write(&input, content).unwrap();
+        for (no_quiet, invert, columns) in [(false, false, 0), (true, false, 2), (false, true, 2), (true, true, 0)] {
+            let (dark, light) = if invert {
+                ([171, 205, 239, 255], [18, 52, 86, 255])
+            } else {
+                ([18, 52, 86, 255], [171, 205, 239, 255])
+            };
+            let tiles = BatchOutput::from_entries(payloads.iter().map(|text| {
+                let image = qrcode_rs::QrCode::new(text)
+                    .unwrap()
+                    .render::<Rgba<u8>>()
+                    .module_dimensions(2, 2)
+                    .quiet_zone(!no_quiet)
+                    .dark_color(Rgba(dark))
+                    .light_color(Rgba(light))
+                    .build();
+                BatchEntry::new("", image)
+            }));
+            let expected = image::load_from_memory(
+                &tiles.to_png_grid(BatchGridOptions::default().columns(columns).background(light)).unwrap(),
+            )
+            .unwrap()
+            .to_rgba8();
+            for parallel in [false, true] {
+                let mut command = bin();
+                command
+                    .args(["--batch"])
+                    .arg(&input)
+                    .args([
+                        "--batch-format",
+                        format,
+                        "--batch-pack",
+                        "grid",
+                        "-f",
+                        "png",
+                        "--size",
+                        "2",
+                        "--dark",
+                        "#123456",
+                        "--light",
+                        "#abcdef",
+                        "--grid-columns",
+                    ])
+                    .arg(columns.to_string())
+                    .arg("-o")
+                    .arg(&output);
+                if no_quiet {
+                    command.arg("--no-quiet-zone");
+                }
+                if invert {
+                    command.arg("--invert");
+                }
+                if parallel {
+                    command.arg("--parallel");
+                }
+                let result = command.output().unwrap();
+                assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+                let actual = image::open(&output).unwrap().to_rgba8();
+                assert_eq!(actual.dimensions(), expected.dimensions());
+                assert!(
+                    actual.as_raw() == expected.as_raw(),
+                    "pixel mismatch for {format}, {parallel}, {no_quiet}, {invert}, {columns}"
+                );
+            }
+        }
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn symbol_grid_rejects_aggregate_canvas_budget_before_allocating_tiles() {
+    let dir = temporary_directory("symbol_grid_budget");
+    let input = dir.join("records.txt");
+    let output = dir.join("output.png");
+    std::fs::write(&input, "alpha\n".repeat(70)).unwrap();
+    std::fs::write(&output, b"existing image").unwrap();
+    for parallel in [false, true] {
+        let mut command = bin();
+        command
+            .args(["--batch"])
+            .arg(&input)
+            .args(["--batch-pack", "grid", "-f", "png", "--size", "40", "-o"])
+            .arg(&output);
+        if parallel {
+            command.arg("--parallel");
+        }
+        let result = command.output().unwrap();
+        assert_eq!(result.status.code(), Some(1));
+        assert!(String::from_utf8_lossy(&result.stderr).contains("resource limits"));
+        assert_eq!(std::fs::read(&output).unwrap(), b"existing image");
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn grid_batch_rejects_excessive_sheet_size_and_preserves_output() {
     let dir = temporary_directory("grid_budget");
     let input = dir.join("records.txt");

@@ -51,6 +51,8 @@
 - Consume ZIP lines, CSV, JSONL and JSON inputs incrementally; use concrete
   buffered JSON readers and retain at most 64 input records and rendered
   outputs in the parallel path.
+- Stream PNG-grid inputs into compact QR symbols and render one final canvas
+  rather than collecting input strings and individual raster tiles.
 
 ### Fixed
 

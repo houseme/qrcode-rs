@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use clap::{Parser, Subcommand, ValueEnum};
 use qrcode_render::{ansi, colors, unicode};
+use qrcode_rs::batch::{BatchEntry, BatchGridOptions, BatchOutput, BatchPackError};
 use qrcode_rs::decode::rqrr::RqrrDecoder;
 use qrcode_rs::decode::{GrayPixels, QrDecoder};
 use qrcode_rs::{EcLevel, QrCode, QrSymbol, Version};
@@ -261,20 +262,59 @@ fn render_batch_grid(cli: &Cli, quiet_zone: bool) -> Result<usize, Box<dyn Error
     let Some(output) = &cli.output else {
         return Err("batch mode requires --output <DIR|FILE>".into());
     };
-    let inputs = read_inputs(cli)?;
-    if inputs.is_empty() {
+    let mut entries = Vec::new();
+    let mut pending = Vec::with_capacity(if cli.parallel { ZIP_PARALLEL_CHUNK_SIZE } else { 0 });
+    let input_result = for_each_batch_payload(cli, |text| {
+        if cli.parallel {
+            pending.push(text);
+            if pending.len() == ZIP_PARALLEL_CHUNK_SIZE {
+                encode_grid_chunk(&mut pending, &mut entries, cli, quiet_zone)?;
+            }
+        } else {
+            entries.push(BatchEntry::new("", encode_grid_symbol(&text, cli, quiet_zone)?));
+        }
+        Ok(())
+    });
+    encode_grid_chunk(&mut pending, &mut entries, cli, quiet_zone)?;
+    input_result?;
+    if entries.is_empty() {
         return Err("no non-empty input records found".into());
     }
-
-    let images = if cli.parallel {
-        render_many_png_images_parallel(&inputs, cli, quiet_zone)?
-    } else {
-        inputs.iter().map(|text| render_png_image(text, cli, quiet_zone)).collect::<Result<Vec<_>, _>>()?
-    };
-    let bytes = encode_png_grid(&images, cli)?;
+    let count = entries.len();
+    let bytes = encode_png_grid(BatchOutput::from_entries(entries), cli, quiet_zone)?;
     std::fs::write(output, bytes)?;
     eprintln!("wrote {output}");
-    Ok(inputs.len())
+    Ok(count)
+}
+
+fn encode_grid_symbol(text: &str, cli: &Cli, quiet_zone: bool) -> Result<QrCode, Box<dyn Error>> {
+    let mut builder = QrCode::builder(text.as_bytes()).ec_level(cli.ec_level);
+    if let Some(version) = cli.qr_version {
+        builder = builder.version(version);
+    }
+    let code = builder.build()?;
+    validate_png_size(&code, cli.size, quiet_zone)?;
+    Ok(code)
+}
+
+fn encode_grid_chunk(
+    pending: &mut Vec<String>,
+    entries: &mut Vec<BatchEntry<QrCode>>,
+    cli: &Cli,
+    quiet_zone: bool,
+) -> Result<(), Box<dyn Error>> {
+    if pending.is_empty() {
+        return Ok(());
+    }
+    let results = pending
+        .par_iter()
+        .map(|text| encode_grid_symbol(text, cli, quiet_zone).map_err(|error| error.to_string()))
+        .collect::<Vec<_>>();
+    pending.clear();
+    for result in results {
+        entries.push(BatchEntry::new("", result?));
+    }
+    Ok(())
 }
 
 fn render_batch_zip(cli: &Cli, quiet_zone: bool) -> Result<usize, Box<dyn Error>> {
@@ -334,18 +374,6 @@ fn render_many_parallel(inputs: &[String], cli: &Cli, quiet_zone: bool) -> Resul
     let rendered = inputs
         .par_iter()
         .map(|text| render_one(text, cli, quiet_zone).map_err(|err| err.to_string()))
-        .collect::<Vec<_>>();
-    rendered.into_iter().collect::<Result<Vec<_>, _>>().map_err(Into::into)
-}
-
-fn render_many_png_images_parallel(
-    inputs: &[String],
-    cli: &Cli,
-    quiet_zone: bool,
-) -> Result<Vec<qrcode_image::RgbaImage>, Box<dyn Error>> {
-    let rendered = inputs
-        .par_iter()
-        .map(|text| render_png_image(text, cli, quiet_zone).map_err(|err| err.to_string()))
         .collect::<Vec<_>>();
     rendered.into_iter().collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
@@ -757,19 +785,6 @@ fn render_one(text: &str, cli: &Cli, quiet_zone: bool) -> Result<Vec<u8>, Box<dy
     Ok(bytes)
 }
 
-fn render_png_image(text: &str, cli: &Cli, quiet_zone: bool) -> Result<qrcode_image::RgbaImage, Box<dyn Error>> {
-    let mut builder = QrCode::builder(text.as_bytes()).ec_level(cli.ec_level);
-    if let Some(version) = cli.qr_version {
-        builder = builder.version(version);
-    }
-    let code = builder.build()?;
-    let (dark_str, light_str) = if cli.invert { (&cli.light, &cli.dark) } else { (&cli.dark, &cli.light) };
-    let dark_rgb = parse_rgb(dark_str, "dark")?;
-    let light_rgb = parse_rgb(light_str, "light")?;
-    validate_png_size(&code, cli.size, quiet_zone)?;
-    Ok(render_png_image_with_colors(code, cli, quiet_zone, dark_rgb, light_rgb)?)
-}
-
 fn render_png_image_with_colors(
     code: QrCode,
     cli: &Cli,
@@ -811,70 +826,21 @@ fn validate_png_size(code: &QrCode, module_size: u32, quiet_zone: bool) -> Resul
     Ok(())
 }
 
-fn encode_png_grid(images: &[qrcode_image::RgbaImage], cli: &Cli) -> Result<Vec<u8>, Box<dyn Error>> {
-    use qrcode_image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
-
-    if images.is_empty() {
-        return Err("no non-empty input records found".into());
-    }
-    let columns_usize = grid_columns(cli.grid_columns, images.len())?;
-    let rows_usize = images.len().div_ceil(columns_usize);
-    let cell_width = images.iter().map(qrcode_image::RgbaImage::width).max().unwrap_or(1);
-    let cell_height = images.iter().map(qrcode_image::RgbaImage::height).max().unwrap_or(1);
-    let columns = u32::try_from(columns_usize).map_err(|_| "grid column count exceeds u32::MAX")?;
-    let rows = u32::try_from(rows_usize).map_err(|_| "grid row count exceeds u32::MAX")?;
-    let sheet_width = cell_width.checked_mul(columns).ok_or("grid width exceeds u32::MAX")?;
-    let sheet_height = cell_height.checked_mul(rows).ok_or("grid height exceeds u32::MAX")?;
-    let (_, light_str) = if cli.invert { (&cli.light, &cli.dark) } else { (&cli.dark, &cli.light) };
+fn encode_png_grid(codes: BatchOutput<QrCode>, cli: &Cli, quiet_zone: bool) -> Result<Vec<u8>, Box<dyn Error>> {
+    let (dark_str, light_str) = if cli.invert { (&cli.light, &cli.dark) } else { (&cli.dark, &cli.light) };
+    parse_rgb(dark_str, "dark")?;
     let light_rgb = parse_rgb(light_str, "light")?;
-    let buffer_len = grid_buffer_len(sheet_width, sheet_height)?;
-    let mut pixels = Vec::new();
-    pixels.try_reserve_exact(buffer_len).map_err(|_| "could not allocate PNG grid pixel buffer")?;
-    pixels.resize(buffer_len, 0);
-    let mut sheet = RgbaImage::from_raw(sheet_width, sheet_height, pixels).ok_or("invalid PNG grid dimensions")?;
-    for pixel in sheet.pixels_mut() {
-        *pixel = Rgba([light_rgb.0, light_rgb.1, light_rgb.2, 255]);
-    }
-
-    for (index, image) in images.iter().enumerate() {
-        let col = u32::try_from(index % columns_usize).map_err(|_| "grid column index exceeds u32::MAX")?;
-        let row = u32::try_from(index / columns_usize).map_err(|_| "grid row index exceeds u32::MAX")?;
-        let left = col * cell_width + (cell_width - image.width()) / 2;
-        let top = row * cell_height + (cell_height - image.height()) / 2;
-        qrcode_image::image::imageops::replace(&mut sheet, image, i64::from(left), i64::from(top));
-    }
-
-    qrcode_image::encode_to_format(&DynamicImage::ImageRgba8(sheet), ImageFormat::Png).map_err(Into::into)
-}
-
-fn grid_columns(requested: usize, count: usize) -> Result<usize, Box<dyn Error>> {
-    if count == 0 {
-        return Err("no non-empty input records found".into());
-    }
-    if requested > 0 {
-        return Ok(requested);
-    }
-    let mut columns = 1usize;
-    while columns.saturating_mul(columns) < count {
-        columns += 1;
-    }
-    Ok(columns)
-}
-
-fn grid_buffer_len(width: u32, height: u32) -> Result<usize, Box<dyn Error>> {
-    if width == 0 || height == 0 || u64::from(width) > MAX_PNG_SIDE || u64::from(height) > MAX_PNG_SIDE {
-        return Err(format!("PNG grid dimensions {width}x{height} exceed the {MAX_PNG_SIDE}px side limit").into());
-    }
-    let pixels = u64::from(width) * u64::from(height);
-    if pixels > MAX_PNG_PIXELS {
-        return Err(format!("PNG grid area {pixels} pixels exceeds the {MAX_PNG_PIXELS} pixel limit").into());
-    }
-    let bytes = pixels.checked_mul(4).ok_or("PNG grid buffer length overflows u64")?;
-    let len = usize::try_from(bytes).map_err(|_| "PNG grid buffer length exceeds usize::MAX")?;
-    if len > isize::MAX as usize {
-        return Err("PNG grid buffer length exceeds isize::MAX".into());
-    }
-    Ok(len)
+    let template = qrcode_rs::QrTemplate::minimal()
+        .with_dark_color(dark_str.clone())
+        .with_light_color(light_str.clone())
+        .with_module_size(cli.size, cli.size)
+        .with_quiet_zone(quiet_zone);
+    let options =
+        BatchGridOptions::default().columns(cli.grid_columns).background([light_rgb.0, light_rgb.1, light_rgb.2, 255]);
+    codes.to_png_grid_with(options, &template).map_err(|error| match error {
+        BatchPackError::GridTooLarge => "PNG grid dimensions exceed side or backend resource limits".into(),
+        error => Box::new(error) as Box<dyn Error>,
+    })
 }
 
 fn unicode_render(code: &QrCode, mode: UnicodeMode, quiet_zone: bool) -> String {
@@ -1438,11 +1404,18 @@ mod tests {
     }
 
     #[test]
-    fn grid_buffer_budget_rejects_overflow_and_excessive_area() {
-        assert!(grid_buffer_len(65_536, 1).is_err());
-        assert!(grid_buffer_len(16_385, 16_385).is_err());
-        assert!(grid_buffer_len(0, 1).is_err());
-        assert_eq!(grid_buffer_len(16_384, 16_384).unwrap(), 1_073_741_824);
+    fn grid_symbol_budget_rejects_excessive_dimensions_before_allocation() {
+        let mut cli = cli_with_text(None);
+        cli.format = Format::Png;
+        for (size, columns) in [(1, 65_536), (300, 1)] {
+            cli.size = size;
+            cli.grid_columns = columns;
+            let code = QrCode::new("alpha").unwrap();
+            let codes = BatchOutput::from_entries([BatchEntry::new("", code)]);
+            let error = encode_png_grid(codes, &cli, true).unwrap_err().to_string();
+            assert!(error.contains("PNG grid dimensions"));
+            assert!(error.contains("resource limits"));
+        }
     }
 
     #[test]
