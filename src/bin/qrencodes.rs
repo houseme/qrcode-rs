@@ -2,10 +2,11 @@
 
 use std::error::Error;
 use std::fs::File;
-use std::io::{BufRead, BufReader, IsTerminal, Read, Write};
+use std::io::{BufRead, BufReader, BufWriter, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use clap::{Parser, Subcommand, ValueEnum};
 use qrcode_render::{ansi, colors, unicode};
@@ -16,6 +17,7 @@ use rayon::prelude::*;
 
 const MAX_PNG_SIDE: u64 = 65_535;
 const MAX_PNG_PIXELS: u64 = 268_435_456;
+static TEMP_OUTPUT_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Parser)]
 #[command(name = "qrencodes", version, about = "Generate QR codes in various output formats")]
@@ -290,17 +292,20 @@ fn render_batch_zip(cli: &Cli, quiet_zone: bool) -> Result<usize, Box<dyn Error>
     };
     let mut archive = ZipStoreWriter::create(Path::new(output))?;
 
-    let written = if cli.parallel || cli.batch_format == BatchFormat::Json {
+    let written = if cli.parallel {
         let inputs = read_inputs(cli)?;
-        let rendered = if cli.parallel {
-            render_many_parallel(&inputs, cli, quiet_zone)?
-        } else {
-            inputs.iter().map(|text| render_one(text, cli, quiet_zone)).collect::<Result<Vec<_>, _>>()?
-        };
+        let rendered = render_many_parallel(&inputs, cli, quiet_zone)?;
         for (index, bytes) in rendered.iter().enumerate() {
             archive.write_file(&batch_file_name(index, cli.format), bytes)?;
         }
         rendered.len()
+    } else if cli.batch_format == BatchFormat::Json {
+        let inputs = read_inputs(cli)?;
+        for (index, text) in inputs.iter().enumerate() {
+            let bytes = render_one(text, cli, quiet_zone)?;
+            archive.write_file(&batch_file_name(index, cli.format), &bytes)?;
+        }
+        inputs.len()
     } else {
         let Some(path) = &cli.batch else {
             return Ok(0);
@@ -329,6 +334,9 @@ fn render_batch_zip(cli: &Cli, quiet_zone: bool) -> Result<usize, Box<dyn Error>
         written
     };
 
+    if written == 0 {
+        return Err("no non-empty input records found".into());
+    }
     archive.finish()?;
     eprintln!("wrote {output}");
     Ok(written)
@@ -657,8 +665,14 @@ fn encode_png_grid(images: &[qrcode_image::RgbaImage], cli: &Cli) -> Result<Vec<
     let sheet_height = cell_height.checked_mul(rows).ok_or("grid height exceeds u32::MAX")?;
     let (_, light_str) = if cli.invert { (&cli.light, &cli.dark) } else { (&cli.dark, &cli.light) };
     let light_rgb = parse_rgb(light_str, "light")?;
-    let mut sheet =
-        RgbaImage::from_pixel(sheet_width, sheet_height, Rgba([light_rgb.0, light_rgb.1, light_rgb.2, 255]));
+    let buffer_len = grid_buffer_len(sheet_width, sheet_height)?;
+    let mut pixels = Vec::new();
+    pixels.try_reserve_exact(buffer_len).map_err(|_| "could not allocate PNG grid pixel buffer")?;
+    pixels.resize(buffer_len, 0);
+    let mut sheet = RgbaImage::from_raw(sheet_width, sheet_height, pixels).ok_or("invalid PNG grid dimensions")?;
+    for pixel in sheet.pixels_mut() {
+        *pixel = Rgba([light_rgb.0, light_rgb.1, light_rgb.2, 255]);
+    }
 
     for (index, image) in images.iter().enumerate() {
         let col = u32::try_from(index % columns_usize).map_err(|_| "grid column index exceeds u32::MAX")?;
@@ -683,6 +697,22 @@ fn grid_columns(requested: usize, count: usize) -> Result<usize, Box<dyn Error>>
         columns += 1;
     }
     Ok(columns)
+}
+
+fn grid_buffer_len(width: u32, height: u32) -> Result<usize, Box<dyn Error>> {
+    if width == 0 || height == 0 || u64::from(width) > MAX_PNG_SIDE || u64::from(height) > MAX_PNG_SIDE {
+        return Err(format!("PNG grid dimensions {width}x{height} exceed the {MAX_PNG_SIDE}px side limit").into());
+    }
+    let pixels = u64::from(width) * u64::from(height);
+    if pixels > MAX_PNG_PIXELS {
+        return Err(format!("PNG grid area {pixels} pixels exceeds the {MAX_PNG_PIXELS} pixel limit").into());
+    }
+    let bytes = pixels.checked_mul(4).ok_or("PNG grid buffer length overflows u64")?;
+    let len = usize::try_from(bytes).map_err(|_| "PNG grid buffer length exceeds usize::MAX")?;
+    if len > isize::MAX as usize {
+        return Err("PNG grid buffer length exceeds isize::MAX".into());
+    }
+    Ok(len)
 }
 
 fn unicode_render(code: &QrCode, mode: UnicodeMode, quiet_zone: bool) -> String {
@@ -738,7 +768,10 @@ fn ext_for(format: Format) -> &'static str {
 }
 
 struct ZipStoreWriter {
-    file: File,
+    file: Option<BufWriter<File>>,
+    temporary_path: PathBuf,
+    output_path: PathBuf,
+    committed: bool,
     offset: u64,
     entries: Vec<ZipEntry>,
 }
@@ -752,7 +785,26 @@ struct ZipEntry {
 
 impl ZipStoreWriter {
     fn create(path: &Path) -> Result<Self, Box<dyn Error>> {
-        Ok(Self { file: File::create(path)?, offset: 0, entries: Vec::new() })
+        let parent = path.parent().filter(|parent| !parent.as_os_str().is_empty()).unwrap_or(Path::new("."));
+        for _ in 0..128 {
+            let sequence = TEMP_OUTPUT_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+            let temporary_path = parent.join(format!(".qrencodes-{}-{sequence}.tmp", std::process::id()));
+            match File::options().write(true).create_new(true).open(&temporary_path) {
+                Ok(file) => {
+                    return Ok(Self {
+                        file: Some(BufWriter::new(file)),
+                        temporary_path,
+                        output_path: path.to_owned(),
+                        committed: false,
+                        offset: 0,
+                        entries: Vec::new(),
+                    });
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => return Err(error.into()),
+            }
+        }
+        Err("could not create a temporary ZIP output file".into())
     }
 
     fn write_file(&mut self, name: &str, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
@@ -824,11 +876,18 @@ impl ZipStoreWriter {
         self.write_u32(central_dir_size)?;
         self.write_u32(central_dir_offset)?;
         self.write_u16(0)?;
+        let mut file = self.file.take().ok_or("ZIP output file is already closed")?;
+        file.flush()?;
+        // Close the handle before renaming, including when the input and output
+        // paths are identical. Drop removes this temporary file on any error.
+        drop(file);
+        std::fs::rename(&self.temporary_path, &self.output_path)?;
+        self.committed = true;
         Ok(())
     }
 
     fn write_all(&mut self, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
-        self.file.write_all(bytes)?;
+        self.file.as_mut().ok_or("ZIP output file is already closed")?.write_all(bytes)?;
         self.offset += bytes.len() as u64;
         Ok(())
     }
@@ -839,6 +898,17 @@ impl ZipStoreWriter {
 
     fn write_u32(&mut self, value: u32) -> Result<(), Box<dyn Error>> {
         self.write_all(&value.to_le_bytes())
+    }
+}
+
+impl Drop for ZipStoreWriter {
+    fn drop(&mut self) {
+        // The handle must be closed before cleanup on platforms that forbid
+        // removing an open file.
+        drop(self.file.take());
+        if !self.committed {
+            let _ = std::fs::remove_file(&self.temporary_path);
+        }
     }
 }
 
@@ -1061,6 +1131,44 @@ mod tests {
 
         fs::remove_file(input).unwrap();
         fs::remove_file(output).unwrap();
+    }
+
+    #[test]
+    fn unfinished_zip_cleans_up_temporary_file_and_preserves_output() {
+        let output = temporary_path("unfinished-zip");
+        fs::write(&output, b"original archive").unwrap();
+        let temporary;
+        {
+            let mut archive = ZipStoreWriter::create(&output).unwrap();
+            temporary = archive.temporary_path.clone();
+            archive.write_file("qr.txt", b"partially rendered").unwrap();
+            assert_eq!(temporary.parent(), output.parent());
+            assert_eq!(fs::read(&output).unwrap(), b"original archive");
+        }
+        assert!(!temporary.exists());
+        assert_eq!(fs::read(&output).unwrap(), b"original archive");
+        fs::remove_file(output).unwrap();
+    }
+
+    #[test]
+    fn zip_rename_failure_cleans_up_temporary_file() {
+        let output = temporary_path("zip-rename-failure");
+        fs::create_dir(&output).unwrap();
+        let mut archive = ZipStoreWriter::create(&output).unwrap();
+        let temporary = archive.temporary_path.clone();
+        archive.write_file("qr.txt", b"payload").unwrap();
+        assert!(archive.finish().is_err());
+        assert!(!temporary.exists());
+        assert!(output.is_dir());
+        fs::remove_dir(output).unwrap();
+    }
+
+    #[test]
+    fn grid_buffer_budget_rejects_overflow_and_excessive_area() {
+        assert!(grid_buffer_len(65_536, 1).is_err());
+        assert!(grid_buffer_len(16_385, 16_385).is_err());
+        assert!(grid_buffer_len(0, 1).is_err());
+        assert_eq!(grid_buffer_len(16_384, 16_384).unwrap(), 1_073_741_824);
     }
 
     #[test]

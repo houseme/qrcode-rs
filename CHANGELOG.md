@@ -20,6 +20,8 @@
   without allocating uppercase strings, preserving escaping and
   duplicate-field behavior.
 - Borrow Stored ZIP payloads instead of allocating an intermediate copy.
+- Buffer ZIP file writes and render sequential JSON ZIP entries one at a time
+  rather than retaining every rendered output.
 
 ### Fixed
 
@@ -47,6 +49,9 @@
   and nested-option layout.
 - Bound PNG contact-sheet dimensions and allocation size, mark ZIP entry names
   as UTF-8, and keep generated batch suffixes unique beyond usize::MAX.
+- Write CLI ZIP batches to a temporary file and replace the destination only
+  after successful finalization, preserving existing output and same-path
+  input on errors; apply PNG budgets to the complete contact sheet.
 
 ### Added
 

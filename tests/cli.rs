@@ -13,6 +13,36 @@ fn bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_qrencodes"))
 }
 
+fn temporary_directory(name: &str) -> std::path::PathBuf {
+    let stamp = time::SystemTime::now().duration_since(time::UNIX_EPOCH).unwrap().as_nanos();
+    let dir = std::env::temp_dir().join(format!("qrencodes_cli_{name}_{}_{stamp}", std::process::id()));
+    std::fs::create_dir(&dir).unwrap();
+    dir
+}
+
+// Decode stored local records to verify the archive contains complete rendered
+// payloads, rather than checking only its signature or embedded file names.
+fn stored_zip_entries(bytes: &[u8]) -> Vec<(String, Vec<u8>)> {
+    let mut offset = 0;
+    let mut entries = Vec::new();
+    while bytes.get(offset..offset + 4) == Some(b"PK\x03\x04") {
+        let compression = u16::from_le_bytes(bytes[offset + 8..offset + 10].try_into().unwrap());
+        assert_eq!(compression, 0);
+        let size = u32::from_le_bytes(bytes[offset + 18..offset + 22].try_into().unwrap()) as usize;
+        let name_len = u16::from_le_bytes(bytes[offset + 26..offset + 28].try_into().unwrap()) as usize;
+        let extra_len = u16::from_le_bytes(bytes[offset + 28..offset + 30].try_into().unwrap()) as usize;
+        let name_start = offset + 30;
+        let payload_start = name_start + name_len + extra_len;
+        let name = String::from_utf8(bytes[name_start..name_start + name_len].to_vec()).unwrap();
+        let payload = bytes[payload_start..payload_start + size].to_vec();
+        entries.push((name, payload));
+        offset = payload_start + size;
+    }
+    assert_eq!(&bytes[offset..offset + 4], b"PK\x01\x02");
+    assert_eq!(&bytes[bytes.len() - 22..bytes.len() - 18], b"PK\x05\x06");
+    entries
+}
+
 #[test]
 fn help_exits_zero() {
     let out = bin().arg("--help").output().expect("spawn qrencodes");
@@ -178,6 +208,120 @@ fn zip_batch_writes_archive_entries() {
 }
 
 #[test]
+fn zip_batch_can_replace_its_input_after_reading_all_records() {
+    let dir = temporary_directory("zip_same_path");
+    let path = dir.join("records.txt");
+    std::fs::write(&path, "alpha\nbeta\n").unwrap();
+
+    let out = bin()
+        .args(["--batch"])
+        .arg(&path)
+        .args(["--batch-pack", "zip", "-f", "svg", "-o"])
+        .arg(&path)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let entries = stored_zip_entries(&std::fs::read(&path).unwrap());
+    assert_eq!(entries.len(), 2);
+    for ((name, payload), (expected_name, text)) in
+        entries.iter().zip([("qr-0001.svg", "alpha"), ("qr-0002.svg", "beta")])
+    {
+        let expected = qrcode_rs::QrCode::new(text)
+            .unwrap()
+            .render::<qrcode_rs::render::svg::Color>()
+            .dark_color(qrcode_rs::render::svg::Color("#000000"))
+            .light_color(qrcode_rs::render::svg::Color("#ffffff"))
+            .build();
+        assert_eq!(name, expected_name);
+        assert_eq!(payload, expected.as_bytes());
+    }
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "temporary ZIP file was not removed");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn zip_batch_preserves_existing_output_on_input_and_render_errors() {
+    let dir = temporary_directory("zip_failure");
+    let input = dir.join("records.txt");
+    let output = dir.join("output.zip");
+    let invalid_payload = format!("alpha\n{}\n", "x".repeat(4_000));
+    for (format, content, parallel) in [
+        ("lines", invalid_payload.as_str(), false),
+        ("lines", invalid_payload.as_str(), true),
+        ("jsonl", "{\"text\":\"alpha\"}\n{\"text\":42}\n", false),
+        ("json", "[\"alpha\", 42]", false),
+        ("lines", "\n \n", false),
+    ] {
+        std::fs::write(&input, content).unwrap();
+        std::fs::write(&output, b"existing output").unwrap();
+        let mut command = bin();
+        command
+            .args(["--batch"])
+            .arg(&input)
+            .args(["--batch-format", format, "--batch-pack", "zip", "-f", "svg", "-o"])
+            .arg(&output);
+        if parallel {
+            command.arg("--parallel");
+        }
+        let out = command.output().unwrap();
+        assert!(!out.status.success(), "expected failure for {format}, parallel={parallel}");
+        assert_eq!(std::fs::read(&output).unwrap(), b"existing output");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2, "temporary ZIP file was not removed");
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn failed_zip_batch_does_not_create_an_output_archive() {
+    let dir = temporary_directory("zip_no_output");
+    let input = dir.join("records.json");
+    let output = dir.join("output.zip");
+    std::fs::write(&input, "{invalid json").unwrap();
+    let out = bin()
+        .args(["--batch"])
+        .arg(&input)
+        .args(["--batch-format", "json", "--batch-pack", "zip", "-f", "svg", "-o"])
+        .arg(&output)
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(!output.exists());
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn sequential_json_zip_contains_complete_ordered_payloads() {
+    let dir = temporary_directory("json_zip");
+    let input = dir.join("records.json");
+    let output = dir.join("output.zip");
+    std::fs::write(&input, r#"["alpha","beta"]"#).unwrap();
+    let out = bin()
+        .args(["--batch"])
+        .arg(&input)
+        .args(["--batch-format", "json", "--batch-pack", "zip", "-f", "svg", "-o"])
+        .arg(&output)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let entries = stored_zip_entries(&std::fs::read(&output).unwrap());
+    assert_eq!(entries.len(), 2);
+    for ((name, payload), (expected_name, text)) in
+        entries.iter().zip([("qr-0001.svg", "alpha"), ("qr-0002.svg", "beta")])
+    {
+        let expected = qrcode_rs::QrCode::new(text)
+            .unwrap()
+            .render::<qrcode_rs::render::svg::Color>()
+            .dark_color(qrcode_rs::render::svg::Color("#000000"))
+            .light_color(qrcode_rs::render::svg::Color("#ffffff"))
+            .build();
+        assert_eq!(name, expected_name);
+        assert_eq!(payload, expected.as_bytes());
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn grid_batch_writes_contact_sheet_png() {
     let stamp = time::SystemTime::now().duration_since(time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
     let image = std::env::temp_dir().join(format!("qrencodes_cli_grid_batch_{stamp}.png"));
@@ -197,6 +341,26 @@ fn grid_batch_writes_contact_sheet_png() {
 
     std::fs::remove_file(list).unwrap();
     std::fs::remove_file(image).unwrap();
+}
+
+#[test]
+fn grid_batch_rejects_excessive_sheet_size_and_preserves_output() {
+    let dir = temporary_directory("grid_budget");
+    let input = dir.join("records.txt");
+    let output = dir.join("output.png");
+    std::fs::write(&input, "alpha\n").unwrap();
+    std::fs::write(&output, b"existing image").unwrap();
+    let out = bin()
+        .args(["--batch"])
+        .arg(&input)
+        .args(["--batch-pack", "grid", "--grid-columns", "1000000", "-f", "png", "--size", "1", "-o"])
+        .arg(&output)
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("PNG grid dimensions"));
+    assert_eq!(std::fs::read(&output).unwrap(), b"existing image");
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
