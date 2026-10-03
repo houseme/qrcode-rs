@@ -113,6 +113,8 @@
 - Reject read-only, symlink and special final destinations, and avoid
   temporary-name case aliases on case-insensitive filesystems while preserving
   stdout behavior.
+- Propagate image backend resource-limit errors through high-level rendering
+  and PNG/JPEG helpers instead of panicking.
 
 ### Added
 

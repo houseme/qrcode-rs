@@ -37,7 +37,10 @@ let png = encode_png(&source, RenderOptions::default().module_size(4, 4))?;
 
 `render_rgba`, `render_luma`, and `render_dynamic` provide the corresponding
 in-memory image forms. Dimension arithmetic is checked before allocating an
-image, so oversized module or quiet-zone settings return an error.
+image, so oversized module or quiet-zone settings return an error. Requests
+that exceed the shared backend pixel-buffer budget also return
+`ImageRenderError::Render(RenderError::OutputTooLarge)`; the source-to-PNG/JPEG
+helpers preserve this error through `EncodeError::Render`.
 Module dimensions must be non-zero; invalid options return
 `ImageRenderError::InvalidModuleDimensions` instead of being silently
 clamped. Options can also be checked ahead of time with

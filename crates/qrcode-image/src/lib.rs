@@ -119,7 +119,7 @@ impl RenderOptions {
 /// Errors returned by the high-level image rendering helpers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImageRenderError {
-    /// The source module grid is invalid.
+    /// The shared renderer rejected the source grid or the backend resource limits.
     Render(RenderError),
     /// A module dimension was set to zero.
     InvalidModuleDimensions {
@@ -200,8 +200,9 @@ impl std::error::Error for EncodeError {
 ///
 /// # Errors
 ///
-/// Returns an error for malformed module grids or when the requested image
-/// dimensions cannot be represented by the `image` crate.
+/// Returns an error for malformed module grids, when the requested image
+/// dimensions cannot be represented by the `image` crate, or when the image
+/// pixel buffer exceeds the shared backend resource limits.
 pub fn render<P, S>(source: &S, options: RenderOptions) -> Result<P::Image, ImageRenderError>
 where
     P: Pixel,
@@ -224,7 +225,7 @@ where
         total_modules.checked_mul(module_height).ok_or(ImageRenderError::OutputTooLarge { width, height: u32::MAX })?;
     let _ = (width, height);
     renderer.module_dimensions(module_width, module_height).quiet_zone(options.include_quiet_zone);
-    Ok(renderer.build())
+    renderer.try_build().map_err(ImageRenderError::Render)
 }
 
 #[cfg(feature = "image")]
@@ -283,7 +284,10 @@ where
 
 #[cfg(all(test, feature = "image"))]
 mod tests {
-    use super::{Luma, RenderOptions, Renderer, encode_jpeg, encode_png, render_dynamic, render_luma};
+    use super::{
+        EncodeError, ImageRenderError, Luma, RenderError, RenderOptions, Renderer, Rgb, encode_jpeg, encode_png,
+        render, render_dynamic, render_luma, render_rgba,
+    };
     use qrcode_core::{Color, ModuleView};
 
     #[test]
@@ -335,6 +339,44 @@ mod tests {
         let error = render_luma(&source, RenderOptions::default().module_size(u32::MAX, 1)).unwrap_err();
 
         assert!(matches!(error, super::ImageRenderError::OutputTooLarge { .. }));
+    }
+
+    #[test]
+    fn image_helpers_return_backend_budget_errors_without_allocating() {
+        let modules = [Color::Dark];
+        let source = ModuleView::new(&modules, 1).expect("valid test grid");
+        let options = RenderOptions::default().module_size(65_536, 65_536).without_quiet_zone();
+        let expected = ImageRenderError::Render(RenderError::OutputTooLarge);
+
+        assert_eq!(render_luma(&source, options).unwrap_err(), expected);
+        assert_eq!(render_rgba(&source, options).unwrap_err(), expected);
+        assert_eq!(render_dynamic(&source, options).unwrap_err(), expected);
+        assert_eq!(render::<Rgb<u16>, _>(&source, options).unwrap_err(), expected);
+        assert_eq!(render::<Rgb<f64>, _>(&source, options).unwrap_err(), expected);
+    }
+
+    #[test]
+    fn encoders_preserve_backend_budget_errors_without_allocating() {
+        let modules = [Color::Light];
+        let source = ModuleView::new(&modules, 1).expect("valid test grid");
+        let options = RenderOptions::default().module_size(65_536, 65_536).without_quiet_zone();
+
+        for result in [encode_png(&source, options), encode_jpeg(&source, options)] {
+            assert!(matches!(result, Err(EncodeError::Render(ImageRenderError::Render(RenderError::OutputTooLarge)))));
+        }
+    }
+
+    #[test]
+    fn high_level_rgba_render_preserves_exact_non_square_module_pixels() {
+        let modules = [Color::Dark, Color::Light, Color::Light, Color::Dark];
+        let source = ModuleView::new(&modules, 2).expect("valid test grid");
+        let options = RenderOptions::default().module_size(3, 2).without_quiet_zone();
+        let actual = render_rgba(&source, options).unwrap();
+        let expected = ::image::RgbaImage::from_fn(6, 4, |x, y| {
+            let index = (y / 2 * 2 + x / 3) as usize;
+            if modules[index] == Color::Dark { ::image::Rgba([0, 0, 0, 255]) } else { ::image::Rgba([255; 4]) }
+        });
+        assert_eq!(actual, expected);
     }
 
     #[test]
