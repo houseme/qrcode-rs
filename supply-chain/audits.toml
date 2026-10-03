@@ -4,4 +4,26 @@
 [criteria.qrcode-rs-review]
 description = "qrcode-rs maintainers reviewed the dependency for the release policy in effect."
 
-[audits]
+[[audits.cc]]
+who = "OpenAI Codex (AI-assisted source-diff review)"
+criteria = "safe-to-deploy"
+delta = "1.5.1 -> 1.6.0"
+notes = """
+Reviewed the complete published source and package-metadata delta. Both extracted source versions match their cached crate archives byte-for-byte. The existing 1.5.1 exemption remains the baseline trust; this record covers only the reviewed delta.
+
+Checked the first-use environment snapshot and explicit child-process overrides; compiler tool and flag-probe cache keys include target, host, C++/CUDA and environment state. Debug output hides environment values and command-line logging omits the inherited environment. Checked bounded, complete-line compiler stdout/stderr forwarding, the new logger callback's panic behavior, archive-name validation as a single normal path component, and reuse of the existing MSVC and standard-library link handling. CXXSTDLIB_STATIC is enabled only through an explicit setting. No new unsafe code, dependency or native-compiler capability was introduced.
+
+Reviewed the accompanying inline regressions. Upstream crate tests were not rerun locally across all platforms.
+"""
+
+[[audits.tokio]]
+who = "OpenAI Codex (AI-assisted source-diff review)"
+criteria = "safe-to-deploy"
+delta = "1.53.1 -> 1.53.2"
+notes = """
+Reviewed the complete published source and package-metadata delta. Both extracted source versions match their cached crate archives byte-for-byte. Runtime dependency declarations and build-script policy are unchanged. The existing 1.53.1 exemption remains the baseline trust; this record covers only the reviewed delta.
+
+Checked blocking-pool shutdown before user Drop code, Windows child wait cancellation before handle close, checked buffered seek arithmetic, io_uring length bounds and completion-state preservation, AsyncFd deregistration ownership, MPSC wrapping indices and permit ownership, semaphore waiter cleanup and permit accounting across tracing panics, waker drops outside locks, timer shutdown/cancellation, and task-dump leaf wakes and runtime ownership. The new semaphore waiter reference remains protected by the wait-list lock and the cleanup flag is established before panic-capable callbacks. No new runtime dependency or build-time capability was introduced.
+
+Reviewed the accompanying upstream regressions for wraparound, reentrant/panicking wakers, semaphore limits, io_uring bounds, Windows handle lifetime and task-dump progress. Upstream crate tests were not rerun locally across all platforms. qrcode-rs currently enables only Tokio's rt feature; the review also covered changed modules beyond that selected feature.
+"""

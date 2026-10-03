@@ -32,7 +32,7 @@ jobs:
         with:
           tool: cargo-vet
       - name: Verify the locked audit store
-        run: cargo vet check
+        run: cargo vet --locked
 
   minimal-feature:
     name: Minimal feature dependency check

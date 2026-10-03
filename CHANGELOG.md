@@ -22,7 +22,7 @@
 - Borrow Stored ZIP payloads instead of allocating an intermediate copy.
 - Buffer ZIP file writes and render sequential JSON ZIP entries one at a time
   rather than retaining every rendered output.
-- Update Tokio to 1.53.2 and locked cc/libc versions, and set the serde_json
+- Update Tokio to 1.53.2 and cc to 1.6.0, and set the serde_json
   and proptest minimum versions to the already locked 1.0.151 and 1.11.0
   releases.
 - Reuse a single Reed-Solomon scratch buffer and write error-correction bytes
@@ -78,6 +78,9 @@
 - Track text capacities accurately when repainting pixels and handle empty
   Unicode/ANSI canvases without division by zero; image validation follows
   row-stride arithmetic on 32-bit targets.
+- Retain libc 0.2.189 after reviewing MIPS64 and x32 ABI regressions in
+  0.2.190; record reviewed cc/Tokio delta audits and check the committed
+  cargo-vet store with --locked.
 
 ### Added
 
