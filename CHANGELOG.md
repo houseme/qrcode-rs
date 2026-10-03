@@ -42,6 +42,9 @@
 - Reuse the first row when drawing wider multi-row RGB rectangles, without
   allocations, while retaining the existing grayscale, RGBA, tiny-rectangle
   and single-row paths.
+- Reuse parsed segments during Structured Append encoding and reassemble
+  symbols through fixed position slots with one exact output-capacity
+  reservation.
 
 ### Fixed
 
@@ -89,6 +92,8 @@
   cargo-vet store with --locked.
 - Reject empty or malformed grayscale views before rqrr image preparation
   instead of panicking inside the decoder.
+- Report Structured Append capacity overflow after preserving the existing
+  metadata and duplicate-position error priorities.
 
 ### Added
 

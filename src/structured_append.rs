@@ -21,7 +21,7 @@ use core::fmt::{Display, Error, Formatter};
 
 use crate::QrCode;
 use crate::bits::{self, Bits};
-use crate::optimize::{Optimizer, Parser, Segment, total_encoded_len};
+use crate::optimize::{Parser, Segment, optimize_segments, total_encoded_len};
 use crate::types::{EcLevel, QrError, QrResult, Version};
 
 /// A Structured Append sequence builder: splits one payload across 2..=16 QR
@@ -134,7 +134,7 @@ impl<'a> StructuredAppend<'a> {
 fn encode_one_symbol(data: &[u8], position: u8, total: u8, parity: u8, ec: EcLevel) -> QrResult<QrCode> {
     let segments = Parser::new(data).collect::<Vec<Segment>>();
     for &checkpoint in &[Version::Normal(9), Version::Normal(26), Version::Normal(40)] {
-        let opt = Optimizer::new(segments.iter().copied(), checkpoint).collect::<Vec<_>>();
+        let opt = optimize_segments(&segments, checkpoint);
         // +20 bits: the Structured Append header (4-bit mode + 8-bit sequence
         // indicator + 8-bit parity) prepended before the data mode indicator.
         let total_len = total_encoded_len(&opt, checkpoint) + 20;
@@ -177,6 +177,9 @@ pub enum SaError {
     /// The bit stream was truncated or otherwise malformed while parsing a
     /// Structured Append header or data segment.
     MalformedStream,
+    /// The combined payload exceeds the byte-vector capacity supported by this
+    /// target.
+    CapacityOverflow,
 }
 
 impl Display for SaError {
@@ -193,6 +196,7 @@ impl Display for SaError {
             }
             Self::NotStructuredAppend => f.write_str("not a Structured Append symbol (no `0011` mode indicator)"),
             Self::MalformedStream => f.write_str("malformed Structured Append bit stream"),
+            Self::CapacityOverflow => f.write_str("Structured Append payload exceeds the supported output capacity"),
         }
     }
 }
@@ -233,7 +237,9 @@ pub struct SaSymbol<'a> {
 /// # Errors
 ///
 /// Returns [`SaError`] if `parts` is empty, disagrees on the total count or
-/// parity, holds an out-of-range value, is incomplete, or repeats a position.
+/// parity, holds an out-of-range value, is incomplete, repeats a position, or
+/// the combined payload exceeds the byte-vector capacity supported by this
+/// target. Metadata and position errors are checked before output capacity.
 pub fn reassemble(parts: &[SaSymbol<'_>]) -> Result<Vec<u8>, SaError> {
     let Some(first) = parts.first() else { return Err(SaError::Incomplete) };
     if !(2..=16).contains(&first.total) {
@@ -255,27 +261,37 @@ pub fn reassemble(parts: &[SaSymbol<'_>]) -> Result<Vec<u8>, SaError> {
     if parts.len() != usize::from(total) {
         return Err(SaError::Incomplete);
     }
-    let mut seen = [false; 16];
+    let mut ordered = [None; 16];
     for p in parts {
         let idx = usize::from(p.position - 1);
-        if seen[idx] {
+        if ordered[idx].is_some() {
             return Err(SaError::DuplicatePosition(p.position));
         }
-        seen[idx] = true;
+        ordered[idx] = Some(p.data);
     }
-    let mut ordered: Vec<&SaSymbol<'_>> = parts.iter().collect();
-    ordered.sort_by_key(|s| s.position);
-    let mut out = Vec::new();
-    for s in ordered {
-        out.extend_from_slice(s.data);
+    // The valid positions are distinct and their count is exactly `total`, so
+    // every slot in the used prefix is populated, including empty payloads.
+    let output_len = checked_output_capacity(ordered[..usize::from(total)].iter().flatten().map(|data| data.len()))?;
+    let mut out = Vec::with_capacity(output_len);
+    for data in ordered.into_iter().take(usize::from(total)).flatten() {
+        out.extend_from_slice(data);
     }
     Ok(out)
 }
 
+fn checked_output_capacity(mut lengths: impl Iterator<Item = usize>) -> Result<usize, SaError> {
+    lengths.try_fold(0_usize, |length, next| {
+        length.checked_add(next).filter(|&length| length <= isize::MAX as usize).ok_or(SaError::CapacityOverflow)
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::StructuredAppend;
-    use crate::types::{EcLevel, QrError};
+    use super::{StructuredAppend, encode_one_symbol};
+    use crate::QrCode;
+    use crate::bits::{self, Bits};
+    use crate::optimize::{Optimizer, Parser, Segment, total_encoded_len};
+    use crate::types::{EcLevel, QrError, QrResult, Version};
     use alloc::{vec, vec::Vec};
 
     #[test]
@@ -350,11 +366,42 @@ mod tests {
         let result = StructuredAppend::new(16, &payload).unwrap().encode(EcLevel::H);
         assert_eq!(result.err(), Some(QrError::DataTooLong));
     }
+
+    fn reference_encode_one_symbol(data: &[u8], ec: EcLevel) -> QrResult<QrCode> {
+        let segments = Parser::new(data).collect::<Vec<Segment>>();
+        for checkpoint in [Version::Normal(9), Version::Normal(26), Version::Normal(40)] {
+            let opt = Optimizer::new(segments.iter().copied(), checkpoint).collect::<Vec<_>>();
+            let total_len = total_encoded_len(&opt, checkpoint) + 20;
+            if total_len <= bits::data_capacity_bits(checkpoint, ec)? {
+                let version = bits::find_min_version(total_len, ec);
+                let mut bits = Bits::new(version);
+                bits.reserve(total_len);
+                bits.push_structured_append_header(2, 3, 0x5a)?;
+                bits.push_segments(data, opt.into_iter())?;
+                bits.push_terminator(ec)?;
+                return QrCode::with_bits(bits, ec);
+            }
+        }
+        Err(QrError::DataTooLong)
+    }
+
+    #[test]
+    fn direct_segment_optimization_preserves_reference_symbols_across_tiers() {
+        let payloads =
+            [b"1234".to_vec(), vec![b'1'; 4096], b"A1".repeat(1500), vec![0; 1024], vec![0; 2048], b"A1".repeat(3544)];
+        for payload in payloads {
+            for ec in [EcLevel::L, EcLevel::M, EcLevel::H] {
+                let actual = encode_one_symbol(&payload, 2, 3, 0x5a, ec).map(|code| (code.version(), code.to_colors()));
+                let expected = reference_encode_one_symbol(&payload, ec).map(|code| (code.version(), code.to_colors()));
+                assert_eq!(actual, expected, "ec={ec:?}, payload length={}", payload.len());
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod reassemble_tests {
-    use super::{SaError, SaSymbol, reassemble};
+    use super::{SaError, SaSymbol, checked_output_capacity, reassemble};
     use alloc::vec::Vec;
 
     fn sym(position: u8, total: u8, parity: u8, data: &[u8]) -> SaSymbol<'_> {
@@ -432,5 +479,87 @@ mod reassemble_tests {
             })
             .collect();
         assert_eq!(reassemble(&parts).unwrap(), bytes);
+    }
+
+    fn reference_reassemble(parts: &[SaSymbol<'_>]) -> Result<Vec<u8>, SaError> {
+        let Some(first) = parts.first() else { return Err(SaError::Incomplete) };
+        if !(2..=16).contains(&first.total) {
+            return Err(SaError::OutOfRange(first.total));
+        }
+        let total = first.total;
+        let parity = first.parity;
+        for part in parts {
+            if part.total != total {
+                return Err(SaError::CountMismatch);
+            }
+            if part.parity != parity {
+                return Err(SaError::ParityMismatch);
+            }
+            if !(1..=total).contains(&part.position) {
+                return Err(SaError::OutOfRange(part.position));
+            }
+        }
+        if parts.len() != usize::from(total) {
+            return Err(SaError::Incomplete);
+        }
+        let mut seen = [false; 16];
+        for part in parts {
+            let index = usize::from(part.position - 1);
+            if seen[index] {
+                return Err(SaError::DuplicatePosition(part.position));
+            }
+            seen[index] = true;
+        }
+        let mut ordered = parts.iter().collect::<Vec<_>>();
+        ordered.sort_by_key(|part| part.position);
+        let mut out = Vec::new();
+        for part in ordered {
+            out.extend_from_slice(part.data);
+        }
+        Ok(out)
+    }
+
+    #[test]
+    fn fixed_slots_match_reference_bytes_and_error_precedence() {
+        let data = b"abcdef";
+        for total in 2..=16 {
+            let parts = (1..=total)
+                .rev()
+                .map(|position| {
+                    let length = usize::from(position) % (data.len() + 1);
+                    sym(position, total, 0x5a, &data[..length])
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(reassemble(&parts), reference_reassemble(&parts));
+            // Multiple defects deliberately coexist so the old validation
+            // order, including incomplete-before-duplicate, is compared.
+            for defects in 0..32 {
+                let mut invalid = parts.clone();
+                if defects & 1 != 0 {
+                    invalid[0].position = 0;
+                }
+                if defects & 2 != 0 {
+                    invalid[1].total = 1;
+                }
+                if defects & 4 != 0 {
+                    invalid[1].parity = 0;
+                }
+                if defects & 8 != 0 {
+                    invalid[1].position = invalid[0].position;
+                }
+                if defects & 16 != 0 {
+                    let _ = invalid.pop();
+                }
+                assert_eq!(reassemble(&invalid), reference_reassemble(&invalid), "total={total}, defects={defects}");
+            }
+        }
+    }
+
+    #[test]
+    fn combined_payload_capacity_is_checked_without_allocating_large_buffers() {
+        assert_eq!(checked_output_capacity([3, 0, 4].into_iter()), Ok(7));
+        assert_eq!(checked_output_capacity([isize::MAX as usize].into_iter()), Ok(isize::MAX as usize));
+        assert_eq!(checked_output_capacity([isize::MAX as usize, 1].into_iter()), Err(SaError::CapacityOverflow));
+        assert_eq!(checked_output_capacity([usize::MAX, 1].into_iter()), Err(SaError::CapacityOverflow));
     }
 }
