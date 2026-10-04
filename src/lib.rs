@@ -192,21 +192,25 @@ impl QrCode {
     /// The default [`QrCode::new`] constructor remains source-compatible and
     /// uses the library's bounded defaults. This method is useful at trust
     /// boundaries where an application needs a stricter per-request budget.
-    /// Input length is checked before parser allocation; the selected version
-    /// and module dimensions are checked before returning the symbol.
+    /// Input length is checked before parser allocation against the smaller of
+    /// `max_data_length` and the library's conservative maximum QR input size.
+    /// Without a timeout, the selected module dimensions are checked before
+    /// constructing error-correction data and the final module matrix.
     ///
     /// # Errors
     ///
     /// Returns [`QrError::InvalidResourceLimits`] for a malformed budget,
     /// [`QrError::DataTooLong`] when the input cannot fit within the data or
     /// version budget, and [`QrError::RenderSizeExceeded`] when the resulting
-    /// module dimensions exceed `max_render_size`.
+    /// module dimensions exceed `max_render_size`. With `std` and an enabled
+    /// timeout, an elapsed [`QrError::EncodingTimeout`] is reported before a
+    /// module-size error after successful bitstream encoding.
     pub fn with_limits<D: AsRef<[u8]>>(data: D, limits: ResourceLimits) -> QrResult<Self> {
         limits.validate()?;
         #[cfg(feature = "std")]
-        let started_at = std::time::Instant::now();
+        let started_at = limits.encoding_timeout.map(|timeout_ms| (std::time::Instant::now(), timeout_ms));
         let data = data.as_ref();
-        if data.len() > limits.max_data_length {
+        if data.len() > limits.max_data_length.min(qrcode_core::DEFAULT_MAX_DATA_LENGTH) {
             return Err(QrError::DataTooLong);
         }
         let max_version = match limits.max_version {
@@ -216,18 +220,30 @@ impl QrCode {
             Version::Micro(_) => return Err(QrError::InvalidResourceLimits),
         };
         let bits = bits::encode_auto_with_max_version(data, EcLevel::M, max_version)?;
+        if limits.encoding_timeout.is_none() {
+            // Automatic encoding only returns valid normal versions. Their
+            // width is the same one `with_bits` uses to construct the matrix.
+            let width = bits.version().width() as u32;
+            if width > limits.max_render_size.0 || width > limits.max_render_size.1 {
+                return Err(QrError::RenderSizeExceeded {
+                    width,
+                    height: width,
+                    max_width: limits.max_render_size.0,
+                    max_height: limits.max_render_size.1,
+                });
+            }
+            return Self::with_bits(bits, EcLevel::M);
+        }
         #[cfg(feature = "std")]
-        if limits
-            .encoding_timeout
-            .is_some_and(|timeout_ms| started_at.elapsed() > std::time::Duration::from_millis(timeout_ms))
+        if started_at
+            .is_some_and(|(started_at, timeout_ms)| started_at.elapsed() > std::time::Duration::from_millis(timeout_ms))
         {
             return Err(QrError::EncodingTimeout);
         }
         let code = Self::with_bits(bits, EcLevel::M)?;
         #[cfg(feature = "std")]
-        if limits
-            .encoding_timeout
-            .is_some_and(|timeout_ms| started_at.elapsed() > std::time::Duration::from_millis(timeout_ms))
+        if started_at
+            .is_some_and(|(started_at, timeout_ms)| started_at.elapsed() > std::time::Duration::from_millis(timeout_ms))
         {
             return Err(QrError::EncodingTimeout);
         }
@@ -1174,6 +1190,201 @@ impl QrSymbol for QrCode {
 
     fn error_correction_level(&self) -> EcLevel {
         self.ec_level
+    }
+}
+
+#[cfg(test)]
+mod resource_limit_boundary_tests {
+    use super::{Color, EcLevel, Info, QrCode, QrError, QrResult, ResourceLimits, Version, bits};
+    use alloc::{vec, vec::Vec};
+    use core::cell::Cell;
+
+    fn reference_with_limits(data: &[u8], limits: ResourceLimits) -> QrResult<QrCode> {
+        limits.validate()?;
+        #[cfg(feature = "std")]
+        let started_at = std::time::Instant::now();
+        if data.len() > limits.max_data_length {
+            return Err(QrError::DataTooLong);
+        }
+        let max_version = match limits.max_version {
+            Version::Normal(version) => version,
+            Version::Micro(_) => return Err(QrError::InvalidResourceLimits),
+        };
+        let bits = bits::encode_auto_with_max_version(data, EcLevel::M, max_version)?;
+        #[cfg(feature = "std")]
+        if limits
+            .encoding_timeout
+            .is_some_and(|timeout_ms| started_at.elapsed() > std::time::Duration::from_millis(timeout_ms))
+        {
+            return Err(QrError::EncodingTimeout);
+        }
+        let code = QrCode::with_bits(bits, EcLevel::M)?;
+        #[cfg(feature = "std")]
+        if limits
+            .encoding_timeout
+            .is_some_and(|timeout_ms| started_at.elapsed() > std::time::Duration::from_millis(timeout_ms))
+        {
+            return Err(QrError::EncodingTimeout);
+        }
+        let width = u32::try_from(code.width()).map_err(|_| QrError::RenderSizeExceeded {
+            width: u32::MAX,
+            height: u32::MAX,
+            max_width: limits.max_render_size.0,
+            max_height: limits.max_render_size.1,
+        })?;
+        if width > limits.max_render_size.0 || width > limits.max_render_size.1 {
+            return Err(QrError::RenderSizeExceeded {
+                width,
+                height: width,
+                max_width: limits.max_render_size.0,
+                max_height: limits.max_render_size.1,
+            });
+        }
+        Ok(code)
+    }
+
+    fn representation(result: QrResult<QrCode>) -> Result<(Version, Vec<Color>, Info), QrError> {
+        result.map(|code| (code.version(), code.to_colors(), code.info()))
+    }
+
+    struct CountedInput<'a> {
+        data: &'a [u8],
+        calls: &'a Cell<usize>,
+    }
+
+    impl AsRef<[u8]> for CountedInput<'_> {
+        fn as_ref(&self) -> &[u8] {
+            self.calls.set(self.calls.get() + 1);
+            self.data
+        }
+    }
+
+    #[test]
+    fn malformed_limits_are_rejected_before_borrowing_input() {
+        for limits in [
+            ResourceLimits::new(0, Version::Normal(0), (4096, 4096)),
+            ResourceLimits::new(0, Version::Micro(1), (4096, 4096)),
+            ResourceLimits::new(0, Version::Normal(40), (0, 1)),
+            ResourceLimits::new(0, Version::Normal(40), (1, 0)),
+            ResourceLimits::new(0, Version::Normal(40), (1, 1)).with_encoding_timeout_millis(0),
+        ] {
+            let calls = Cell::new(0);
+            assert_eq!(
+                QrCode::with_limits(CountedInput { data: b"too long", calls: &calls }, limits).err(),
+                Some(QrError::InvalidResourceLimits)
+            );
+            assert_eq!(calls.get(), 0);
+        }
+    }
+
+    #[test]
+    fn valid_limits_borrow_input_once_on_success_and_rejection_paths() {
+        for limits in [
+            ResourceLimits::default(),
+            ResourceLimits::new(3, Version::Normal(40), (4096, 4096)),
+            ResourceLimits::new(64, Version::Normal(40), (1, 1)),
+            ResourceLimits::new(64, Version::Normal(40), (4096, 4096)).with_encoding_timeout_millis(u64::MAX),
+        ] {
+            let calls = Cell::new(0);
+            let _ = QrCode::with_limits(CountedInput { data: b"hello", calls: &calls }, limits);
+            assert_eq!(calls.get(), 1);
+        }
+    }
+
+    #[test]
+    fn custom_large_input_budgets_keep_the_conservative_qr_ceiling_and_error_priority() {
+        let oversized = vec![b'1'; qrcode_core::DEFAULT_MAX_DATA_LENGTH + 1];
+        let limits = ResourceLimits::new(usize::MAX, Version::Normal(40), (1, 1));
+        assert_eq!(QrCode::with_limits(&oversized, limits).err(), Some(QrError::DataTooLong));
+        assert_eq!(reference_with_limits(&oversized, limits).err(), Some(QrError::DataTooLong));
+
+        let stricter = ResourceLimits::new(2, Version::Normal(40), (1, 1));
+        assert_eq!(QrCode::with_limits(b"123", stricter).err(), Some(QrError::DataTooLong));
+    }
+
+    #[test]
+    fn version_rejection_still_precedes_module_size_rejection() {
+        let limits = ResourceLimits::new(qrcode_core::DEFAULT_MAX_DATA_LENGTH, Version::Normal(1), (1, 1));
+        assert_eq!(QrCode::with_limits([0_u8; 100], limits).err(), Some(QrError::DataTooLong));
+    }
+
+    #[test]
+    fn untimed_module_size_rejection_checks_both_axes_and_matches_old_geometry() {
+        for max_render_size in [(20, 40), (40, 20), (20, 20)] {
+            let limits = ResourceLimits::new(64, Version::Normal(40), max_render_size);
+            let expected = QrError::RenderSizeExceeded {
+                width: 21,
+                height: 21,
+                max_width: max_render_size.0,
+                max_height: max_render_size.1,
+            };
+            assert_eq!(QrCode::with_limits(b"hello", limits).err(), Some(expected));
+            assert_eq!(reference_with_limits(b"hello", limits).err(), Some(expected));
+        }
+    }
+
+    #[test]
+    fn successful_limits_preserve_old_modules_and_encoding_metadata() {
+        let payloads =
+            [Vec::new(), b"hello".to_vec(), b"123ABC\x93\x5f".to_vec(), (0_u8..=255).collect(), vec![b'1'; 5_000]];
+        for data in payloads {
+            for limits in [
+                ResourceLimits::default(),
+                ResourceLimits::new(usize::MAX, Version::Normal(40), (4096, 4096)),
+                ResourceLimits::default().with_encoding_timeout_millis(u64::MAX),
+            ] {
+                let actual = representation(QrCode::with_limits(&data, limits));
+                assert!(actual.is_ok());
+                assert_eq!(actual, representation(reference_with_limits(&data, limits)));
+            }
+        }
+        let empty_limit = ResourceLimits::new(0, Version::Normal(40), (4096, 4096));
+        assert_eq!(
+            representation(QrCode::with_limits([], empty_limit)),
+            representation(reference_with_limits(&[], empty_limit))
+        );
+    }
+
+    #[cfg(feature = "std")]
+    struct SlowInput<'a>(CountedInput<'a>);
+
+    #[cfg(feature = "std")]
+    impl AsRef<[u8]> for SlowInput<'_> {
+        fn as_ref(&self) -> &[u8] {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            self.0.as_ref()
+        }
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn enabled_timeout_still_counts_input_borrowing_and_precedes_geometry_errors() {
+        let calls = Cell::new(0);
+        let limits = ResourceLimits::new(64, Version::Normal(40), (1, 1)).with_encoding_timeout_millis(1);
+        let input = SlowInput(CountedInput { data: b"hello", calls: &calls });
+        assert_eq!(QrCode::with_limits(input, limits).err(), Some(QrError::EncodingTimeout));
+        assert_eq!(calls.get(), 1);
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn impossible_input_still_precedes_an_elapsed_timeout() {
+        let calls = Cell::new(0);
+        let oversized = vec![b'1'; qrcode_core::DEFAULT_MAX_DATA_LENGTH + 1];
+        let limits = ResourceLimits::new(usize::MAX, Version::Normal(40), (1, 1)).with_encoding_timeout_millis(1);
+        let input = SlowInput(CountedInput { data: &oversized, calls: &calls });
+        assert_eq!(QrCode::with_limits(input, limits).err(), Some(QrError::DataTooLong));
+        assert_eq!(calls.get(), 1);
+    }
+
+    #[cfg(not(feature = "std"))]
+    #[test]
+    fn no_std_timeout_settings_keep_the_original_untimed_result() {
+        let limits = ResourceLimits::default().with_encoding_timeout_millis(1);
+        assert_eq!(
+            representation(QrCode::with_limits(b"hello", limits)),
+            representation(reference_with_limits(b"hello", limits))
+        );
     }
 }
 

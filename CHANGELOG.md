@@ -89,6 +89,10 @@
 - Compute functional-module counts from exact pattern geometry during
   analysis, retaining the original scan for noncanonical legacy geometry and
   leaving dark-module ratios unchanged.
+- Reject inputs beyond the conservative QR upper bound before parsing, skip
+  clocks without a timeout, and check selected module dimensions before
+  Reed-Solomon and masking when no timeout is enabled; preserve timed error
+  priorities.
 
 ### Fixed
 
