@@ -22,6 +22,9 @@ jobs:
         run: |
           cargo check --workspace --all-targets --all-features --locked
           cargo check --workspace --no-default-features --locked
+          # Check the facade separately: the CLI enables std in workspace builds.
+          cargo check -p qrcode-rs --no-default-features --locked
+          cargo check -p qrcode-rs --no-default-features --features serde,template-json --locked
   check:
     name: Check
     runs-on: ubuntu-latest
@@ -96,10 +99,12 @@ jobs:
           toolchain: stable
       - name: Run cargo test
         run: cargo test --features "image,svg,eps,pic"
-      - name: Run all-feature tests
-        run: cargo test --all-features
+      - name: Run workspace all-feature tests
+        run: cargo test --workspace --all-features --locked
       - name: Run facade no-default tests
         run: cargo test --lib --no-default-features
+      - name: Run facade no_std serde and template JSON tests
+        run: cargo test -p qrcode-rs --lib --no-default-features --features serde,template-json --locked
       - name: Run core abstraction tests
         run: |
           cargo test --test core_abstraction --all-features

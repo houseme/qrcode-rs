@@ -107,6 +107,9 @@
   behavior.
 - Document and regression-test the opaque white logo backplate, including
   transparent logos and preservation of QR alpha outside the overlay region.
+- Run all-feature tests for every workspace member and check the facade
+  separately with no default features, including serde/template-json and Rust
+  1.88 compatibility, avoiding CLI feature unification in the no_std checks.
 
 ### Fixed
 
