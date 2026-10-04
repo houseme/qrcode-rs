@@ -143,6 +143,12 @@ pub struct Bits {
     payload_bits_len: Option<usize>,
 }
 
+fn additional_bytes_for_bits(bit_offset: usize, bit_count: usize) -> usize {
+    debug_assert!(bit_offset < 8);
+    let existing_space = if bit_offset == 0 { 0 } else { 8 - bit_offset };
+    bit_count.saturating_sub(existing_space).div_ceil(8)
+}
+
 impl Bits {
     /// Constructs a new, empty bits structure.
     pub const fn new(version: Version) -> Self {
@@ -207,8 +213,11 @@ impl Bits {
     }
 
     /// Reserves `n` extra bits of space for pushing.
+    ///
+    /// Space remaining in the current partial byte is used first. This does
+    /// not change the bit stream, recorded modes, or payload length.
     pub fn reserve(&mut self, n: usize) {
-        let extra_bytes = (n + (8 - self.bit_offset) % 8) / 8;
+        let extra_bytes = additional_bytes_for_bits(self.bit_offset, n);
         self.data.reserve(extra_bytes);
     }
 
@@ -301,6 +310,124 @@ fn test_push_number() {
             0b1_0000000,  // 128
         ]
     );
+}
+
+#[cfg(test)]
+mod reservation_tests {
+    use crate::bits::{Bits, additional_bytes_for_bits};
+    use crate::types::{EcLevel, Version};
+
+    fn reference_byte_increment(offset: usize, count: usize) -> usize {
+        let total_bytes = (count as u128 + offset as u128).div_ceil(8);
+        usize::try_from(total_bytes - u128::from(offset > 0)).unwrap()
+    }
+
+    #[test]
+    fn additional_byte_increment_matches_all_small_bit_counts_and_offsets() {
+        for offset in 0..8 {
+            for count in 0..=256 {
+                assert_eq!(
+                    additional_bytes_for_bits(offset, count),
+                    reference_byte_increment(offset, count),
+                    "offset {offset}, count {count}"
+                );
+            }
+        }
+        assert_eq!(additional_bytes_for_bits(0, 1), 1);
+        assert_eq!(additional_bytes_for_bits(7, 2), 1);
+        assert_eq!(additional_bytes_for_bits(1, 1), 0);
+    }
+
+    #[test]
+    fn additional_byte_increment_handles_usize_max_without_allocation() {
+        for offset in 0..8 {
+            for count in [usize::MAX - 8, usize::MAX - 7, usize::MAX - 1, usize::MAX] {
+                assert_eq!(additional_bytes_for_bits(offset, count), reference_byte_increment(offset, count));
+            }
+        }
+    }
+
+    fn filled_to_capacity(offset: usize) -> Bits {
+        let mut bits = Bits::new(Version::Normal(40));
+        bits.reserve(64);
+        let capacity = bits.data.capacity();
+        let whole_bytes = capacity - usize::from(offset > 0);
+        for _ in 0..whole_bytes {
+            bits.push_number_checked(8, 0xa5).unwrap();
+        }
+        if offset > 0 {
+            bits.push_number_checked(offset, (1 << offset) - 1).unwrap();
+        }
+        assert_eq!(bits.data.len(), capacity);
+        assert_eq!(bits.bit_offset, offset);
+        bits
+    }
+
+    fn write_bits(bits: &mut Bits, mut count: usize) {
+        while count > 0 {
+            let width = count.min(16);
+            bits.push_number_checked(width, (1 << width) - 1).unwrap();
+            count -= width;
+        }
+    }
+
+    #[test]
+    fn reserved_bits_can_be_written_without_growing_capacity() {
+        for offset in 0..8 {
+            for count in 0..=128 {
+                let mut reserved = filled_to_capacity(offset);
+                let mut reference = filled_to_capacity(offset);
+                let before_bytes = reserved.data.clone();
+                let before_len = reserved.len();
+                let before_modes = reserved.encoding_modes();
+                let before_payload = reserved.payload_bits_len;
+
+                reserved.reserve(count);
+                let reserved_capacity = reserved.data.capacity();
+                assert_eq!(reserved.data, before_bytes);
+                assert_eq!(reserved.len(), before_len);
+                assert_eq!(reserved.encoding_modes(), before_modes);
+                assert_eq!(reserved.payload_bits_len, before_payload);
+
+                write_bits(&mut reserved, count);
+                write_bits(&mut reference, count);
+
+                assert_eq!(reserved.data.capacity(), reserved_capacity, "offset {offset}, count {count}");
+                assert_eq!(reserved.data, reference.data);
+                assert_eq!(reserved.len(), before_len + count);
+                assert_eq!(reserved.bit_offset, reference.bit_offset);
+                assert_eq!(reserved.encoding_modes(), reference.encoding_modes());
+                assert_eq!(reserved.payload_bits_len, reference.payload_bits_len);
+            }
+        }
+    }
+
+    #[test]
+    fn reserving_empty_or_padded_streams_keeps_contents_and_metadata() {
+        let mut empty = Bits::new(Version::Normal(1));
+        empty.reserve(0);
+        assert!(empty.is_empty());
+        assert_eq!(empty.data.capacity(), 0);
+        empty.reserve(1);
+        let capacity = empty.data.capacity();
+        assert!(capacity >= 1);
+        assert!(empty.is_empty());
+        empty.push_number_checked(1, 1).unwrap();
+        assert_eq!(empty.data.capacity(), capacity);
+
+        let mut padded = Bits::new(Version::Normal(1));
+        padded.push_byte_data(b"abc").unwrap();
+        padded.push_terminator(EcLevel::M).unwrap();
+        let before_bytes = padded.data.clone();
+        let before_len = padded.len();
+        let before_modes = padded.encoding_modes();
+        let before_payload = padded.payload_bits_len;
+        padded.reserve(65);
+        assert_eq!(padded.data, before_bytes);
+        assert_eq!(padded.len(), before_len);
+        assert_eq!(padded.encoding_modes(), before_modes);
+        assert_eq!(padded.payload_bits_len, before_payload);
+    }
 }
 
 #[cfg(test)]

@@ -198,6 +198,9 @@
 - Normalize RGB and CMYK components at PDF/EPS canvas boundaries: render NaN
   as zero and clip out-of-range values, preserving in-range finite values and
   signed zero.
+- Calculate Bits::reserve byte increments from the unused space in the current
+  byte, rounding up without integer overflow so reserved writes do not grow
+  the buffer again.
 
 ### Added
 
