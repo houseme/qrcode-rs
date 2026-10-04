@@ -10,12 +10,11 @@ use std::process::ExitCode;
 use std::str::FromStr;
 
 mod atomic_output;
+mod image_commands;
 
 use atomic_output::AtomicOutputFile;
 
 use crate::batch::{BatchEntry, BatchGridOptions, BatchOutput, BatchPackError};
-use crate::decode::rqrr::RqrrDecoder;
-use crate::decode::{GrayPixels, QrDecoder};
 use crate::{EcLevel, QrCode, QrSymbol, Version};
 use clap::{Parser, Subcommand, ValueEnum};
 use qrcode_render::{ansi, colors, unicode};
@@ -140,6 +139,39 @@ enum Command {
         #[arg(long)]
         print_payload: bool,
     },
+    /// Decode Normal, Micro, or Structured Append QR symbols from images.
+    Decode {
+        /// Input image files, scanned in argument order.
+        #[arg(value_name = "IMAGE", required = true, num_args = 1..)]
+        images: Vec<PathBuf>,
+        /// Output representation; text requires valid UTF-8.
+        #[arg(long, value_enum, default_value_t = image_commands::OutputFormat::Text)]
+        format: image_commands::OutputFormat,
+        /// Write output to a regular file ("-" means stdout).
+        #[arg(long, value_name = "FILE")]
+        output: Option<PathBuf>,
+        /// Return valid candidates while reporting failed candidates.
+        #[arg(long)]
+        allow_partial: bool,
+        /// Reassemble complete Structured Append groups explicitly.
+        #[arg(long)]
+        assemble: bool,
+        /// Scan inverted images.
+        #[arg(long)]
+        invert: bool,
+        /// Maximum pixels per input image.
+        #[arg(long, default_value_t = image_commands::DEFAULT_MAX_PIXELS, value_parser = image_commands::parse_max_pixels)]
+        max_pixels: u64,
+    },
+}
+
+impl Command {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Validate { .. } => "validate",
+            Self::Decode { .. } => "decode",
+        }
+    }
 }
 
 fn parse_ec_level(s: &str) -> Result<EcLevel, String> {
@@ -197,11 +229,12 @@ fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
         return Err("--batch cannot be used together with TEXT".into());
     }
     if let Some(command) = &cli.command {
+        let name = command.name();
         if cli.text.is_some() {
-            return Err("TEXT cannot be used together with validate".into());
+            return Err(format!("TEXT cannot be used together with {name}").into());
         }
         if cli.batch.is_some() {
-            return Err("--batch cannot be used together with validate".into());
+            return Err(format!("--batch cannot be used together with {name}").into());
         }
         return run_command(command);
     }
@@ -239,6 +272,19 @@ fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
 fn run_command(command: &Command) -> Result<(), Box<dyn Error>> {
     match command {
         Command::Validate { image, expect, print_payload } => validate_image(image, expect.as_deref(), *print_payload),
+        Command::Decode { images, format, output, allow_partial, assemble, invert, max_pixels } => {
+            image_commands::decode_images(
+                images,
+                image_commands::DecodeOptions {
+                    format: *format,
+                    output: output.as_deref(),
+                    allow_partial: *allow_partial,
+                    assemble: *assemble,
+                    invert: *invert,
+                    max_pixels: *max_pixels,
+                },
+            )
+        }
     }
 }
 
@@ -741,29 +787,7 @@ fn parse_csv_record(record: &str) -> Result<Vec<String>, Box<dyn Error>> {
 }
 
 fn validate_image(path: &Path, expect: Option<&str>, print_payload: bool) -> Result<(), Box<dyn Error>> {
-    let image =
-        qrcode_image::image::open(path).map_err(|error| path_error("read validation image", path, error))?.to_luma8();
-    let decoded = RqrrDecoder::new()
-        .decode(GrayPixels::from(&image))
-        .map_err(|error| path_error("decode validation image", path, error))?;
-    if decoded.is_empty() {
-        return Err("no QR codes found in image".into());
-    }
-    if let Some(expected) = expect {
-        let expected = expected.as_bytes();
-        if !decoded.iter().any(|code| code.data() == expected) {
-            return Err(format!("decoded {} QR code(s), but none matched the expected payload", decoded.len()).into());
-        }
-    }
-    write_stdout(|output| {
-        writeln!(output, "valid: decoded {} QR code(s)", decoded.len())?;
-        if print_payload || expect.is_none() {
-            for (index, code) in decoded.iter().enumerate() {
-                writeln!(output, "{}: {}", index + 1, String::from_utf8_lossy(code.data()))?;
-            }
-        }
-        Ok(())
-    })
+    image_commands::validate_image(path, expect, print_payload)
 }
 
 fn render_one(text: &str, cli: &Cli, quiet_zone: bool) -> Result<Vec<u8>, Box<dyn Error>> {

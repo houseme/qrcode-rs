@@ -124,6 +124,9 @@
   replacing the duplicate empty-default test profile.
 - Advance all workspace packages to 2.2.0 for the new decoder API and feature,
   since the published 2.1.1 packages cannot supply the new feature.
+- Bound encoded image reads, pixel and buffer sizes, aggregate decoded results
+  and serialized output, and complete scan/assembly/format validation before
+  stdout or atomic file publication.
 
 ### Fixed
 
@@ -277,6 +280,10 @@
 - Reassemble explicitly selected scanned Structured Append fragments through
   one borrowed validation pipeline, retaining metadata error ordering and
   checking payload XOR without cloning fragment buffers.
+- Add decode for multiple Normal/Micro/Structured Append images with strict
+  UTF-8 text, compact JSON, byte-exact raw output, explicit assembly and
+  partial-candidate reporting; validate shares the same bounded image-loading
+  and scanning path.
 
 ## [2.1.1] - 2026-09-16
 

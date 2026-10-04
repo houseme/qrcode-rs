@@ -26,6 +26,10 @@ qrencodes --batch ./payloads.txt --batch-pack zip -f svg -o payloads.zip
 qrencodes --batch ./payloads.txt --batch-pack grid --grid-columns 3 -f png -o payloads.png
 qrencodes validate out.png --expect "Hello"
 qrencodes validate out.png --print-payload
+qrencodes decode out.png --format json
+qrencodes decode out.png --format raw --output payload.bin
+qrencodes decode first.png second.png --assemble
+qrencodes decode inverted.png --invert
 # Read newline-delimited payloads from stdin and write one file per payload.
 printf 'first\nsecond\n' | qrencodes --batch - -f svg -o ./out
 ```
@@ -34,9 +38,27 @@ The standalone binary and the facade's feature-gated binary call the same
 implementation through the facade's `cli` feature. Both entry points retain
 the same arguments, output and exit codes.
 
-`validate` decodes normal QR codes and prints their payloads. The bundled
-decoder does not support Micro QR codes. The CLI displays payload bytes
-lossily as UTF-8; use the library's `RqrrDecoder` for the original bytes.
+`validate` and `decode` support Normal, Micro and Structured Append QR images.
+`validate` keeps its summary and lossy UTF-8 display. `decode` accepts multiple
+image files and supports strict UTF-8 text, compact JSON and original raw bytes.
+JSON contains `symbols`, `errors` and `assemblies`; each symbol retains its
+bytes, version, EC level, source and optional Structured Append header. Raw
+output requires exactly one logical payload.
+
+Use `--assemble` to recover complete Structured Append groups. Missing or
+duplicate fragments fail before publishing output; fragments are never
+silently removed. Parity can collide between messages, so select the intended
+files explicitly. `--allow-partial` reports failed candidates and outputs valid
+symbols, but does not skip unreadable files or invalid assemblies. Use
+`--invert` for opposite black/white polarity.
+
+Encoded files are limited to 64 MiB, sides to 32,768 pixels, and default input
+pixels to 16,777,216 (`decode --max-pixels` can adjust the pixel budget).
+Decoded plus grayscale buffers have a nominal 256 MiB limit. Across multiple
+images, at most 4,096 symbols/failures and 256 MiB of payload are retained;
+serialized output also has a 256 MiB limit. These are resource checks, not a
+total RSS or runtime guarantee. Inputs, assemblies and output formats are
+validated before stdout or atomic file publication.
 
 Batch input ignores blank or whitespace-only payloads while preserving the exact
 contents of each non-empty payload. Use `--batch -` for a pipe. CSV input uses a 1-based

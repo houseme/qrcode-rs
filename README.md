@@ -71,6 +71,7 @@ qrcode-rs = { version = "2.1", default-features = false, features = ["std", "svg
 | `async` | Enables Tokio-backed async rendering helpers. |
 | `cli` | Builds the `qrencodes` command-line tool. |
 | `decode-rqrr` | Enables decoding through `rqrr`. |
+| `decode-rxing` | Scans Normal/Micro QR images and retains Structured Append headers and candidate failures. |
 | `compat-1x` | Keeps the 1.x facade API available during the 2.0 migration. |
 
 ## Workspace Crates
@@ -292,6 +293,42 @@ fn main() {
 }
 ```
 
+## Normal, Micro, and Structured Append image scanning
+
+Enable `decode-rxing` for the optional pure Rust image scanner. It borrows a
+checked luma buffer and returns one `Result` per sampled candidate, retaining
+independent failures alongside successful symbols. Payload bytes are not
+transcoded; interpret UTF-8 explicitly when text is required.
+
+```rust
+use qrcode_rs::decode::GrayPixels;
+use qrcode_rs::decode::rxing::RxingDecoder;
+
+fn scan_luma(width: u32, height: u32, pixels: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+    let image = GrayPixels::try_new(width, height, pixels)?;
+    for candidate in RxingDecoder::new().scan(image)? {
+        let symbol = candidate?;
+        println!("{:?}: {:?}", symbol.decoded().version(), symbol.decoded().data());
+        if let Some(header) = symbol.structured_append() {
+            println!("fragment {}/{}", header.position(), header.total());
+        }
+    }
+    Ok(())
+}
+```
+
+Use `ScanOptions` to configure pixel/candidate limits or explicit inverted
+polarity. The default limits are 16,777,216 pixels, 32,768 pixels per side,
+512 finder patterns, and 256 retained results. Limits return errors rather
+than silently dropping candidates. `QrDecoder::decode` remains a strict
+convenience interface, while `scan` exposes partial failures.
+
+For Structured Append, select the intended fragments and pass their references
+to `structured_append::reassemble_decoded`. It checks completeness, positions,
+metadata and the recovered payload XOR. Eight-bit parity cannot uniquely
+identify a message; colliding or duplicate groups must be resolved explicitly.
+The existing `decode-rqrr` adapter remains available for normal QR codes.
+
 ## Command-Line Tool
 
 Enable the `cli` feature to build the bundled `qrencodes` binary:
@@ -314,12 +351,26 @@ qrencodes --batch ./payloads.txt --batch-pack zip -f svg -o payloads.zip
 qrencodes --batch ./payloads.txt --batch-pack grid --grid-columns 3 -f png -o payloads.png
 qrencodes validate out.png --expect "Hello"
 qrencodes validate out.png --print-payload
+qrencodes decode out.png --format json
+qrencodes decode out.png --format raw --output payload.bin
+qrencodes decode first.png second.png --assemble
+qrencodes decode inverted.png --invert
 ```
 
-`validate` decodes normal QR codes from an image and prints their payloads.
-The bundled decoder does not support Micro QR codes. Library callers can use
-`RqrrDecoder` with the `decode-rqrr` feature to recover the original payload
-bytes, including non-UTF-8 data; the CLI displays text lossily as UTF-8.
+`validate` and `decode` scan normal, Micro, and Structured Append QR symbols.
+`validate` retains its summary and lossy UTF-8 display. `decode` supports text,
+JSON and raw bytes: text requires valid UTF-8, JSON preserves byte arrays and
+metadata, and raw output requires exactly one logical payload. `--assemble`
+explicitly reconstructs complete Structured Append groups. Missing, duplicate
+or conflicting fragments fail before output is published. `--allow-partial`
+permits failed image candidates while reporting them; unreadable images and
+invalid assemblies still fail.
+
+Inputs are regular files limited to 64 MiB encoded size and 32,768 pixels per
+side, with a default 16,777,216-pixel budget adjustable by `--max-pixels` on
+`decode`. Decoded and grayscale buffers have a combined 256 MiB budget; these
+checks are not a total process-memory or execution-time guarantee. All inputs
+and output representations are checked before stdout or atomic file writes.
 
 Library callers can also render an encoded batch into stable, named in-memory
 outputs and decide how to package them:
