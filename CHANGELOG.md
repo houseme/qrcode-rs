@@ -114,6 +114,9 @@
   facade and standalone binaries, removing duplicated source and dependency
   declarations while preserving arguments, output, exit codes and
   independently packaged entry points.
+- Classify HTML colors once per canvas and copy unescaped values directly into
+  table and Grid cells, preserving exact escaping and output budgets without
+  cached color buffers; format Grid width directly into the reserved output.
 
 ### Fixed
 

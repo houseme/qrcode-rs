@@ -30,7 +30,7 @@ use alloc::{
     vec::Vec,
 };
 
-use core::marker::PhantomData;
+use core::{fmt::Write as _, marker::PhantomData};
 
 use qrcode_core::Color as ModuleColor;
 use qrcode_render::{Canvas as RenderCanvas, MAX_BUFFER_BYTES, Pixel, RenderError};
@@ -230,6 +230,10 @@ fn push_escaped_attr_value(out: &mut String, value: &str) {
     }
 }
 
+fn attr_value_needs_escaping(value: &str) -> bool {
+    value.bytes().any(|byte| matches!(byte, b'&' | b'<' | b'>' | b'"' | b'\''))
+}
+
 fn is_attr_name(name: &str) -> bool {
     let mut chars = name.chars();
     let Some(first) = chars.next() else {
@@ -282,6 +286,11 @@ impl<'a> RenderCanvas for Canvas<'a> {
 
 impl<'a> Canvas<'a> {
     fn into_table(self) -> String {
+        let has_pixels = !self.dark_pixels.is_empty();
+        let colors = [
+            (self.light_color, has_pixels && attr_value_needs_escaping(self.light_color)),
+            (self.dark_color, has_pixels && attr_value_needs_escaping(self.dark_color)),
+        ];
         let mut html = String::with_capacity(self.table_capacity);
         html.push_str(TABLE_HEADER);
 
@@ -289,9 +298,13 @@ impl<'a> Canvas<'a> {
             html.push_str("<tr>");
             for x in 0..self.width {
                 let idx = y as usize * self.width as usize + x as usize;
-                let color = if self.dark_pixels[idx] { self.dark_color } else { self.light_color };
+                let (color, needs_escaping) = colors[usize::from(self.dark_pixels[idx])];
                 html.push_str(TABLE_CELL_PREFIX);
-                push_escaped_attr_value(&mut html, color);
+                if needs_escaping {
+                    push_escaped_attr_value(&mut html, color);
+                } else {
+                    html.push_str(color);
+                }
                 html.push_str(TABLE_CELL_SUFFIX);
             }
             html.push_str("</tr>");
@@ -302,17 +315,26 @@ impl<'a> Canvas<'a> {
     }
 
     fn into_grid(self) -> String {
+        let has_pixels = !self.dark_pixels.is_empty();
+        let colors = [
+            (self.light_color, has_pixels && attr_value_needs_escaping(self.light_color)),
+            (self.dark_color, has_pixels && attr_value_needs_escaping(self.dark_color)),
+        ];
         let mut html = String::with_capacity(self.grid_capacity);
         html.push_str(GRID_HEADER);
-        html.push_str(&self.width.to_string());
+        write!(html, "{}", self.width).expect("formatting a number into a String cannot fail");
         html.push_str(GRID_HEADER_SUFFIX);
 
         for y in 0..self.height {
             for x in 0..self.width {
                 let idx = y as usize * self.width as usize + x as usize;
-                let color = if self.dark_pixels[idx] { self.dark_color } else { self.light_color };
+                let (color, needs_escaping) = colors[usize::from(self.dark_pixels[idx])];
                 html.push_str(GRID_CELL_PREFIX);
-                push_escaped_attr_value(&mut html, color);
+                if needs_escaping {
+                    push_escaped_attr_value(&mut html, color);
+                } else {
+                    html.push_str(color);
+                }
                 html.push_str(GRID_CELL_SUFFIX);
             }
         }
@@ -521,6 +543,29 @@ mod tests {
     use super::{Canvas, Color, GridCanvas, GridColor, Mode, layout};
     use alloc::string::String;
     use qrcode_render::{Canvas as RenderCanvas, RenderError, Renderer};
+
+    #[test]
+    fn unescaped_utf8_colors_keep_exact_table_and_grid_cell_bytes() {
+        let table_cells = "<td style=\"width:1px;height:1px;background:紫色🦀\"></td><td style=\"width:1px;height:1px;background:白色界\"></td>";
+        let grid_cells = "<div style=\"width:1px;height:1px;background:紫色🦀\"></div><div style=\"width:1px;height:1px;background:白色界\"></div>";
+        for (mode, expected) in [
+            (Mode::Table, alloc::format!("{}<tr>{table_cells}</tr>{}", super::TABLE_HEADER, super::TABLE_FOOTER)),
+            (
+                Mode::Grid,
+                alloc::format!(
+                    "{}2{}{grid_cells}{}",
+                    super::GRID_HEADER,
+                    super::GRID_HEADER_SUFFIX,
+                    super::GRID_FOOTER
+                ),
+            ),
+        ] {
+            let mut canvas = Canvas::new(2, 1, Color("紫色🦀"), Color("白色界"));
+            canvas.set_mode(mode);
+            canvas.draw_dark_pixel(0, 0);
+            assert_eq!(canvas.into_image(), expected);
+        }
+    }
 
     fn grid_cells(output: &str, width: usize) -> alloc::vec::Vec<&str> {
         let header = alloc::format!(
