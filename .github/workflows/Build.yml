@@ -112,7 +112,7 @@ jobs:
       - name: Run split crate tests
         run: |
           cargo test -p qrcode-core --no-default-features
-          cargo test -p qrcode-core
+          cargo test -p qrcode-core --features std
           cargo test -p qrcode-render
           cargo test -p qrcode-render --features std
           cargo test -p qrcode-image --no-default-features

@@ -120,6 +120,8 @@
 - Consume the owned resized logo during RGBA8 conversion, eliminating its
   extra buffer clone for RGBA8 logos while retaining the existing conversion
   and compositing behavior.
+- Exercise the core crate separately with no default features and with std,
+  replacing the duplicate empty-default test profile.
 
 ### Fixed
 
