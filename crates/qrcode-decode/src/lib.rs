@@ -144,7 +144,10 @@ impl<'a> GrayPixels<'a> {
 #[cfg(feature = "image")]
 impl<'a> From<&'a image::GrayImage> for GrayPixels<'a> {
     fn from(img: &'a image::GrayImage) -> Self {
-        Self::new(img.width(), img.height(), img.as_raw())
+        let (width, height) = (img.width(), img.height());
+        // ImageBuffer validates the logical area but permits excess backing bytes.
+        let logical_len = width as usize * height as usize;
+        Self::new(width, height, &img.as_raw()[..logical_len])
     }
 }
 
@@ -175,6 +178,14 @@ impl DecodedQrCode {
     #[must_use]
     pub fn data(&self) -> &[u8] {
         &self.data
+    }
+
+    /// Consumes the decoded QR code and transfers its payload buffer without
+    /// copying or allocating. The returned bytes may contain arbitrary binary
+    /// data, including non-UTF-8 values.
+    #[must_use]
+    pub fn into_data(self) -> Vec<u8> {
+        self.data
     }
 
     /// The QR version.
@@ -212,7 +223,50 @@ pub trait QrDecoder {
 
 #[cfg(test)]
 mod tests {
-    use super::{GrayPixels, GrayPixelsError};
+    use super::{DecodedQrCode, GrayPixels, GrayPixelsError};
+    use alloc::vec::Vec;
+    use qrcode_core::{EcLevel, Version};
+
+    #[test]
+    fn consuming_decoded_payload_transfers_the_binary_buffer_and_capacity() {
+        let mut payload = Vec::with_capacity(32);
+        payload.extend_from_slice(&[0x00, 0xff, 0x80, 0x11, 0x00]);
+        let pointer = payload.as_ptr();
+        let capacity = payload.capacity();
+        let decoded = DecodedQrCode::new(payload, Version::Normal(7), EcLevel::Q);
+
+        let bytes = decoded.into_data();
+        assert_eq!(bytes, [0x00, 0xff, 0x80, 0x11, 0x00]);
+        assert_eq!(bytes.as_ptr(), pointer);
+        assert_eq!(bytes.capacity(), capacity);
+    }
+
+    #[cfg(feature = "image")]
+    #[test]
+    fn gray_image_conversion_borrows_only_logical_pixels_from_padded_storage() {
+        let image = image::GrayImage::from_raw(2, 2, Vec::from([1, 2, 3, 4, 99, 100, 101])).unwrap();
+        let pixels = GrayPixels::from(&image);
+
+        assert_eq!((pixels.width(), pixels.height()), (2, 2));
+        assert_eq!(pixels.data, [1, 2, 3, 4]);
+        assert_eq!(pixels.data.as_ptr(), image.as_raw().as_ptr());
+        assert!(GrayPixels::try_new(pixels.width(), pixels.height(), pixels.data).is_ok());
+        assert_eq!(pixels.try_get(1, 1), Some(4));
+    }
+
+    #[cfg(feature = "image")]
+    #[test]
+    fn gray_image_conversion_borrows_an_empty_prefix_for_zero_area_padded_storage() {
+        for (width, height) in [(0, 0), (0, 7), (7, 0), (0, u32::MAX), (u32::MAX, 0)] {
+            let image = image::GrayImage::from_raw(width, height, Vec::from([99, 100, 101])).unwrap();
+            let pixels = GrayPixels::from(&image);
+
+            assert_eq!((pixels.width(), pixels.height()), (width, height));
+            assert!(pixels.data.is_empty());
+            assert_eq!(pixels.data.as_ptr(), image.as_raw().as_ptr());
+            assert!(GrayPixels::try_new(width, height, pixels.data).is_ok());
+        }
+    }
 
     #[test]
     fn grayscale_pixels_use_row_major_coordinates() {

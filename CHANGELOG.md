@@ -229,6 +229,9 @@
 - Protocol-quote non-empty ASCII hex-looking Wi-Fi SSIDs and remove one
   syntactic quote pair before unescaping parsed SSIDs/passwords, preserving
   escaped literal quotes and existing raw hex password encoding.
+- Borrow only the logical pixel prefix of valid GrayImage buffers with excess
+  backing storage, and expose into_data to transfer decoded payloads without a
+  buffer copy.
 
 ### Added
 
