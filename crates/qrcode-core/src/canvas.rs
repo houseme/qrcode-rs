@@ -1079,9 +1079,41 @@ pub fn is_functional(version: Version, width: i16, x: i16, y: i16) -> bool {
     }
 }
 
+/// Counts modules classified by [`is_functional`] for canonical geometry.
+///
+/// Returns `None` for an unsupported version. This is an internal facade
+/// helper; it follows the classifier's definition rather than inspecting
+/// encoded module colors.
+#[doc(hidden)]
+pub fn functional_module_count(version: Version) -> Option<usize> {
+    match version {
+        Version::Micro(1..=4) => {
+            let width = version.width().as_usize();
+            // The 9x9 corner and the remaining portions of row/column zero.
+            Some(81 + 2 * (width - 9))
+        }
+        Version::Normal(number @ 1..=40) => {
+            let width = version.width().as_usize();
+            // Three disjoint finder/format corners, plus timing-line cells
+            // outside those corners.
+            let base = 9 * 9 + 2 * 9 * 8 + 2 * (width - 17);
+            let count = alignment_pattern_positions(number).len();
+            let alignment = if count == 0 {
+                0
+            } else {
+                // Alignment squares do not overlap. Exclude the three finder
+                // corners, then remove five timing cells from each axis square.
+                25 * (count * count - 3) - 10 * (count - 2)
+            };
+            Some(base + alignment)
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod all_functional_patterns_tests {
-    use crate::canvas::{Canvas, is_functional};
+    use crate::canvas::{Canvas, functional_module_count, is_functional};
     use crate::types::{EcLevel, Version};
 
     #[test]
@@ -1187,6 +1219,32 @@ mod all_functional_patterns_tests {
         assert!(is_functional(version, version.width(), 8, 8));
         assert!(is_functional(version, version.width(), 0, 9));
         assert!(!is_functional(version, version.width(), 1, 9));
+    }
+
+    #[test]
+    fn functional_module_count_matches_existing_classifier_for_every_version() {
+        for version in (1..=40).map(Version::Normal).chain((1..=4).map(Version::Micro)) {
+            let width = version.width();
+            let expected =
+                (0..width).map(|y| (0..width).filter(|&x| is_functional(version, width, x, y)).count()).sum::<usize>();
+            assert_eq!(functional_module_count(version), Some(expected), "{version:?}");
+        }
+    }
+
+    #[test]
+    fn functional_module_count_rejects_unsupported_versions_without_width_arithmetic() {
+        for version in [
+            Version::Normal(i16::MIN),
+            Version::Normal(0),
+            Version::Normal(41),
+            Version::Normal(i16::MAX),
+            Version::Micro(i16::MIN),
+            Version::Micro(0),
+            Version::Micro(5),
+            Version::Micro(i16::MAX),
+        ] {
+            assert_eq!(functional_module_count(version), None);
+        }
     }
 }
 

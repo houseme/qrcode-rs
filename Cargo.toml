@@ -240,6 +240,10 @@ name = "bits"
 harness = false
 
 [[bench]]
+name = "analysis"
+harness = false
+
+[[bench]]
 name = "batch_grid"
 harness = false
 required-features = ["image"]

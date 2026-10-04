@@ -616,8 +616,10 @@ impl QrCode {
     pub fn analyze(&self) -> Analysis {
         let total = self.width * self.width;
         let dark = self.content.iter().filter(|c| **c == Color::Dark).count();
-        let functional =
-            (0..self.width).map(|y| (0..self.width).filter(|x| self.is_functional(*x, y)).count()).sum::<usize>();
+        let functional = match canvas::functional_module_count(self.version) {
+            Some(count) if self.width == self.version.width().as_usize() => count,
+            _ => (0..self.width).map(|y| (0..self.width).filter(|x| self.is_functional(*x, y)).count()).sum::<usize>(),
+        };
         Analysis {
             dark_ratio: if total == 0 { 0.0 } else { dark as f64 / total as f64 },
             functional_modules: functional,
@@ -3810,6 +3812,38 @@ mod api_tests {
         assert!(a.dark_ratio() > 0.0 && a.dark_ratio() < 1.0);
         let dark = code.colors().iter().filter(|c| **c == Color::Dark).count();
         assert!((a.dark_ratio() - dark as f64 / total as f64).abs() < 1e-9);
+    }
+
+    #[test]
+    fn analyze_matches_functional_scan_for_every_version() {
+        for version in (1..=40).map(crate::Version::Normal).chain((1..=4).map(crate::Version::Micro)) {
+            let code = QrCode::with_version(b"1", version, crate::EcLevel::L).unwrap();
+            let width = code.width();
+            let total = width * width;
+            let functional =
+                (0..width).map(|y| (0..width).filter(|&x| code.is_functional(x, y)).count()).sum::<usize>();
+            let dark = code.colors().iter().filter(|&&color| color == crate::Color::Dark).count();
+            let analysis = code.analyze();
+
+            assert_eq!(analysis.functional_modules(), functional, "{version:?}");
+            assert_eq!(analysis.data_modules(), total - functional, "{version:?}");
+            assert_eq!(analysis.dark_ratio(), dark as f64 / total as f64, "{version:?}");
+        }
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn analyze_keeps_the_existing_scan_for_noncanonical_trusted_geometry() {
+        let code = QrCode::from_serializable(crate::QrCodeData {
+            version: crate::Version::Normal(3),
+            ec_level: crate::EcLevel::L,
+            width: 2,
+            content: vec![crate::Color::Light; 4],
+        });
+        let analysis = code.analyze();
+        assert_eq!(analysis.functional_modules(), 4);
+        assert_eq!(analysis.data_modules(), 0);
+        assert_eq!(analysis.dark_ratio(), 0.0);
     }
 
     #[test]

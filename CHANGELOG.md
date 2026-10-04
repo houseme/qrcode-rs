@@ -86,6 +86,9 @@
 - Cache vertical gradient colors lazily within each image row, preserving
   pixel selection and interpolation arithmetic without new allocations; keep
   single-column and other gradient directions on their existing paths.
+- Compute functional-module counts from exact pattern geometry during
+  analysis, retaining the original scan for noncanonical legacy geometry and
+  leaving dark-module ratios unchanged.
 
 ### Fixed
 
