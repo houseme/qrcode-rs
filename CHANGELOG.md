@@ -99,6 +99,9 @@
 - Use ordered table searches for GS1 application identifiers and avoid
   redundant prefix checks while preserving longest matches, measure families,
   descriptions and tolerant field parsing.
+- Cache horizontal gradient colors for eligible images using at most 64 KiB of
+  requested storage, with allocation failure and ineligible dimensions falling
+  back to the existing pixel path.
 
 ### Fixed
 
