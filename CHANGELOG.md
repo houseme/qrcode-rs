@@ -96,6 +96,9 @@
 - Reuse formatted PDF foreground commands from the second rectangle flush
   onward, retaining the original first-flush path and avoiding a prefix
   allocation for empty or single-rectangle output.
+- Use ordered table searches for GS1 application identifiers and avoid
+  redundant prefix checks while preserving longest matches, measure families,
+  descriptions and tolerant field parsing.
 
 ### Fixed
 

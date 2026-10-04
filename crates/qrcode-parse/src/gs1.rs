@@ -36,6 +36,7 @@ struct AiSpec {
 }
 
 /// Curated table of common GS1 application identifiers.
+/// Sorted by identifier length, then ASCII digits, for binary lookup.
 #[rustfmt::skip]
 const AI_TABLE: &[AiSpec] = &[
     AiSpec { ai: "00",  desc: "SSCC (serial shipping container code)",     len: Len::Fixed(18) },
@@ -122,18 +123,20 @@ fn digits(data: &[u8], n: usize) -> Option<u32> {
 fn match_ai(data: &[u8]) -> Option<AiMatch> {
     // Measure family: 3-digit prefix with a 4th digit present → 4-digit AI, fixed 6.
     if let Some(d3) = digits(data, 3)
-        && digits(data, 4).is_some()
         && is_measure_family(d3)
+        && data.get(3).is_some_and(u8::is_ascii_digit)
     {
         return Some(AiMatch { len: 4, desc: "Trade item measure (GS1 310n–369n family)", length: Len::Fixed(6) });
     }
     // Longest exact table match (4 → 3 → 2).
+    let max_len = AI_TABLE.last().map_or(0, |spec| spec.ai.len());
     for &n in &[4usize, 3, 2] {
-        if data.len() >= n {
-            let Ok(prefix) = core::str::from_utf8(&data[..n]) else {
-                continue;
-            };
-            if let Some(spec) = AI_TABLE.iter().find(|s| s.ai == prefix) {
+        if data.len() >= n && n <= max_len {
+            let prefix = &data[..n];
+            if let Ok(index) =
+                AI_TABLE.binary_search_by(|spec| spec.ai.len().cmp(&n).then_with(|| spec.ai.as_bytes().cmp(prefix)))
+            {
+                let spec = &AI_TABLE[index];
                 return Some(AiMatch { len: n, desc: spec.desc, length: spec.len });
             }
         }
@@ -344,5 +347,124 @@ mod tests {
         assert_eq!(e.len(), 1);
         assert_eq!(e[0].ai(), "410");
         assert_eq!(e[0].value(), b"1234567890128");
+    }
+
+    fn reference_match_ai(data: &[u8]) -> Option<AiMatch> {
+        if let Some(d3) = digits(data, 3)
+            && digits(data, 4).is_some()
+            && is_measure_family(d3)
+        {
+            return Some(AiMatch {
+                len: 4, desc: "Trade item measure (GS1 310n–369n family)", length: Len::Fixed(6)
+            });
+        }
+        for n in [4, 3, 2] {
+            if data.len() >= n {
+                let Ok(prefix) = core::str::from_utf8(&data[..n]) else {
+                    continue;
+                };
+                if let Some(spec) = AI_TABLE.iter().find(|spec| spec.ai == prefix) {
+                    return Some(AiMatch { len: n, desc: spec.desc, length: spec.len });
+                }
+            }
+        }
+        None
+    }
+
+    fn match_signature(matched: Option<AiMatch>) -> Option<(usize, &'static str, Option<usize>)> {
+        matched.map(|matched| {
+            let length = match matched.length {
+                Len::Fixed(length) => Some(length),
+                Len::Variable => None,
+            };
+            (matched.len, matched.desc, length)
+        })
+    }
+
+    fn assert_lookup_matches_reference(data: &[u8]) {
+        assert_eq!(match_signature(match_ai(data)), match_signature(reference_match_ai(data)), "prefix {data:?}");
+    }
+
+    #[test]
+    fn binary_lookup_table_has_unique_sorted_digit_identifiers() {
+        assert!(
+            AI_TABLE
+                .iter()
+                .all(|spec| (2..=4).contains(&spec.ai.len()) && spec.ai.bytes().all(|byte| byte.is_ascii_digit()))
+        );
+        assert!(
+            AI_TABLE
+                .windows(2)
+                .all(|pair| { (pair[0].ai.len(), pair[0].ai.as_bytes()) < (pair[1].ai.len(), pair[1].ai.as_bytes()) })
+        );
+    }
+
+    #[test]
+    fn binary_lookup_matches_linear_for_every_decimal_prefix_and_truncation() {
+        for number in 0_u32..10_000 {
+            let data = [
+                b'0' + (number / 1000) as u8,
+                b'0' + (number / 100 % 10) as u8,
+                b'0' + (number / 10 % 10) as u8,
+                b'0' + (number % 10) as u8,
+            ];
+            for length in 0..=4 {
+                assert_lookup_matches_reference(&data[..length]);
+            }
+        }
+    }
+
+    #[test]
+    fn binary_lookup_matches_linear_for_every_two_byte_binary_prefix() {
+        for first in 0_u16..=255 {
+            for second in 0_u16..=255 {
+                assert_lookup_matches_reference(&[first as u8, second as u8]);
+            }
+        }
+        for data in ["10中文🦀".as_bytes(), "310é".as_bytes(), b"410\xff".as_slice(), b"91\x00\xff".as_slice()] {
+            assert_lookup_matches_reference(data);
+        }
+    }
+
+    #[test]
+    fn lookup_keeps_unknown_fields_and_binary_values_tolerant() {
+        let data = b"91\x00\xff\x1d21\x80";
+        let parsed = Gs1Result::parse(data).unwrap();
+        assert_eq!(parsed.elements()[0].ai(), "91");
+        assert_eq!(parsed.elements()[0].value(), b"\x00\xff");
+        assert_eq!(parsed.elements()[0].description(), "Unknown application identifier");
+        assert_eq!(parsed.elements()[1].ai(), "21");
+        assert_eq!(parsed.elements()[1].value(), b"\x80");
+        assert_eq!(parsed.raw_data(), data);
+    }
+
+    #[test]
+    fn lookup_preserves_short_fixed_fields_and_unicode_byte_boundaries() {
+        for data in [b"01short".as_slice(), b"3100".as_slice(), b"20\xe2\x82\xac".as_slice()] {
+            let parsed = Gs1Result::parse(data).unwrap();
+            assert_eq!(parsed.raw_data(), data);
+        }
+        assert_eq!(Gs1Result::parse(b"01short").unwrap().elements()[0].value(), b"short");
+        assert_eq!(Gs1Result::parse(b"3100").unwrap().elements()[0].value(), b"");
+        assert_eq!(Gs1Result::parse(b"20\xe2\x82\xac").unwrap().elements()[0].value(), b"\xe2\x82");
+        let unicode = "10中文🦀\u{1d}21é".as_bytes();
+        let parsed = Gs1Result::parse(unicode).unwrap();
+        assert_eq!(parsed.elements()[0].value(), "中文🦀".as_bytes());
+        assert_eq!(parsed.elements()[1].value(), "é".as_bytes());
+        assert_eq!(parsed.raw_data(), unicode);
+    }
+
+    #[test]
+    fn lookup_preserves_measure_gaps_and_start_error_behavior() {
+        let parsed = Gs1Result::parse(b"3170bad\x1d3712").unwrap();
+        assert_eq!(parsed.elements()[0].ai(), "31");
+        assert_eq!(parsed.elements()[0].value(), b"70bad");
+        assert_eq!(parsed.elements()[1].ai(), "37");
+        assert_eq!(parsed.elements()[1].value(), b"12");
+        for data in [b"X123".as_slice(), b"\xff01".as_slice(), "é01".as_bytes()] {
+            assert_eq!(Gs1Result::parse(data), Err(ParseError::InvalidFormat));
+        }
+        let repeated_separator = b"10A\x1d\x1d\xff";
+        assert_eq!(Gs1Result::parse(repeated_separator).unwrap().raw_data(), repeated_separator);
     }
 }
