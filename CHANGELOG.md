@@ -235,6 +235,8 @@
 - Add QrBatchBuilder::render_zip/render_zip_with and BatchZipError to encode,
   render and package lazy inputs one at a time, retaining only the current
   payload and ZIP metadata with caller-controlled flushing and publication.
+- Expose HTML GridColor through the standard renderer builder with the
+  existing geometry, color escaping and output-budget checks.
 
 ## [2.1.1] - 2026-09-16
 

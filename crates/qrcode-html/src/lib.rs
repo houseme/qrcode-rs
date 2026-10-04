@@ -1,6 +1,8 @@
 //! HTML rendering support.
 //!
 //! Generates HTML `<table>` or CSS Grid output for embedding QR codes in web pages.
+//! Use [`Color`] for tables and [`GridColor`] for CSS Grid with the shared
+//! [`qrcode_render::Renderer`] builder.
 //!
 //! # Example
 //!
@@ -53,7 +55,7 @@ pub enum Mode {
     Grid,
 }
 
-/// An HTML color.
+/// An HTML color rendered with the default table layout.
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Color<'a>(pub &'a str);
 
@@ -67,6 +69,76 @@ impl<'a> Pixel for Color<'a> {
 
     fn default_color(color: ModuleColor) -> Self {
         Color(color.select("#000", "#fff"))
+    }
+}
+
+/// An HTML color rendered with a CSS Grid layout.
+///
+/// This pixel type selects [`Mode::Grid`] through the normal renderer builder,
+/// retaining its colors, quiet-zone and module-dimension options.
+///
+/// ```
+/// use qrcode_core::Color as ModuleColor;
+/// use qrcode_html::GridColor;
+/// use qrcode_render::Renderer;
+///
+/// let modules = [ModuleColor::Dark, ModuleColor::Light, ModuleColor::Light, ModuleColor::Dark];
+/// let html = Renderer::<GridColor>::new(&modules, 2, 1)
+///     .dark_color(GridColor("#123456"))
+///     .light_color(GridColor("#ffffff"))
+///     .module_dimensions(2, 3)
+///     .try_build()?;
+/// assert!(html.contains("display:grid;grid-template-columns:repeat(8,1px)"));
+/// # Ok::<(), qrcode_render::RenderError>(())
+/// ```
+#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct GridColor<'a>(pub &'a str);
+
+impl<'a> Pixel for GridColor<'a> {
+    type Image = String;
+    type Canvas = GridCanvas<'a>;
+
+    fn default_unit_size() -> (u32, u32) {
+        (1, 1)
+    }
+
+    fn default_color(color: ModuleColor) -> Self {
+        Self(color.select("#000", "#fff"))
+    }
+}
+
+#[doc(hidden)]
+pub struct GridCanvas<'a>(Canvas<'a>);
+
+impl<'a> RenderCanvas for GridCanvas<'a> {
+    type Pixel = GridColor<'a>;
+    type Image = String;
+
+    fn new(width: u32, height: u32, dark_pixel: GridColor<'a>, light_pixel: GridColor<'a>) -> Self {
+        let mut canvas = Canvas::new(width, height, Color(dark_pixel.0), Color(light_pixel.0));
+        canvas.set_mode(Mode::Grid);
+        Self(canvas)
+    }
+
+    fn validate_dimensions(
+        width: u32,
+        height: u32,
+        dark: &GridColor<'a>,
+        light: &GridColor<'a>,
+    ) -> Result<(), RenderError> {
+        Canvas::validate_dimensions(width, height, &Color(dark.0), &Color(light.0))
+    }
+
+    fn draw_dark_pixel(&mut self, x: u32, y: u32) {
+        self.0.draw_dark_pixel(x, y);
+    }
+
+    fn draw_dark_rect(&mut self, left: u32, top: u32, width: u32, height: u32) {
+        self.0.draw_dark_rect(left, top, width, height);
+    }
+
+    fn into_image(self) -> String {
+        self.0.into_image()
     }
 }
 
@@ -446,9 +518,153 @@ pub fn aria_label(html: &str, label: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Canvas, Color, Mode, layout};
+    use super::{Canvas, Color, GridCanvas, GridColor, Mode, layout};
     use alloc::string::String;
     use qrcode_render::{Canvas as RenderCanvas, RenderError, Renderer};
+
+    fn grid_cells(output: &str, width: usize) -> alloc::vec::Vec<&str> {
+        let header = alloc::format!(
+            "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"></head><body><div style=\"display:grid;grid-template-columns:repeat({width},1px);line-height:0\">"
+        );
+        let body = output.strip_prefix(header.as_str()).unwrap().strip_suffix("</div></body></html>").unwrap();
+        let mut cells = alloc::vec::Vec::new();
+        let mut remaining = body;
+        while !remaining.is_empty() {
+            remaining = remaining.strip_prefix(r#"<div style="width:1px;height:1px;background:"#).unwrap();
+            let (color, tail) = remaining.split_once(r#""></div>"#).unwrap();
+            cells.push(color);
+            remaining = tail;
+        }
+        cells
+    }
+
+    #[test]
+    fn grid_color_uses_the_normal_builder_and_default_table_bytes_stay_unchanged() {
+        let modules =
+            [qrcode_core::Color::Dark, qrcode_core::Color::Light, qrcode_core::Color::Light, qrcode_core::Color::Dark];
+        let grid = Renderer::<GridColor>::new(&modules, 2, 1).try_build().unwrap();
+        let mut legacy_grid = Canvas::new(4, 4, Color("#000"), Color("#fff"));
+        legacy_grid.set_mode(Mode::Grid);
+        legacy_grid.draw_dark_pixel(1, 1);
+        legacy_grid.draw_dark_pixel(2, 2);
+        assert_eq!(grid, legacy_grid.into_image());
+        assert_eq!(grid_cells(&grid, 4).len(), 16);
+
+        let mut legacy_table = Canvas::new(4, 4, Color("#000"), Color("#fff"));
+        legacy_table.draw_dark_pixel(1, 1);
+        legacy_table.draw_dark_pixel(2, 2);
+        assert_eq!(Renderer::<Color>::new(&modules, 2, 1).build(), legacy_table.into_image());
+        assert!(matches!(Mode::default(), Mode::Table));
+    }
+
+    #[test]
+    fn grid_builder_keeps_complete_pixels_quiet_zone_rectangular_modules_and_escaping() {
+        let modules =
+            [qrcode_core::Color::Dark, qrcode_core::Color::Light, qrcode_core::Color::Light, qrcode_core::Color::Dark];
+        let dark = "\"'&<>💖";
+        let light = "\"'&<>界";
+        let escaped_dark = "&quot;&#39;&amp;&lt;&gt;💖";
+        let escaped_light = "&quot;&#39;&amp;&lt;&gt;界";
+        for include_quiet in [false, true] {
+            let quiet = u32::from(include_quiet);
+            for (mw, mh) in [(1, 1), (2, 3)] {
+                let width = (2 + quiet * 2) * mw;
+                let height = (2 + quiet * 2) * mh;
+                let grid = Renderer::<GridColor>::new(&modules, 2, 1)
+                    .dark_color(GridColor(dark))
+                    .light_color(GridColor(light))
+                    .quiet_zone(include_quiet)
+                    .module_dimensions(mw, mh)
+                    .try_build()
+                    .unwrap();
+                let mut legacy = Canvas::new(width, height, Color(dark), Color(light));
+                legacy.set_mode(Mode::Grid);
+                for (index, &color) in modules.iter().enumerate() {
+                    if color == qrcode_core::Color::Dark {
+                        legacy.draw_dark_rect((index as u32 % 2 + quiet) * mw, (index as u32 / 2 + quiet) * mh, mw, mh);
+                    }
+                }
+                assert_eq!(grid, legacy.into_image());
+                let cells = grid_cells(&grid, width as usize);
+                assert_eq!(cells.len(), width as usize * height as usize);
+                for y in 0..height {
+                    for x in 0..width {
+                        let in_source =
+                            x >= quiet * mw && x < (quiet + 2) * mw && y >= quiet * mh && y < (quiet + 2) * mh;
+                        let is_dark = in_source && x / mw - quiet == y / mh - quiet;
+                        assert_eq!(cells[(y * width + x) as usize], if is_dark { escaped_dark } else { escaped_light });
+                    }
+                }
+                assert_eq!(cells.iter().filter(|&&color| color == escaped_dark).count(), 2 * mw as usize * mh as usize);
+            }
+        }
+    }
+
+    #[test]
+    fn grid_color_accepts_borrowed_sources_and_rejects_non_square_sources() {
+        let modules =
+            [qrcode_core::Color::Dark, qrcode_core::Color::Light, qrcode_core::Color::Light, qrcode_core::Color::Dark];
+        let source = qrcode_core::ModuleView::new(&modules, 2).unwrap();
+        let borrowed = Renderer::<GridColor>::try_from_source(&source, 1).unwrap().try_build().unwrap();
+        assert_eq!(borrowed, Renderer::<GridColor>::new(&modules, 2, 1).build());
+        let rectangular = qrcode_core::ModuleView::new_rect(&modules, 2, 2).unwrap().row_range(0, 1).unwrap();
+        assert!(matches!(
+            Renderer::<GridColor>::try_from_source(&rectangular, 1),
+            Err(RenderError::InvalidModuleSource { width: 2, height: 1, len: 2 })
+        ));
+    }
+
+    #[test]
+    fn grid_color_borrowed_symbols_keep_normal_and_micro_quiet_zones() {
+        for (version, width, quiet, ec_level) in [
+            (qrcode_core::Version::Normal(1), 21usize, 4usize, qrcode_core::EcLevel::M),
+            (qrcode_core::Version::Micro(1), 11, 2, qrcode_core::EcLevel::L),
+        ] {
+            let modules = alloc::vec![qrcode_core::Color::Light; width * width];
+            let symbol = qrcode_core::QrCodeRef::new(&modules, width, version, ec_level).unwrap();
+            let grid = Renderer::<GridColor>::try_from_symbol(&symbol).unwrap().try_build().unwrap();
+            let pixels = width + quiet * 2;
+            let cells = grid_cells(&grid, pixels);
+            assert_eq!(cells.len(), pixels * pixels);
+            assert!(cells.iter().all(|&color| color == "#fff"));
+        }
+    }
+
+    #[test]
+    fn grid_builder_preserves_zero_dimension_clamping_and_empty_source_errors() {
+        let modules = [qrcode_core::Color::Dark];
+        let actual = Renderer::<GridColor>::new(&modules, 1, 0).module_dimensions(0, 0).try_build().unwrap();
+        assert_eq!(actual, Renderer::<GridColor>::new(&modules, 1, 0).module_dimensions(1, 1).build());
+        assert_eq!(grid_cells(&actual, 1), ["#000"]);
+        assert_eq!(
+            Renderer::<GridColor>::new(&[], 0, 0).try_build(),
+            Err(RenderError::InvalidModuleSource { width: 0, height: 0, len: 0 })
+        );
+    }
+
+    #[test]
+    fn grid_color_reuses_legacy_budget_and_empty_canvas_rules() {
+        let dark = GridColor("#000");
+        let light = GridColor("#fff");
+        for (width, height) in [(65_536, 65_536), (u32::MAX, u32::MAX), (0, u32::MAX)] {
+            assert_eq!(GridCanvas::validate_dimensions(width, height, &dark, &light), Err(RenderError::OutputTooLarge));
+        }
+        let modules = [qrcode_core::Color::Dark];
+        assert_eq!(
+            Renderer::<GridColor>::new(&modules, 1, 0).module_dimensions(65_536, 65_536).try_build(),
+            Err(RenderError::OutputTooLarge)
+        );
+        let escaped = "\"".repeat(4096);
+        assert_eq!(
+            GridCanvas::validate_dimensions(256, 256, &GridColor(&escaped), &light),
+            Err(RenderError::OutputTooLarge)
+        );
+        for (width, height) in [(0, 0), (0, 3), (3, 0)] {
+            let mut legacy = Canvas::new(width, height, Color("#000"), Color("#fff"));
+            legacy.set_mode(Mode::Grid);
+            assert_eq!(GridCanvas::new(width, height, dark, light).into_image(), legacy.into_image());
+        }
+    }
 
     #[test]
     fn html_large_dimensions_fail_before_allocation() {
