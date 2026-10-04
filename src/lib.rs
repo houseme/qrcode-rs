@@ -3831,6 +3831,24 @@ mod api_tests {
         }
     }
 
+    #[test]
+    fn analyze_includes_reserved_version_information_in_functional_modules() {
+        for version in [crate::Version::Normal(7), crate::Version::Normal(40)] {
+            let mut bits = crate::bits::Bits::new(version);
+            bits.push_numeric_data(b"1").unwrap();
+            bits.push_terminator(crate::EcLevel::L).unwrap();
+            let (data, correction) =
+                crate::ec::construct_codewords(&bits.into_bytes(), version, crate::EcLevel::L).unwrap();
+            let code = QrCode::with_version(b"1", version, crate::EcLevel::L).unwrap();
+            let analysis = code.analyze();
+            let codeword_bits = (data.len() + correction.len()) * 8;
+            assert_eq!(analysis.data_modules(), codeword_bits);
+            assert_eq!(analysis.functional_modules(), code.width() * code.width() - codeword_bits);
+            assert!(code.is_functional(code.width() - 9, 3));
+            assert!(code.is_functional(4, code.width() - 9));
+        }
+    }
+
     #[cfg(feature = "serde")]
     #[test]
     fn analyze_keeps_the_existing_scan_for_noncanonical_trusted_geometry() {

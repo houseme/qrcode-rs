@@ -1051,10 +1051,15 @@ pub fn is_functional(version: Version, width: i16, x: i16, y: i16) -> bool {
     match version {
         Version::Micro(_) => x == 0 || y == 0 || (x < 9 && y < 9),
         Version::Normal(a) => {
+            let version_info_test = matches!(a, 7..=40)
+                && width == version.width()
+                && (((0..6).contains(&x) && (width - 11..width - 8).contains(&y))
+                    || ((width - 11..width - 8).contains(&x) && (0..6).contains(&y)));
             let non_alignment_test = x == 6 || y == 6 || // Timing patterns
                 (x < 9 && y < 9) ||                  // Top-left finder pattern
                 (x < 9 && y >= width - 8) ||           // Bottom-left finder pattern
-                (x >= width - 8 && y < 9); // Top-right finder pattern
+                (x >= width - 8 && y < 9) ||           // Top-right finder pattern
+                version_info_test;
             match a {
                 _ if non_alignment_test => true,
                 1 => false,
@@ -1105,7 +1110,8 @@ pub fn functional_module_count(version: Version) -> Option<usize> {
                 // corners, then remove five timing cells from each axis square.
                 25 * (count * count - 3) - 10 * (count - 2)
             };
-            Some(base + alignment)
+            let version_info = if number >= 7 { 2 * 18 } else { 0 };
+            Some(base + alignment + version_info)
         }
         _ => None,
     }
@@ -1113,7 +1119,12 @@ pub fn functional_module_count(version: Version) -> Option<usize> {
 
 #[cfg(test)]
 mod all_functional_patterns_tests {
-    use crate::canvas::{Canvas, functional_module_count, is_functional};
+    use crate::bits::Bits;
+    use crate::canvas::{
+        Canvas, Module, VERSION_INFO_COORDS_BL, VERSION_INFO_COORDS_TR, alignment_pattern_positions,
+        functional_module_count, is_functional,
+    };
+    use crate::ec;
     use crate::types::{EcLevel, Version};
 
     #[test]
@@ -1205,8 +1216,8 @@ mod all_functional_patterns_tests {
         assert!(is_functional(version, version.width(), 22, 22));
         assert!(is_functional(version, version.width(), 8, 8));
         assert!(!is_functional(version, version.width(), 19, 5));
-        assert!(!is_functional(version, version.width(), 36, 3));
-        assert!(!is_functional(version, version.width(), 4, 36));
+        assert!(is_functional(version, version.width(), 36, 3));
+        assert!(is_functional(version, version.width(), 4, 36));
         assert!(is_functional(version, version.width(), 38, 38));
     }
 
@@ -1244,6 +1255,129 @@ mod all_functional_patterns_tests {
             Version::Micro(i16::MAX),
         ] {
             assert_eq!(functional_module_count(version), None);
+        }
+    }
+
+    // Retain the previous classifier to isolate the intended version-info
+    // delta and protect its existing behavior outside the symbol coordinates.
+    fn previous_classifier(version: Version, width: i16, x: i16, y: i16) -> bool {
+        let x = if x < 0 { x + width } else { x };
+        let y = if y < 0 { y + width } else { y };
+        match version {
+            Version::Micro(_) => x == 0 || y == 0 || (x < 9 && y < 9),
+            Version::Normal(number) => {
+                if x == 6 || y == 6 || (x < 9 && y < 9) || (x < 9 && y >= width - 8) || (x >= width - 8 && y < 9) {
+                    return true;
+                }
+                if !(2..=40).contains(&number) {
+                    return false;
+                }
+                let positions = alignment_pattern_positions(number);
+                let last = positions.len() - 1;
+                for (i, &center_x) in positions.iter().enumerate() {
+                    for (j, &center_y) in positions.iter().enumerate() {
+                        if i == 0 && (j == 0 || j == last) || i == last && j == 0 {
+                            continue;
+                        }
+                        if (center_x - x).abs() <= 2 && (center_y - y).abs() <= 2 {
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
+        }
+    }
+
+    #[test]
+    fn functional_classification_matches_drawn_masked_modules_for_every_version() {
+        for version in (1..=40).map(Version::Normal).chain((1..=4).map(Version::Micro)) {
+            let width = version.width();
+            let mut canvas = Canvas::new(version, EcLevel::L);
+            canvas.draw_all_functional_patterns();
+            let mut counted = 0;
+            for y in 0..width {
+                for x in 0..width {
+                    let expected = matches!(canvas.get(x, y), Module::Masked(_));
+                    let actual = is_functional(version, width, x, y);
+                    assert_eq!(actual, expected, "{version:?} ({x}, {y})");
+                    assert_eq!(is_functional(version, width, x - width, y), expected);
+                    assert_eq!(is_functional(version, width, x, y - width), expected);
+                    assert_eq!(is_functional(version, width, x - width, y - width), expected);
+                    counted += usize::from(actual);
+                }
+            }
+            assert_eq!(functional_module_count(version), Some(counted));
+        }
+    }
+
+    #[test]
+    fn version_information_is_the_only_added_legal_functional_region() {
+        for number in 1..=40 {
+            let version = Version::Normal(number);
+            let width = version.width();
+            let mut version_canvas = Canvas::new(version, EcLevel::L);
+            version_canvas.draw_version_info_patterns();
+            let mut added = 0;
+            for y in 0..width {
+                for x in 0..width {
+                    let previous = previous_classifier(version, width, x, y);
+                    let current = is_functional(version, width, x, y);
+                    let version_info = matches!(version_canvas.get(x, y), Module::Masked(_));
+                    assert_eq!(current, previous || version_info, "v{number} ({x}, {y})");
+                    added += usize::from(current && !previous);
+                }
+            }
+            assert_eq!(added, if number >= 7 { 36 } else { 0 });
+        }
+    }
+
+    #[test]
+    fn version_information_queries_preserve_negative_aliases_and_other_outside_behavior() {
+        for number in 7..=40 {
+            let version = Version::Normal(number);
+            let width = version.width();
+            for &(x, y) in VERSION_INFO_COORDS_BL.iter().chain(VERSION_INFO_COORDS_TR.iter()) {
+                assert!(is_functional(version, width, x, y));
+            }
+            for (x, y) in [
+                (-width - 1, 0),
+                (0, -width - 1),
+                (width, 0),
+                (0, width),
+                (width, width),
+                (i16::MIN, i16::MAX),
+                (i16::MAX, i16::MIN),
+            ] {
+                assert_eq!(is_functional(version, width, x, y), previous_classifier(version, width, x, y));
+            }
+        }
+    }
+
+    #[test]
+    fn classified_data_modules_match_placed_codewords_and_remaining_bits() {
+        for version in (1..=40).map(Version::Normal).chain((1..=4).map(Version::Micro)) {
+            for ec_level in [EcLevel::L, EcLevel::M, EcLevel::Q, EcLevel::H] {
+                let mut bits = Bits::new(version);
+                bits.push_numeric_data(b"1").unwrap();
+                if bits.push_terminator(ec_level).is_err() {
+                    continue;
+                }
+                let (data, correction) = ec::construct_codewords(&bits.into_bytes(), version, ec_level).unwrap();
+                let mut canvas = Canvas::new(version, ec_level);
+                canvas.draw_all_functional_patterns();
+                let functional = canvas.modules.iter().filter(|module| matches!(module, Module::Masked(_))).count();
+                let half_codeword = matches!(version, Version::Micro(1 | 3));
+                let codeword_bits = (data.len() + correction.len()) * 8 - usize::from(half_codeword) * 4;
+                canvas.draw_data(&data, &correction);
+                let placed = canvas.modules.iter().filter(|module| matches!(module, Module::Unmasked(_))).count();
+                let remaining = canvas.modules.iter().filter(|module| matches!(module, Module::Empty)).count();
+
+                assert_eq!(functional_module_count(version), Some(functional), "{version:?} {ec_level:?}");
+                assert_eq!(placed, codeword_bits, "{version:?} {ec_level:?}");
+                assert!(remaining < 8, "{version:?} {ec_level:?}, {remaining} remaining bits");
+                assert_eq!(canvas.modules.len() - functional, placed + remaining);
+            }
         }
     }
 }

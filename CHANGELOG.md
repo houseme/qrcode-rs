@@ -171,6 +171,9 @@
 - Skip comments, declarations and raw-text regions when locating SVG/HTML
   injection targets, respect tag-name boundaries, and preserve root QName
   namespaces for SVG animation styles.
+- Classify both version-information regions as functional modules for normal
+  versions 7 through 40, correcting analysis counts by 36 modules without
+  changing encoded matrices.
 
 ### Added
 
