@@ -1,5 +1,6 @@
 //! `qrencodes` — command-line QR code generator.
 
+use std::borrow::Cow;
 use std::error::Error;
 use std::fmt;
 use std::fs::File;
@@ -751,13 +752,16 @@ fn render_one(text: &str, cli: &Cli, quiet_zone: bool) -> Result<Vec<u8>, Box<dy
             .light_color(ansi::Color::new(light_rgb.0, light_rgb.1, light_rgb.2))
             .build()
             .into_bytes(),
-        Format::Svg => code
-            .render::<qrcode_svg::Color>()
-            .quiet_zone(quiet_zone)
-            .dark_color(qrcode_svg::Color(dark_str.as_str()))
-            .light_color(qrcode_svg::Color(light_str.as_str()))
-            .build()
-            .into_bytes(),
+        Format::Svg => {
+            let dark = css_hex_color(dark_str);
+            let light = css_hex_color(light_str);
+            code.render::<qrcode_svg::Color>()
+                .quiet_zone(quiet_zone)
+                .dark_color(qrcode_svg::Color(dark.as_ref()))
+                .light_color(qrcode_svg::Color(light.as_ref()))
+                .build()
+                .into_bytes()
+        }
         Format::Png => {
             use qrcode_image::{DynamicImage, ImageFormat};
             validate_png_size(&code, cli.size, quiet_zone)?;
@@ -772,13 +776,16 @@ fn render_one(text: &str, cli: &Cli, quiet_zone: bool) -> Result<Vec<u8>, Box<dy
             .build()
             .into_bytes(),
         Format::Pic => code.render::<qrcode_pic::Color>().quiet_zone(quiet_zone).build().into_bytes(),
-        Format::Html => code
-            .render::<qrcode_html::Color>()
-            .quiet_zone(quiet_zone)
-            .dark_color(qrcode_html::Color(dark_str.as_str()))
-            .light_color(qrcode_html::Color(light_str.as_str()))
-            .build()
-            .into_bytes(),
+        Format::Html => {
+            let dark = css_hex_color(dark_str);
+            let light = css_hex_color(light_str);
+            code.render::<qrcode_html::Color>()
+                .quiet_zone(quiet_zone)
+                .dark_color(qrcode_html::Color(dark.as_ref()))
+                .light_color(qrcode_html::Color(light.as_ref()))
+                .build()
+                .into_bytes()
+        }
         Format::Pdf => code
             .render::<qrcode_pdf::Color>()
             .quiet_zone(quiet_zone)
@@ -858,6 +865,12 @@ fn unicode_render(code: &QrCode, mode: UnicodeMode, quiet_zone: bool) -> String 
 
 fn parse_rgb(s: &str, which: &str) -> Result<(u8, u8, u8), Box<dyn Error>> {
     colors::hex_to_rgb(s).ok_or_else(|| format!("invalid {which} color '{s}' (expected #rgb or #rrggbb)").into())
+}
+
+fn css_hex_color(color: &str) -> Cow<'_, str> {
+    // render_one has already validated RGB hex input. The markup backends
+    // require a CSS hash even though the shared RGB parser accepts bare hex.
+    if color.starts_with('#') { Cow::Borrowed(color) } else { Cow::Owned(format!("#{color}")) }
 }
 
 fn to_unit(&(r, g, b): &(u8, u8, u8)) -> [f64; 3] {
@@ -1055,6 +1068,17 @@ mod tests {
     fn parse_rgb_reports_the_color_name_for_invalid_input() {
         let error = parse_rgb("not-a-color", "light").unwrap_err().to_string();
         assert!(error.contains("invalid light color"));
+    }
+
+    #[test]
+    fn css_hex_color_borrows_existing_css_and_prefixes_only_bare_hex() {
+        let original = "#AbC";
+        let css = css_hex_color(original);
+        assert!(matches!(css, Cow::Borrowed(_)));
+        assert_eq!(css.as_ptr(), original.as_ptr());
+        assert_eq!(css.as_ref(), original);
+        assert_eq!(css_hex_color("AbC"), "#AbC");
+        assert_eq!(css_hex_color("123456"), "#123456");
     }
 
     #[test]

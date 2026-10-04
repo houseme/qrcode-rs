@@ -178,6 +178,8 @@
 - Classify both version-information regions as functional modules for normal
   versions 7 through 40, correcting analysis counts by 36 modules without
   changing encoded matrices.
+- Prefix accepted bare hexadecimal CLI colors with # for SVG and HTML output,
+  preserving existing prefixed spelling, inversion and other render formats.
 
 ### Added
 
