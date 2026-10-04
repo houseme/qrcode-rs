@@ -170,11 +170,17 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
-    if let Some(command) = &cli.command {
-        return run_command(command);
-    }
     if cli.batch.is_some() && cli.text.is_some() {
         return Err("--batch cannot be used together with TEXT".into());
+    }
+    if let Some(command) = &cli.command {
+        if cli.text.is_some() {
+            return Err("TEXT cannot be used together with validate".into());
+        }
+        if cli.batch.is_some() {
+            return Err("--batch cannot be used together with validate".into());
+        }
+        return run_command(command);
     }
     if cli.batch.is_some() && cli.output.as_deref() == Some("-") {
         return Err("batch mode requires --output to name a directory or batch output file".into());
@@ -1250,6 +1256,21 @@ mod tests {
 
         let error = run(cli).unwrap_err().to_string();
         assert!(error.contains("cannot be used together"));
+    }
+
+    #[test]
+    fn run_rejects_generation_inputs_before_dispatching_validation() {
+        for (text, batch, expected) in [
+            (Some("alpha"), None, "TEXT cannot be used together with validate"),
+            (None, Some("unused"), "--batch cannot be used together with validate"),
+            (Some("alpha"), Some("unused"), "--batch cannot be used together with TEXT"),
+        ] {
+            let mut cli = cli_with_text(text);
+            cli.batch = batch.map(PathBuf::from);
+            cli.command =
+                Some(Command::Validate { image: PathBuf::from("missing-image"), expect: None, print_payload: false });
+            assert_eq!(run(cli).unwrap_err().to_string(), expected);
+        }
     }
 
     #[test]

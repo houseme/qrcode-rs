@@ -206,6 +206,8 @@
 - Treat BrokenPipe from CLI stdout writes and flushes as successful reader
   termination, including validation output, while preserving render,
   validation and regular-file errors.
+- Reject TEXT or --batch combined with validate before image I/O, retaining
+  the existing TEXT/--batch conflict priority in both CLI entry points.
 
 ### Added
 
