@@ -105,6 +105,8 @@
 - Reuse diagonal gradient row coordinates without additional allocations,
   preserving interpolation order, pixel selection and single-axis fallback
   behavior.
+- Document and regression-test the opaque white logo backplate, including
+  transparent logos and preservation of QR alpha outside the overlay region.
 
 ### Fixed
 

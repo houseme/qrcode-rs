@@ -122,9 +122,11 @@ impl<P: image::Pixel + 'static> Canvas for (P, ImageBuffer<P, Vec<P::Subpixel>>)
 /// Overlays a logo onto the center of a QR code image.
 ///
 /// The logo is automatically resized to fit within the specified ratio of the
-/// QR code's dimensions. A white padding margin is added around the logo to
-/// ensure scannability. Empty QR images are returned in RGBA8 form without an
-/// overlay.
+/// QR code's dimensions. The entire logo rectangle and its padding are filled
+/// with opaque white before compositing to ensure scannability. Transparent
+/// parts of the logo therefore show white; QR pixels outside this region keep
+/// their RGBA8 colors and alpha. Empty QR images are returned in RGBA8 form
+/// without an overlay.
 ///
 /// Use `image::DynamicImage::from(qr_image)` to convert an `ImageBuffer` to
 /// `DynamicImage` if needed.
@@ -908,6 +910,21 @@ mod render_tests {
 
         let result = overlay_logo(&qr_dyn, &logo, 0.2);
         assert_eq!(result.dimensions(), (200, 200));
+    }
+
+    #[test]
+    fn transparent_logo_on_transparent_qr_keeps_the_white_backplate_and_outside_alpha() {
+        use super::overlay_logo;
+
+        let original = Rgba([12, 47, 91, 0]);
+        let qr = DynamicImage::ImageRgba8(ImageBuffer::from_pixel(40, 40, original));
+        let logo = DynamicImage::ImageRgba8(ImageBuffer::from_pixel(1, 1, Rgba([17, 43, 89, 0])));
+        let result = overlay_logo(&qr, &logo, 0.25).into_rgba8();
+        // The 8x8 centered logo and its one-pixel margin occupy [15, 25) on both axes.
+        let expected = ImageBuffer::from_fn(40, 40, |x, y| {
+            if (15..25).contains(&x) && (15..25).contains(&y) { Rgba([255; 4]) } else { original }
+        });
+        assert_eq!(result, expected);
     }
 
     #[test]
