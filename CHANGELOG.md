@@ -143,6 +143,10 @@
 
 ### Fixed
 
+- Enforce the finder-pattern budget during discovery and stop at the first
+  excess accepted pattern, preserving the existing scan and sampling behavior.
+  Limit errors report the observed count as a lower bound instead of implying
+  that the remaining image has been scanned.
 - Select Micro QR versions that support payload modes, reject unsupported
   error correction consistently, report exact encoding-mode iterator lengths,
   and validate direct mode input before changing the bit stream.

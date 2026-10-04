@@ -8,11 +8,13 @@ use ::rxing::common::cpp_essentials::{ConcentricPattern, DecoderResult, Structur
 use ::rxing::common::{BitMatrix, DetectorRXingResult, HybridBinarizer};
 use ::rxing::qrcode::common::{ErrorCorrectionLevel, FormatInformation, Version as BackendVersion};
 use ::rxing::qrcode::cpp_port::decoder::{CorrectErrors, Decode, DecodeBitStream};
-use ::rxing::qrcode::cpp_port::detector::{FindFinderPatterns, GenerateFinderPatternSets, SampleMQR, SampleQR};
+use ::rxing::qrcode::cpp_port::detector::{GenerateFinderPatternSets, SampleMQR, SampleQR};
 use ::rxing::{Binarizer, Exceptions, Luma8Source};
 use qrcode_core::{EcLevel, Version};
 
 use crate::{DecodedQrCode, GrayPixels, GrayPixelsError, QrDecoder};
+
+mod finder;
 
 /// Limits and detection settings for [`RxingDecoder::scan_with_options`].
 #[non_exhaustive]
@@ -20,7 +22,9 @@ use crate::{DecodedQrCode, GrayPixels, GrayPixelsError, QrDecoder};
 pub struct ScanOptions {
     /// Maximum number of input pixels. Defaults to 16,777,216.
     pub max_pixels: u64,
-    /// Maximum finder patterns before generating candidate groups. Defaults to 512.
+    /// Maximum accepted finder patterns during discovery. Defaults to 512.
+    ///
+    /// Discovery stops as soon as another distinct pattern exceeds this limit.
     pub max_finder_patterns: usize,
     /// Maximum retained candidate results. Defaults to 256.
     ///
@@ -121,7 +125,8 @@ pub enum DecodeError {
     },
     /// The image contains more finder patterns than allowed.
     FinderLimit {
-        /// Detected finder-pattern count.
+        /// Observed finder-pattern count when discovery stopped. This is a
+        /// lower bound on the image's full count.
         actual: usize,
         /// Configured maximum.
         max: usize,
@@ -235,10 +240,7 @@ impl RxingDecoder {
             original
         };
 
-        let mut finders = FindFinderPatterns(matrix, options.try_harder, 0);
-        if finders.len() > options.max_finder_patterns {
-            return Err(DecodeError::FinderLimit { actual: finders.len(), max: options.max_finder_patterns });
-        }
+        let mut finders = finder::find_bounded(matrix, options.try_harder, options.max_finder_patterns)?;
         let sets = GenerateFinderPatternSets(&mut finders);
         let mut good_finders = Vec::new();
         let mut pending = Vec::new();
