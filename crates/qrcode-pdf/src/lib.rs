@@ -114,6 +114,8 @@ pub struct Canvas {
     fg_r: f64,
     fg_g: f64,
     fg_b: f64,
+    foreground_prefix: Option<String>,
+    has_flushed: bool,
     pending_left: u32,
     pending_bottom: u32,
     pending_width: u32,
@@ -130,6 +132,8 @@ pub struct CmykCanvas {
     fg_m: f64,
     fg_y: f64,
     fg_k: f64,
+    foreground_prefix: Option<String>,
+    has_flushed: bool,
     pending_left: u32,
     pending_bottom: u32,
     pending_width: u32,
@@ -140,18 +144,33 @@ pub struct CmykCanvas {
 impl Canvas {
     fn flush_pending(&mut self) {
         if self.has_pending {
-            writeln!(
-                self.stream,
-                "{} {} {} rg {} {} {} {} re f",
-                self.fg_r,
-                self.fg_g,
-                self.fg_b,
-                self.pending_left,
-                self.pending_bottom,
-                self.pending_width,
-                self.pending_height
-            )
-            .unwrap();
+            if self.has_flushed {
+                let prefix = self
+                    .foreground_prefix
+                    .get_or_insert_with(|| format!("{} {} {} rg ", self.fg_r, self.fg_g, self.fg_b));
+                self.stream.push_str(prefix);
+                writeln!(
+                    self.stream,
+                    "{} {} {} {} re f",
+                    self.pending_left, self.pending_bottom, self.pending_width, self.pending_height
+                )
+                .unwrap();
+            } else {
+                // Empty and single-rectangle canvases need no prefix allocation.
+                writeln!(
+                    self.stream,
+                    "{} {} {} rg {} {} {} {} re f",
+                    self.fg_r,
+                    self.fg_g,
+                    self.fg_b,
+                    self.pending_left,
+                    self.pending_bottom,
+                    self.pending_width,
+                    self.pending_height
+                )
+                .unwrap();
+                self.has_flushed = true;
+            }
             self.has_pending = false;
         }
     }
@@ -174,6 +193,8 @@ impl RenderCanvas for Canvas {
             fg_r: dark_pixel.0[0],
             fg_g: dark_pixel.0[1],
             fg_b: dark_pixel.0[2],
+            foreground_prefix: None,
+            has_flushed: false,
             pending_left: 0,
             pending_bottom: 0,
             pending_width: 0,
@@ -280,19 +301,33 @@ impl RenderCanvas for Canvas {
 impl CmykCanvas {
     fn flush_pending(&mut self) {
         if self.has_pending {
-            writeln!(
-                self.stream,
-                "{} {} {} {} k {} {} {} {} re f",
-                self.fg_c,
-                self.fg_m,
-                self.fg_y,
-                self.fg_k,
-                self.pending_left,
-                self.pending_bottom,
-                self.pending_width,
-                self.pending_height
-            )
-            .unwrap();
+            if self.has_flushed {
+                let prefix = self
+                    .foreground_prefix
+                    .get_or_insert_with(|| format!("{} {} {} {} k ", self.fg_c, self.fg_m, self.fg_y, self.fg_k));
+                self.stream.push_str(prefix);
+                writeln!(
+                    self.stream,
+                    "{} {} {} {} re f",
+                    self.pending_left, self.pending_bottom, self.pending_width, self.pending_height
+                )
+                .unwrap();
+            } else {
+                writeln!(
+                    self.stream,
+                    "{} {} {} {} k {} {} {} {} re f",
+                    self.fg_c,
+                    self.fg_m,
+                    self.fg_y,
+                    self.fg_k,
+                    self.pending_left,
+                    self.pending_bottom,
+                    self.pending_width,
+                    self.pending_height
+                )
+                .unwrap();
+                self.has_flushed = true;
+            }
             self.has_pending = false;
         }
     }
@@ -320,6 +355,8 @@ impl RenderCanvas for CmykCanvas {
             fg_m: dark_pixel.0[1],
             fg_y: dark_pixel.0[2],
             fg_k: dark_pixel.0[3],
+            foreground_prefix: None,
+            has_flushed: false,
             pending_left: 0,
             pending_bottom: 0,
             pending_width: 0,
@@ -423,6 +460,122 @@ mod tests {
 
     fn content_stream(pdf: &[u8]) -> &str {
         core::str::from_utf8(pdf).unwrap().split_once("stream\n").unwrap().1.split_once("\nendstream").unwrap().0
+    }
+
+    fn legacy_stream<const N: usize>(
+        width: u32,
+        height: u32,
+        dark: [f64; N],
+        light: [f64; N],
+        rects: &[(u32, u32, u32, u32)],
+    ) -> String {
+        fn emit<const N: usize>(out: &mut String, color: [f64; N], rect: (u32, u32, u32, u32)) {
+            let (left, bottom, width, height) = rect;
+            match N {
+                3 => writeln!(out, "{} {} {} rg {left} {bottom} {width} {height} re f", color[0], color[1], color[2]),
+                4 => writeln!(
+                    out,
+                    "{} {} {} {} k {left} {bottom} {width} {height} re f",
+                    color[0], color[1], color[2], color[3]
+                ),
+                _ => unreachable!(),
+            }
+            .unwrap();
+        }
+        let mut output = String::new();
+        emit(&mut output, light, (0, 0, width, height));
+        let mut pending: Option<(u32, u32, u32, u32)> = None;
+        for &(left, top, width, rect_height) in rects {
+            let bottom = height - top - rect_height;
+            if let Some((old_left, old_bottom, old_width, old_height)) = pending {
+                if old_bottom == bottom && old_height == rect_height && left == old_left + old_width {
+                    pending = Some((old_left, bottom, old_width + width, rect_height));
+                    continue;
+                }
+                emit(&mut output, dark, (old_left, old_bottom, old_width, old_height));
+            }
+            pending = Some((left, bottom, width, rect_height));
+        }
+        if let Some(rect) = pending {
+            emit(&mut output, dark, rect);
+        }
+        output
+    }
+
+    // Build the original four-object document in one buffer, recording actual
+    // offsets as objects are appended rather than sharing production assembly.
+    fn legacy_pdf(width: u32, height: u32, stream: &str) -> Vec<u8> {
+        let objects = [
+            "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n".into(),
+            "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n".into(),
+            format!(
+                "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {width} {height}] /Contents 4 0 R /Resources << >> >>\nendobj\n"
+            ),
+            format!("4 0 obj\n<< /Length {} >>\nstream\n{stream}\nendstream\nendobj\n", stream.len()),
+        ];
+        let mut output = String::from("%PDF-1.4\n");
+        let mut offsets = [0; 4];
+        for (index, object) in objects.iter().enumerate() {
+            offsets[index] = output.len();
+            output.push_str(object);
+        }
+        let xref = output.len();
+        output.push_str("xref\n0 5\n0000000000 65535 f \n");
+        for offset in offsets {
+            writeln!(output, "{offset:010} 00000 n ").unwrap();
+        }
+        write!(output, "trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n").unwrap();
+        output.into_bytes()
+    }
+
+    #[test]
+    fn lazy_rgb_and_cmyk_prefixes_keep_complete_legacy_pdf_bytes() {
+        let rects = [(1, 2, 3, 4), (4, 2, 2, 4), (10, 2, 2, 4), (10, 8, 2, 3), (0, 0, 1, 1), (31, 23, 1, 1)];
+        for count in 0..=rects.len() {
+            for (dark, light) in [([0.0; 3], [1.0; 3]), ([-0.0, 0.12345, 1.0], [0.25, 0.5, 0.75])] {
+                let mut canvas = Canvas::new(32, 24, Color(dark), Color(light));
+                for &(left, top, width, height) in &rects[..count] {
+                    canvas.draw_dark_rect(left, top, width, height);
+                }
+                let expected = legacy_pdf(32, 24, &legacy_stream(32, 24, dark, light, &rects[..count]));
+                assert_eq!(canvas.into_image(), expected, "RGB rects {count}");
+            }
+            for (dark, light) in
+                [([0.0, 0.0, 0.0, 1.0], [0.0; 4]), ([-0.0, 0.12345, 0.25, 0.5], [0.75, 0.5, 0.25, 0.0])]
+            {
+                let mut canvas = CmykCanvas::new(32, 24, CmykColor(dark), CmykColor(light));
+                for &(left, top, width, height) in &rects[..count] {
+                    canvas.draw_dark_rect(left, top, width, height);
+                }
+                let expected = legacy_pdf(32, 24, &legacy_stream(32, 24, dark, light, &rects[..count]));
+                assert_eq!(canvas.into_image(), expected, "CMYK rects {count}");
+            }
+        }
+    }
+
+    #[test]
+    fn lazy_prefixes_start_only_after_a_second_distinct_flush() {
+        let mut rgb = Canvas::new(8, 2, Color([0.2, 0.4, 0.6]), Color([1.0; 3]));
+        rgb.flush_pending();
+        assert!(rgb.foreground_prefix.is_none() && !rgb.has_flushed);
+        rgb.draw_dark_rect(0, 0, 1, 1);
+        rgb.draw_dark_rect(1, 0, 1, 1);
+        rgb.flush_pending();
+        assert!(rgb.foreground_prefix.is_none() && rgb.has_flushed);
+        rgb.draw_dark_rect(3, 0, 1, 1);
+        rgb.flush_pending();
+        assert_eq!(rgb.foreground_prefix.as_deref(), Some("0.2 0.4 0.6 rg "));
+
+        let mut cmyk = CmykCanvas::new(8, 2, CmykColor([0.1, 0.2, 0.3, 0.4]), CmykColor([0.0; 4]));
+        cmyk.flush_pending();
+        assert!(cmyk.foreground_prefix.is_none() && !cmyk.has_flushed);
+        cmyk.draw_dark_rect(0, 0, 1, 1);
+        cmyk.draw_dark_rect(1, 0, 1, 1);
+        cmyk.flush_pending();
+        assert!(cmyk.foreground_prefix.is_none() && cmyk.has_flushed);
+        cmyk.draw_dark_rect(3, 0, 1, 1);
+        cmyk.flush_pending();
+        assert_eq!(cmyk.foreground_prefix.as_deref(), Some("0.1 0.2 0.3 0.4 k "));
     }
 
     #[test]

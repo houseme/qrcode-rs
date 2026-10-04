@@ -93,6 +93,9 @@
   clocks without a timeout, and check selected module dimensions before
   Reed-Solomon and masking when no timeout is enabled; preserve timed error
   priorities.
+- Reuse formatted PDF foreground commands from the second rectangle flush
+  onward, retaining the original first-flush path and avoiding a prefix
+  allocation for empty or single-rectangle output.
 
 ### Fixed
 
