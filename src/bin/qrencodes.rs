@@ -720,13 +720,15 @@ fn validate_image(path: &Path, expect: Option<&str>, print_payload: bool) -> Res
             return Err(format!("decoded {} QR code(s), but none matched the expected payload", decoded.len()).into());
         }
     }
-    println!("valid: decoded {} QR code(s)", decoded.len());
-    if print_payload || expect.is_none() {
-        for (index, code) in decoded.iter().enumerate() {
-            println!("{}: {}", index + 1, String::from_utf8_lossy(code.data()));
+    write_stdout(|output| {
+        writeln!(output, "valid: decoded {} QR code(s)", decoded.len())?;
+        if print_payload || expect.is_none() {
+            for (index, code) in decoded.iter().enumerate() {
+                writeln!(output, "{}: {}", index + 1, String::from_utf8_lossy(code.data()))?;
+            }
         }
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 fn render_one(text: &str, cli: &Cli, quiet_zone: bool) -> Result<Vec<u8>, Box<dyn Error>> {
@@ -877,6 +879,22 @@ fn to_unit(&(r, g, b): &(u8, u8, u8)) -> [f64; 3] {
     [r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0]
 }
 
+fn stdout_write_result(result: std::io::Result<()>) -> Result<(), Box<dyn Error>> {
+    match result {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn write_stdout(write: impl FnOnce(&mut std::io::StdoutLock<'_>) -> std::io::Result<()>) -> Result<(), Box<dyn Error>> {
+    let stdout = std::io::stdout();
+    let mut output = stdout.lock();
+    // Classify only errors from this stdout write/flush; file and render errors
+    // propagate through their existing paths.
+    stdout_write_result(write(&mut output).and_then(|()| output.flush()))
+}
+
 fn write_output(cli: &Cli, bytes: &[u8], index: usize, batch: bool) -> Result<(), Box<dyn Error>> {
     if batch {
         let Some(dir) = cli.output.as_ref() else {
@@ -889,9 +907,9 @@ fn write_output(cli: &Cli, bytes: &[u8], index: usize, batch: bool) -> Result<()
         return Ok(());
     }
     match &cli.output {
-        Some(path) if path == "-" => std::io::stdout().lock().write_all(bytes)?,
+        Some(path) if path == "-" => write_stdout(|output| output.write_all(bytes))?,
         Some(path) => atomic_output::write(Path::new(path), bytes)?,
-        None => std::io::stdout().lock().write_all(bytes)?,
+        None => write_stdout(|output| output.write_all(bytes))?,
     }
     Ok(())
 }
@@ -1086,6 +1104,15 @@ mod tests {
         assert_eq!(ext_for(Format::Png), "png");
         assert_eq!(ext_for(Format::Svg), "svg");
         assert_eq!(ext_for(Format::Unicode), "txt");
+    }
+
+    #[test]
+    fn stdout_result_silences_only_the_broken_pipe_error_kind() {
+        assert!(stdout_write_result(Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))).is_ok());
+        for kind in [std::io::ErrorKind::PermissionDenied, std::io::ErrorKind::WriteZero, std::io::ErrorKind::Other] {
+            let error = stdout_write_result(Err(std::io::Error::from(kind))).unwrap_err();
+            assert_eq!(error.downcast_ref::<std::io::Error>().unwrap().kind(), kind);
+        }
     }
 
     #[test]

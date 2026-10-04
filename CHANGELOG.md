@@ -203,6 +203,9 @@
 - Calculate Bits::reserve byte increments from the unused space in the current
   byte, rounding up without integer overflow so reserved writes do not grow
   the buffer again.
+- Treat BrokenPipe from CLI stdout writes and flushes as successful reader
+  termination, including validation output, while preserving render,
+  validation and regular-file errors.
 
 ### Added
 
