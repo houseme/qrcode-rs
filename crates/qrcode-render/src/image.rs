@@ -189,7 +189,7 @@ pub fn overlay_logo(qr_image: &DynamicImage, logo: &DynamicImage, size_ratio: f3
     }
 
     // Composite logo onto the QR code with alpha blending.
-    let logo_rgba = logo_resized.to_rgba8();
+    let logo_rgba = logo_resized.into_rgba8();
     for py in 0..lh {
         for px in 0..lw {
             let src = logo_rgba.get_pixel(px, py);

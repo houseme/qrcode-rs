@@ -117,6 +117,9 @@
 - Classify HTML colors once per canvas and copy unescaped values directly into
   table and Grid cells, preserving exact escaping and output budgets without
   cached color buffers; format Grid width directly into the reserved output.
+- Consume the owned resized logo during RGBA8 conversion, eliminating its
+  extra buffer clone for RGBA8 logos while retaining the existing conversion
+  and compositing behavior.
 
 ### Fixed
 
