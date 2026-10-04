@@ -5,6 +5,9 @@
 //! order. The characters `\\ ; , " :` are backslash-escaped inside the SSID and
 //! password. The `qrcode-rs` facade uses this same module for its convenience
 //! constructor, so [`encode_wifi`] and [`WifiConfig::parse`] stay symmetric.
+//! ASCII SSIDs made entirely of hex digits are enclosed in protocol quotes to
+//! distinguish their text from a hex-encoded network name. Protocol quotes are
+//! removed before unescaping; escaped quotes remain literal value characters.
 
 #[cfg(not(feature = "std"))]
 #[allow(unused_imports)]
@@ -67,7 +70,9 @@ impl WifiConfig {
     /// Parses a `WIFI:` QR payload into a [`WifiConfig`].
     ///
     /// Fields may appear in any order; the `WIFI:` prefix is required. The SSID
-    /// (`S:`) field is mandatory; all others are optional.
+    /// (`S:`) field is mandatory; all others are optional. A pair of unescaped
+    /// outer quotes on an SSID or password denotes protocol quoting. Escaped
+    /// quotes are part of the value and are preserved.
     ///
     /// # Errors
     ///
@@ -89,10 +94,10 @@ impl WifiConfig {
                 continue; // skip a malformed keyless field
             };
             match key {
-                "S" => ssid = Some(unescape(value)),
+                "S" => ssid = Some(unescape_value(value)),
                 "T" => security = WifiSecurity::from_wire(value),
                 "P" => {
-                    let pw = unescape(value);
+                    let pw = unescape_value(value);
                     password = if pw.is_empty() { None } else { Some(pw) };
                 }
                 "H" => hidden = value.eq_ignore_ascii_case("true"),
@@ -134,11 +139,21 @@ impl WifiConfig {
 ///
 /// This is the single source of truth shared with the `qrcode-rs` facade's
 /// `QrCode::for_wifi` constructor.
+/// Non-empty ASCII SSIDs consisting only of hex digits are protocol-quoted so
+/// readers treat them as text. Passwords retain their existing wire encoding,
+/// including raw hex credentials; authentication values are copied as given.
 pub fn encode_wifi(ssid: &str, password: &str, auth: &str) -> String {
     let mut payload = String::from("WIFI:T:");
     payload.push_str(auth);
     payload.push_str(";S:");
+    let quote_ssid = !ssid.is_empty() && ssid.bytes().all(|byte| byte.is_ascii_hexdigit());
+    if quote_ssid {
+        payload.push('"');
+    }
     push_escaped(&mut payload, ssid);
+    if quote_ssid {
+        payload.push('"');
+    }
     payload.push_str(";P:");
     push_escaped(&mut payload, password);
     payload.push_str(";;");
@@ -174,6 +189,18 @@ fn split_fields(rest: &str) -> impl Iterator<Item = &str> {
     })
 }
 
+/// Removes protocol quotes while the escapes still distinguish literal quotes.
+fn unescape_value(value: &str) -> String {
+    let unquoted = value.strip_prefix('"').and_then(|body| body.strip_suffix('"'));
+    let value = match unquoted {
+        Some(body) if (body.bytes().rev().take_while(|&byte| byte == b'\\').count() & 1) == 0 => body,
+        // A closing quote after an odd number of backslashes is escaped. An
+        // even run escapes itself, leaving the closing quote as syntax.
+        _ => value,
+    };
+    unescape(value)
+}
+
 /// Reverses [`push_escaped`]: `\<c>` → `c`, copying other chars verbatim.
 fn unescape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -203,6 +230,8 @@ fn push_escaped(out: &mut String, s: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(feature = "std"))]
+    use alloc::format;
 
     #[test]
     fn round_trip_special_chars() {
@@ -296,5 +325,114 @@ mod tests {
         assert_eq!(cfg.security(), WifiSecurity::Wpa);
         assert_eq!(WifiConfig::parse("WIFI:S:trailing\\").unwrap().ssid(), "trailing");
         assert_eq!(WifiConfig::parse("WIFI:S:open;T:unknown;;").unwrap().security(), WifiSecurity::None);
+    }
+
+    #[test]
+    fn hex_text_ssids_use_protocol_quotes_without_changing_other_names() {
+        for ssid in ["A", "a", "ABCD", "012345", "00ff", "aBcDeF"] {
+            let expected = format!("WIFI:T:WPA;S:\"{ssid}\";P:password;;");
+            let payload = encode_wifi(ssid, "password", "WPA");
+            assert_eq!(payload, expected);
+            assert_eq!(WifiConfig::parse(&payload).unwrap().ssid(), ssid);
+        }
+        for ssid in ["", "0xABCD", "network", "１２３４", "ábc", "A B", "abc-def"] {
+            assert_eq!(encode_wifi(ssid, "password", "WPA"), format!("WIFI:T:WPA;S:{ssid};P:password;;"));
+        }
+    }
+
+    #[test]
+    fn protocol_and_escaped_literal_quotes_are_distinct_before_unescaping() {
+        let protocol = WifiConfig::parse(r#"WIFI:T:WPA;S:"ABCD";P:"1234ABCD";;"#).unwrap();
+        assert_eq!(protocol.ssid(), "ABCD");
+        assert_eq!(protocol.password(), Some("1234ABCD"));
+
+        let literal_wire = r#"WIFI:T:WPA;S:\"ABCD\";P:\"1234ABCD\";;"#;
+        let literal = WifiConfig::parse(literal_wire).unwrap();
+        assert_eq!(literal.ssid(), "\"ABCD\"");
+        assert_eq!(literal.password(), Some("\"1234ABCD\""));
+        assert_eq!(encode_wifi("\"ABCD\"", "\"1234ABCD\"", "WPA"), literal_wire);
+
+        let nested = WifiConfig::parse(r#"WIFI:T:WPA;S:"\"ABCD\"";P:"\"1234ABCD\"";;"#).unwrap();
+        assert_eq!(nested.ssid(), literal.ssid());
+        assert_eq!(nested.password(), literal.password());
+
+        let empty = WifiConfig::parse(r#"WIFI:S:"";P:"";;"#).unwrap();
+        assert_eq!(empty.ssid(), "");
+        assert_eq!(empty.password(), None);
+    }
+
+    #[test]
+    fn closing_protocol_quotes_require_an_even_run_of_backslashes() {
+        for slashes in 0..=7 {
+            let raw = format!("\"name{}\"", "\\".repeat(slashes));
+            let expected = if slashes % 2 == 0 {
+                format!("name{}", "\\".repeat(slashes / 2))
+            } else {
+                format!("\"name{}\"", "\\".repeat(slashes / 2))
+            };
+            let payload = format!("WIFI:S:{raw};P:{raw};;");
+            let parsed = WifiConfig::parse(&payload).unwrap();
+            assert_eq!(parsed.ssid(), expected);
+            assert_eq!(parsed.password(), Some(expected.as_str()));
+        }
+        assert_eq!(unescape_value("\""), "\"");
+        assert_eq!(unescape_value("\"unclosed"), "\"unclosed");
+        assert_eq!(unescape_value("trailing\\"), "trailing");
+    }
+
+    #[test]
+    fn password_hex_keys_and_auth_values_keep_the_existing_wire_contract() {
+        for auth in ["WPA", "wPa2", "WPA3", "WEP", "nopass", "unknown"] {
+            for length in [10, 26, 58, 64] {
+                let password = "a".repeat(length);
+                let payload = encode_wifi("network", &password, auth);
+                assert_eq!(payload, format!("WIFI:T:{auth};S:network;P:{password};;"));
+                assert_eq!(WifiConfig::parse(&payload).unwrap().password(), Some(password.as_str()));
+            }
+        }
+    }
+
+    #[test]
+    fn wifi_boundary_golden_cases_round_trip_for_all_existing_auth_families() {
+        // The wire values are independent goldens: the SSID may need protocol
+        // quotes, while the password continues to use literal escaping only.
+        let values = [
+            ("", "", ""),
+            ("ABCD", r#""ABCD""#, "ABCD"),
+            ("\"", r#"\""#, r#"\""#),
+            ("\"quoted\"", r#"\"quoted\""#, r#"\"quoted\""#),
+            ("\\", r#"\\"#, r#"\\"#),
+            ("tail\\", r#"tail\\"#, r#"tail\\"#),
+            ("\\;:,\"", r#"\\\;\:\,\""#, r#"\\\;\:\,\""#),
+            ("\\\\;:,\"", r#"\\\\\;\:\,\""#, r#"\\\\\;\:\,\""#),
+            ("网络🦀", "网络🦀", "网络🦀"),
+        ];
+        let auths = [
+            ("WPA", WifiSecurity::Wpa),
+            ("wPa2", WifiSecurity::Wpa),
+            ("Wpa3", WifiSecurity::Wpa),
+            ("WEP", WifiSecurity::Wep),
+            ("wep", WifiSecurity::Wep),
+            ("nopass", WifiSecurity::None),
+            ("NOPASS", WifiSecurity::None),
+            ("", WifiSecurity::None),
+            ("unknown", WifiSecurity::None),
+        ];
+        let mut cases = 0;
+        for (ssid, ssid_wire, _) in values {
+            for (password, _, password_wire) in values {
+                for (auth, security) in auths {
+                    let payload = encode_wifi(ssid, password, auth);
+                    assert_eq!(payload, format!("WIFI:T:{auth};S:{ssid_wire};P:{password_wire};;"));
+                    let parsed = WifiConfig::parse(&payload).unwrap();
+                    assert_eq!(parsed.ssid(), ssid);
+                    assert_eq!(parsed.password(), (!password.is_empty()).then_some(password));
+                    assert_eq!(parsed.security(), security);
+                    assert!(!parsed.hidden());
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 729);
     }
 }

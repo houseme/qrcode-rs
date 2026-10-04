@@ -214,6 +214,9 @@
 - Include the affected path and operation in CLI file-open, image-read/decode,
   atomic output and ZIP creation/finalization errors while preserving the
   original error source.
+- Protocol-quote non-empty ASCII hex-looking Wi-Fi SSIDs and remove one
+  syntactic quote pair before unescaping parsed SSIDs/passwords, preserving
+  escaped literal quotes and existing raw hex password encoding.
 
 ### Added
 
