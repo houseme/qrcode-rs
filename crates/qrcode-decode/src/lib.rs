@@ -24,6 +24,10 @@ use qrcode_core::{EcLevel, Version};
 
 #[cfg(feature = "rqrr")]
 pub mod rqrr;
+#[cfg(feature = "rxing")]
+pub mod rxing;
+#[cfg(feature = "rxing")]
+pub use rxing::{ScanSymbol, StructuredAppendHeader};
 pub mod sa_parse;
 
 /// Errors returned when validating a [`GrayPixels`] buffer.

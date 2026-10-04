@@ -122,6 +122,8 @@
   and compositing behavior.
 - Exercise the core crate separately with no default features and with std,
   replacing the duplicate empty-default test profile.
+- Advance all workspace packages to 2.2.0 for the new decoder API and feature,
+  since the published 2.1.1 packages cannot supply the new feature.
 
 ### Fixed
 
@@ -268,6 +270,13 @@
   payload and ZIP metadata with caller-controlled flushing and publication.
 - Expose HTML GridColor through the standard renderer builder with the
   existing geometry, color escaping and output-budget checks.
+- Add an optional pure Rust Normal/Micro image scanner with checked
+  per-candidate results, raw bytes and Structured Append metadata; normalize
+  Micro half-codewords before error correction to retain the full correction
+  budget.
+- Reassemble explicitly selected scanned Structured Append fragments through
+  one borrowed validation pipeline, retaining metadata error ordering and
+  checking payload XOR without cloning fragment buffers.
 
 ## [2.1.1] - 2026-09-16
 

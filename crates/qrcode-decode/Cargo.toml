@@ -14,6 +14,7 @@ readme = "README.md"
 image = { workspace = true, optional = true }
 qrcode-core = { workspace = true }
 rqrr = { workspace = true, optional = true }
+rxing = { workspace = true, optional = true }
 
 [features]
 default = []
@@ -23,3 +24,5 @@ std = ["qrcode-core/std"]
 image = ["dep:image"]
 # Enables the `rqrr`-backed decoder adapter.
 rqrr = ["dep:rqrr"]
+# Enables the full pure-Rust Normal/Micro and Structured Append scanner.
+rxing = ["std", "dep:rxing"]

@@ -241,13 +241,21 @@ pub struct SaSymbol<'a> {
 /// the combined payload exceeds the byte-vector capacity supported by this
 /// target. Metadata and position errors are checked before output capacity.
 pub fn reassemble(parts: &[SaSymbol<'_>]) -> Result<Vec<u8>, SaError> {
-    let Some(first) = parts.first() else { return Err(SaError::Incomplete) };
+    reassemble_parts(parts.iter().copied().map(Ok)).map(|(data, _)| data)
+}
+
+fn reassemble_parts<'a, I>(parts: I) -> Result<(Vec<u8>, u8), SaError>
+where
+    I: Clone + ExactSizeIterator<Item = Result<SaSymbol<'a>, SaError>>,
+{
+    let first = parts.clone().next().ok_or(SaError::Incomplete)??;
     if !(2..=16).contains(&first.total) {
         return Err(SaError::OutOfRange(first.total));
     }
     let total = first.total;
     let parity = first.parity;
-    for p in parts {
+    for part in parts.clone() {
+        let p = part?;
         if p.total != total {
             return Err(SaError::CountMismatch);
         }
@@ -262,7 +270,8 @@ pub fn reassemble(parts: &[SaSymbol<'_>]) -> Result<Vec<u8>, SaError> {
         return Err(SaError::Incomplete);
     }
     let mut ordered = [None; 16];
-    for p in parts {
+    for part in parts {
+        let p = part?;
         let idx = usize::from(p.position - 1);
         if ordered[idx].is_some() {
             return Err(SaError::DuplicatePosition(p.position));
@@ -276,7 +285,54 @@ pub fn reassemble(parts: &[SaSymbol<'_>]) -> Result<Vec<u8>, SaError> {
     for data in ordered.into_iter().take(usize::from(total)).flatten() {
         out.extend_from_slice(data);
     }
-    Ok(out)
+    Ok((out, parity))
+}
+
+/// Reassembles an explicitly selected set of scanned Structured Append symbols.
+///
+/// Every input must carry a Structured Append header. The existing
+/// [`reassemble`] validation orders the fragments and checks their metadata;
+/// this helper additionally verifies that the XOR of the recovered payload
+/// bytes matches their shared parity. Empty fragment payloads are valid.
+///
+/// Accepts borrowed symbols from a slice or a cloneable, exact-size iterator,
+/// including an iterator over selected symbol indices. It does not clone
+/// fragment payloads or allocate its own metadata/reference list. Borrowed
+/// slice and mapped-index iterators clone without allocating; a custom
+/// iterator's `Clone` implementation can have its own allocation cost.
+///
+/// Scanning does not select groups or deduplicate symbols automatically. The
+/// eight-bit parity can collide between unrelated messages, so the caller must
+/// choose the intended set of symbols; a matching XOR does not authenticate a
+/// message or uniquely identify a group.
+///
+/// # Errors
+///
+/// Returns [`SaError::NotStructuredAppend`] if an input has no header, the
+/// metadata/completeness errors from [`reassemble`], or
+/// [`SaError::ParityMismatch`] if the recovered payload XOR differs from the
+/// shared header parity.
+#[cfg(feature = "decode-rxing")]
+pub fn reassemble_decoded<'a, I>(parts: I) -> Result<Vec<u8>, SaError>
+where
+    I: IntoIterator<Item = &'a crate::decode::ScanSymbol>,
+    I::IntoIter: Clone + ExactSizeIterator,
+{
+    let borrowed = parts.into_iter().map(|part| {
+        let header = part.structured_append().ok_or(SaError::NotStructuredAppend)?;
+        Ok(SaSymbol {
+            position: header.position(),
+            total: header.total(),
+            parity: header.parity(),
+            data: part.decoded().data(),
+        })
+    });
+    let (data, parity) = reassemble_parts(borrowed)?;
+    let actual_parity = data.iter().fold(0_u8, |acc, &byte| acc ^ byte);
+    if actual_parity != parity {
+        return Err(SaError::ParityMismatch);
+    }
+    Ok(data)
 }
 
 fn checked_output_capacity(mut lengths: impl Iterator<Item = usize>) -> Result<usize, SaError> {

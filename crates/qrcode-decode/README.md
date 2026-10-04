@@ -2,7 +2,7 @@
 
 `qrcode-decode` contains decoder-facing contracts for `qrcode-rs`: grayscale
 pixel views, the `QrDecoder` trait, decoded-symbol metadata, Structured Append
-bitstream parsing, and the optional `rqrr` adapter.
+bitstream parsing, and optional `rqrr` and `rxing` image adapters.
 
 ```toml
 [dependencies]
@@ -24,6 +24,7 @@ qrcode-rs = { version = "2.0", features = ["decode-rqrr"] }
 | `std` | Opts into the standard library. Disabled by default. |
 | `image` | Enables `GrayPixels` conversion from `image::GrayImage`. |
 | `rqrr` | Enables the `RqrrDecoder` adapter. |
+| `rxing` | Enables the pure Rust Normal/Micro QR scanner and Structured Append metadata; implies `std`. |
 
 `qrcode-decode` is intentionally adapter-oriented. It does not make `rqrr`
 mandatory for users that only need decoder traits or Structured Append parsing.
@@ -31,3 +32,21 @@ mandatory for users that only need decoder traits or Structured Append parsing.
 Use `GrayPixels::try_new` to validate dimensions and the exact grayscale buffer
 length before decoding, and `try_get` for optional pixel access. The rqrr adapter
 returns `InvalidGridSize` for empty or malformed views before preparing an image.
+
+`rxing::RxingDecoder::scan` returns each sampled candidate's success or error.
+Successful `ScanSymbol` values retain original payload bytes, version, EC level,
+and a checked Structured Append header. `QrDecoder::decode` is strict: any
+retained candidate failure returns an error. `ScanOptions` controls input,
+finder/candidate limits and explicit inverted polarity; no result is silently
+truncated. Normal and Micro QR share one binarization and finder search.
+
+The backend enables only QR decoding and raw-byte handling. It does not enable
+rxing's image, writers, client parsers, or character-set conversion features.
+Do not call high-level rxing text conversion with this feature profile. Use
+`core::str::from_utf8` on decoded bytes when appropriate, or transfer the
+buffer without copying through `DecodedQrCode::into_data`.
+
+The facade's `structured_append::reassemble_decoded` accepts borrowed selected
+fragments and validates complete positions, matching headers and payload XOR.
+Keep every independently scanned fragment; parity collisions do not identify
+groups, and duplicates must not be silently removed.

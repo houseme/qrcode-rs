@@ -32,24 +32,24 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "2.1.1"
+version = "2.2.0"
 edition = "2024"
 authors = ["houseme <housemecn@gmail.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/houseme/qrcode-rs"
 
 [workspace.dependencies]
-qrcode-rs = { path = ".", version = "2.1.1", default-features = false }
-qrcode-core = { path = "crates/qrcode-core", version = "2.1.1", default-features = false }
-qrcode-decode = { path = "crates/qrcode-decode", version = "2.1.1", default-features = false }
-qrcode-eps = { path = "crates/qrcode-eps", version = "2.1.1", default-features = false }
-qrcode-html = { path = "crates/qrcode-html", version = "2.1.1", default-features = false }
-qrcode-image = { path = "crates/qrcode-image", version = "2.1.1", default-features = false }
-qrcode-pdf = { path = "crates/qrcode-pdf", version = "2.1.1", default-features = false }
-qrcode-pic = { path = "crates/qrcode-pic", version = "2.1.1", default-features = false }
-qrcode-parse = { path = "crates/qrcode-parse", version = "2.1.1", default-features = false }
-qrcode-render = { path = "crates/qrcode-render", version = "2.1.1", default-features = false }
-qrcode-svg = { path = "crates/qrcode-svg", version = "2.1.1", default-features = false }
+qrcode-rs = { path = ".", version = "2.2.0", default-features = false }
+qrcode-core = { path = "crates/qrcode-core", version = "2.2.0", default-features = false }
+qrcode-decode = { path = "crates/qrcode-decode", version = "2.2.0", default-features = false }
+qrcode-eps = { path = "crates/qrcode-eps", version = "2.2.0", default-features = false }
+qrcode-html = { path = "crates/qrcode-html", version = "2.2.0", default-features = false }
+qrcode-image = { path = "crates/qrcode-image", version = "2.2.0", default-features = false }
+qrcode-pdf = { path = "crates/qrcode-pdf", version = "2.2.0", default-features = false }
+qrcode-pic = { path = "crates/qrcode-pic", version = "2.2.0", default-features = false }
+qrcode-parse = { path = "crates/qrcode-parse", version = "2.2.0", default-features = false }
+qrcode-render = { path = "crates/qrcode-render", version = "2.2.0", default-features = false }
+qrcode-svg = { path = "crates/qrcode-svg", version = "2.2.0", default-features = false }
 clap = { version = "4.6.7", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
 criterion = { version = "0.8.2", default-features = false }
 flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
@@ -59,6 +59,7 @@ proptest = "1.11.0"
 rayon = "1.12.0"
 reference-qrcode = { package = "qrcode", version = "0.14" }
 rqrr = { version = "0.11.0", default-features = false }
+rxing = { version = "=0.9.3", default-features = false, features = ["qrcode", "decoders", "no_character_set_support"] }
 serde = { version = "1.0.229", default-features = false, features = ["derive", "alloc"] }
 serde_json = { version = "1.0.151", default-features = false, features = ["alloc"] }
 tokio = { version = "1.53.2", default-features = false, features = ["rt"] }
@@ -135,10 +136,12 @@ batch-zip-deflate = ["std", "dep:flate2"]
 async = ["std", "dep:tokio"]
 # Enables the `qrencodes` CLI binary (pulls in clap + all render backends).
 # The library stays zero-dependency when this feature is off.
-cli = ["dep:clap", "dep:serde", "dep:serde_json", "serde_json/std", "parallel", "image", "svg", "eps", "pic", "html", "pdf", "decode-rqrr"]
+cli = ["dep:clap", "dep:serde", "dep:serde_json", "serde_json/std", "parallel", "image", "svg", "eps", "pic", "html", "pdf", "decode-rqrr", "decode-rxing"]
 # Enables the `rqrr`-backed `RqrrDecoder` (decoding QR codes back to data).
 # Pulls in `rqrr` + the `image` renderer (used to feed grayscale into the decoder).
 decode-rqrr = ["image", "qrcode-decode/rqrr"]
+# Enables the full Normal/Micro QR image scanner and Structured Append metadata.
+decode-rxing = ["image", "qrcode-decode/rxing"]
 # Keeps the 1.x facade API available while v2 internals move into workspace
 # crates. This feature is intentionally light today; tests lock the legacy
 # constructors, render chain, indexing, and payload helpers.
@@ -218,6 +221,10 @@ name = "structured_append"
 [[example]]
 name = "decode_roundtrip"
 required-features = ["decode-rqrr"]
+
+[[test]]
+name = "scan_decode"
+required-features = ["decode-rxing", "image"]
 
 [[example]]
 name = "async_render"
