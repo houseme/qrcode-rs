@@ -102,6 +102,9 @@
 - Cache horizontal gradient colors for eligible images using at most 64 KiB of
   requested storage, with allocation failure and ineligible dimensions falling
   back to the existing pixel path.
+- Reuse diagonal gradient row coordinates without additional allocations,
+  preserving interpolation order, pixel selection and single-axis fallback
+  behavior.
 
 ### Fixed
 

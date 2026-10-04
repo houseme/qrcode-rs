@@ -340,6 +340,26 @@ pub fn apply_gradient_background(image: &DynamicImage, gradient: &Gradient) -> D
         }
     }
 
+    if gradient.direction == GradientDirection::Diagonal && w > 1 && h > 1 {
+        for (y, row) in result.rows_mut().enumerate() {
+            let row_ratio = y as u32 as f32 / (h - 1) as f32;
+            for (x, pixel) in row.enumerate() {
+                let [r, g, b, a] = pixel.0;
+                let lum = (r as u32 + g as u32 + b as u32) / 3;
+                if lum > 200 && a > 0 {
+                    let t = (x as u32 as f32 / (w - 1) as f32 + row_ratio) / 2.0;
+                    let inv = 1.0 - t;
+                    let nr = (sc[0] as f32 * inv + ec[0] as f32 * t) as u8;
+                    let ng = (sc[1] as f32 * inv + ec[1] as f32 * t) as u8;
+                    let nb = (sc[2] as f32 * inv + ec[2] as f32 * t) as u8;
+                    let na = (sc[3] as f32 * inv + ec[3] as f32 * t) as u8;
+                    *pixel = Rgba([nr, ng, nb, na]);
+                }
+            }
+        }
+        return DynamicImage::ImageRgba8(result);
+    }
+
     for (x, y, pixel) in result.enumerate_pixels_mut() {
         let [r, g, b, a] = pixel.0;
 
@@ -716,6 +736,33 @@ mod render_tests {
                     start_color: Rgba(start),
                     end_color: Rgba(end),
                 };
+                assert_eq!(
+                    apply_gradient_background(&image, &gradient).as_rgba8().unwrap().as_raw(),
+                    scalar_gradient(&image, &gradient).as_rgba8().unwrap().as_raw(),
+                    "{width}x{height}, {start:?} -> {end:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn diagonal_gradient_rows_preserve_per_pixel_rounding_and_alpha() {
+        use super::{Gradient, GradientDirection, apply_gradient_background};
+
+        let pixels = [
+            Rgba([255, 255, 255, 255]),
+            Rgba([201, 200, 202, 1]),
+            Rgba([200, 200, 202, 255]),
+            Rgba([255, 255, 255, 0]),
+            Rgba([0, 0, 0, 255]),
+        ];
+        for (width, height) in [(1, 7), (7, 1), (2, 31), (31, 2), (127, 33), (33, 127)] {
+            let image = DynamicImage::ImageRgba8(ImageBuffer::from_fn(width, height, |x, y| {
+                pixels[((x + 3 * y) as usize) % pixels.len()]
+            }));
+            for (start, end) in [([23, 117, 251, 19], [250, 61, 9, 231]), ([219; 4], [219; 4])] {
+                let gradient =
+                    Gradient { direction: GradientDirection::Diagonal, start_color: Rgba(start), end_color: Rgba(end) };
                 assert_eq!(
                     apply_gradient_background(&image, &gradient).as_rgba8().unwrap().as_raw(),
                     scalar_gradient(&image, &gradient).as_rgba8().unwrap().as_raw(),
