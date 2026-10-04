@@ -6,6 +6,10 @@
 
 ### Changed
 
+- Record published-source `safe-to-deploy` audits for 14 decoder dependency
+  versions and remove four superseded development exemptions. Keep the ten
+  remaining deployment-audit obligations as release blockers without adding
+  temporary exemptions or weakening existing criteria.
 - Read release versions from the verified tag/workspace pair, require the
   existing dependency-policy checks before publishing, and build signed
   release assets only after the same commit has passed and published.

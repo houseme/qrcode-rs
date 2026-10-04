@@ -4,6 +4,22 @@
 [criteria.qrcode-rs-review]
 description = "qrcode-rs maintainers reviewed the dependency for the release policy in effect."
 
+[[audits.aho-corasick]]
+who = "OpenAI Codex (AI-assisted published-source review)"
+criteria = "safe-to-deploy"
+version = "1.1.5"
+notes = """
+The reviewed published crate archive matches the locked Cargo checksum. Reviewed all active unsafe families and their safe entry contracts, plus package capability metadata. Checked haystack spans, short-input fallback, CPU-feature/endianness dispatch before SSSE3/AVX2/NEON, minimum read spans, all Slim/Fat 1-4 mask pointer loops, bounded final overlapping loads and bucket verification. Checked prefix comparisons against remaining slice length, fixed vector representations, sealed Automaton contracts and representable premultiplied state IDs. Huge caller pattern collections require caller resource bounds. No build script or own filesystem/network/process/environment capability. This is an unsafe/capability source review, not every matching-semantic branch or a platform benchmark.
+"""
+
+[[audits.android_system_properties]]
+who = "OpenAI Codex (AI-assisted published-source review)"
+criteria = "safe-to-deploy"
+version = "0.1.6"
+notes = """
+The reviewed published crate archive matches the locked Cargo checksum. Reviewed the complete published Rust implementation and package metadata. Checked fixed RTLD_NOLOAD libc lookup, fixed symbol names, retained handle ownership, immutable thread-safe function pointers, synchronous callback storage, invalid UTF-8 returning None without unwinding through C, CString validation, null property handling and the PROP_VALUE_MAX-sized legacy buffer before set_len. No build script, setter, network or subprocess capability. Assumes the native Android API honors its synchronous callback and buffer contracts; no Android runtime test performed.
+"""
+
 [[audits.cc]]
 who = "OpenAI Codex (AI-assisted source-diff review)"
 criteria = "safe-to-deploy"
@@ -16,6 +32,86 @@ Checked the first-use environment snapshot and explicit child-process overrides;
 Reviewed the accompanying inline regressions. Upstream crate tests were not rerun locally across all platforms.
 """
 
+[[audits.chrono]]
+who = "OpenAI Codex (AI-assisted published-source review)"
+criteria = "safe-to-deploy"
+version = "0.4.45"
+notes = """
+The reviewed published crate archive matches the locked Cargo checksum. Reviewed all explicit unsafe sites and their safe construction paths, plus timezone configuration, filesystem, parser, cache, scan and Windows FFI boundaries. Checked NonZeroI32 date representation, ASCII-backed unchecked UTF-8, bounded NUL-backed CStr creation, native-success-before-MaybeUninit, checked Windows offset arithmetic, thread-local cache ownership and iterative numeric/text scanning. TZ/system timezone files and native clock providers are trusted deployment inputs. Malformed system configuration may still cause panics or large allocations; this is not an audit for accepting arbitrary attacker-provided timezone files. Optional external derive/runtime dependencies retain their separate audit obligations. No build script or own network/process operations. Source-only review, not cross-platform execution or a full matching/date-logic proof.
+"""
+
+[[audits.futures-core]]
+who = "OpenAI Codex (AI-assisted published-source review)"
+criteria = "safe-to-deploy"
+version = "0.3.34"
+notes = """
+The reviewed published crate archive matches the locked Cargo checksum. Reviewed all production source and unsafe sites. Checked AtomicWaker REGISTERING/WAKING exclusion, acquire/release publication, cell ownership before callback invocation, wake/take ownership and pinned stream projection. Stream size_hint cannot authorize omission of unsafe bounds checks. No build script or own filesystem/network/process/environment capability. Source-only review; external executor and atomic implementations keep separate obligations.
+"""
+
+[[audits.futures-task]]
+who = "OpenAI Codex (AI-assisted published-source review)"
+criteria = "safe-to-deploy"
+version = "0.3.34"
+notes = """
+The reviewed published crate archive matches the locked Cargo checksum. Reviewed all production source and unsafe sites. Checked ArcWake Send+Sync and owned Waker static bounds, balanced Arc clone/wake/drop, borrowed WakerRef lifetime and ManuallyDrop, LocalFutureObj erased lifetime and stable-pin/drop contracts, Unpin for unpinned mutable borrows, matching Box reclamation, explicit Send requirement for FutureObj and explicitly unsafe local-to-Send conversion. Noop wakers never dereference null data. No build script or ambient filesystem/network/process/environment capability. Source-only review.
+"""
+
+[[audits.futures-util]]
+who = "OpenAI Codex (AI-assisted published-source review)"
+criteria = "safe-to-deploy"
+version = "0.3.34"
+notes = """
+The reviewed published crate archive matches the locked Cargo checksum. Reviewed all production unsafe operation families with surrounding safe entry contracts across task queues, polling, locks, IO, compatibility and local macro seams. Checked stable Arc task storage, transferred queue refs, exclusive future polling, panic/drop guards, Shared state publication/poisoning, mapped mutex RAII, BiLock pair identity and Unpin requirements, pinned combinator projections, reader initialization/count validation, UTF-8 validity across cancellation/drop and bounded BufWriter copies. Compatibility wakers preserve temporary/owned storage lifetimes. No build script or own filesystem/network/process/environment capability; IO delegates caller-supplied objects. Transitive macro/atomic/runtime implementations retain separate audit obligations. Source-only review; no claim of exhaustive scheduling-logic verification.
+"""
+
+[[audits.iana-time-zone-haiku]]
+who = "OpenAI Codex (AI-assisted published-source review)"
+criteria = "safe-to-deploy"
+version = "0.1.2"
+notes = """
+The reviewed published crate archive matches the locked Cargo checksum. Reviewed the complete published Rust wrapper, C++ helper, build script and metadata. The initialized 32-byte buffer is passed with its actual capacity; native length/null/error checks precede memcpy; BString ownership remains live; C++ exceptions are caught before crossing the C ABI; Rust performs checked length slicing and UTF-8 conversion. The non-Haiku stub returns zero without writing. The build deliberately compiles only packaged src/implementation.cc using cc and fixed library names; compiler/Cargo configuration and native Haiku contracts are trusted build/runtime inputs. No Haiku execution performed.
+"""
+
+[[audits.num]]
+who = "OpenAI Codex (AI-assisted published-source review)"
+criteria = "safe-to-deploy"
+version = "0.4.3"
+notes = """
+The reviewed published crate archive matches the locked Cargo checksum. Reviewed the complete published facade and package metadata. This no_std crate re-exports separately tracked numeric dependencies and introduces no unsafe implementation, build script, FFI or ambient filesystem/network/process capability. This record covers the facade source; each re-exported dependency requires its own policy evidence.
+"""
+
+[[audits.num-iter]]
+who = "OpenAI Codex (AI-assisted published-source review)"
+criteria = "safe-to-deploy"
+version = "0.1.46"
+notes = """
+The reviewed published crate archive matches the locked Cargo checksum. Reviewed the complete published runtime source and metadata. Safe no_std numeric iterators use checked/saturating arithmetic for finite stepping and fallible usize conversion for size hints; no unsafe consumer relies on iterator hints. Infinite and zero-step iterators require caller termination bounds; generic arithmetic can panic according to its implementation. Reversed inclusive size hints have a correctness caveat but no crate-owned unsafe consumer. No build script, FFI or ambient filesystem/network/process capability. Source-only review.
+"""
+
+[[audits.regex]]
+who = "OpenAI Codex (AI-assisted published-source review)"
+criteria = "safe-to-deploy"
+version = "1.13.1"
+notes = """
+The reviewed published crate archive matches the locked Cargo checksum. Reviewed the complete own-crate unsafe Searcher implementation and the builder constraints protecting its safe entrypoints. String match endpoints preserve UTF-8 boundaries through utf8_empty(true) and syntax utf8(true); byte APIs have separate semantics. Checked forwarding of NFA/cache/nesting budgets; default size limit covers the NFA, not all request memory, and callers must bound pattern/haystack sizes. No build script or own filesystem/network/process/environment capability. This record covers regex source only; regex-automata and regex-syntax keep independent policy obligations. Source-only review, not an exhaustive matching-logic proof.
+"""
+
+[[audits.regex-syntax]]
+who = "OpenAI Codex (AI-assisted published-source review)"
+criteria = "safe-to-deploy"
+version = "0.8.11"
+notes = """
+The reviewed published crate archive matches the locked Cargo checksum. Reviewed unsafe/capability inventory and parser/translator/visitor/destructor boundaries. The crate forbids unsafe code. Default AST nesting limit is 250; parsing, heap visitors and recursive-structure destruction are iterative; literal class/repetition/length/count limits bound materialization. Reviewed safe Unicode table consumers and bounds-checked lookups. Generated Unicode literals were treated as typed data, not independently verified against the entire Unicode specification. Callers must bound pattern byte length because nesting is checked after parsing. No build script or own filesystem/network/process/environment capability. Optional external arbitrary implementation retains its own policy obligations. Source-only review.
+"""
+
+[[audits.slab]]
+who = "OpenAI Codex (AI-assisted published-source review)"
+criteria = "safe-to-deploy"
+version = "0.4.12"
+notes = """
+The reviewed published crate archive matches the locked Cargo checksum. Reviewed all shipping modules, metadata and unsafe sites. get_disjoint_mut validates all duplicate pairs before references, checks actual Vec length before pointer arithmetic, initializes each MaybeUninit slot exactly once and only assumes initialization after complete success. Explicit unchecked APIs retain documented in-bounds/distinct-key obligations. Reviewed removal/drain/compaction guards and iteration ownership; panic-catching users with panicking Clone/Drop may observe stale logical metadata, but safe raw-reference paths still check actual storage. Sparse collection and optional serde require caller-bounded keys/size hints as documented; ordinary insertion allocates internal sequential keys. No build script or ambient filesystem/network/process operations. Source-only review.
+"""
+
 [[audits.tokio]]
 who = "OpenAI Codex (AI-assisted source-diff review)"
 criteria = "safe-to-deploy"
@@ -26,4 +122,20 @@ Reviewed the complete published source and package-metadata delta. Both extracte
 Checked blocking-pool shutdown before user Drop code, Windows child wait cancellation before handle close, checked buffered seek arithmetic, io_uring length bounds and completion-state preservation, AsyncFd deregistration ownership, MPSC wrapping indices and permit ownership, semaphore waiter cleanup and permit accounting across tracing panics, waker drops outside locks, timer shutdown/cancellation, and task-dump leaf wakes and runtime ownership. The new semaphore waiter reference remains protected by the wait-list lock and the cleanup flag is established before panic-capable callbacks. No new runtime dependency or build-time capability was introduced.
 
 Reviewed the accompanying upstream regressions for wraparound, reentrant/panicking wakers, semaphore limits, io_uring bounds, Windows handle lifetime and task-dump progress. Upstream crate tests were not rerun locally across all platforms. qrcode-rs currently enables only Tokio's rt feature; the review also covered changed modules beyond that selected feature.
+"""
+
+[[audits.windows-link]]
+who = "OpenAI Codex (AI-assisted published-source review)"
+criteria = "safe-to-deploy"
+version = "0.2.1"
+notes = """
+The reviewed published crate archive matches the locked Cargo checksum. Reviewed the complete published declarative macro implementation and metadata. Macros emit explicit caller-supplied ABI/library declarations; x86 decoration and target cfg branches were checked. No runtime implementation, build script, filesystem/network/process operation or hidden runtime library selection. Callers must supply correct unsafe native declarations. Source-only review; native implementations retain separate obligations.
+"""
+
+[[audits.windows-result]]
+who = "OpenAI Codex (AI-assisted published-source review)"
+criteria = "safe-to-deploy"
+version = "0.4.1"
+notes = """
+The reviewed published crate archive matches the locked Cargo checksum. Reviewed all published source, metadata and NatVis. Checked HRESULT/BOOL conversion, checked native error capture, initialized output pointers, COM clone/drop, BSTR and process-heap allocation/release pairing, bounded native formatting and UTF-16 string handling. The native DLL operation uses fixed ntdll.dll and LOAD_LIBRARY_SEARCH_DEFAULT_DIRS, with result checks; no attacker-selected file/network/process operation. Assumes valid Windows/COM provider contracts. No build script; source-only review without Windows execution.
 """
