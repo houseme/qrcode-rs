@@ -183,6 +183,9 @@
 - Serialize rgba_to_css and Srgba::to_css alpha as a normalized number from 0
   to 1, restoring byte-alpha transparency while preserving RGB channels and
   hexadecimal output.
+- Normalize RGB and CMYK components at PDF/EPS canvas boundaries: render NaN
+  as zero and clip out-of-range values, preserving in-range finite values and
+  signed zero.
 
 ### Added
 

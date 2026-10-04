@@ -39,16 +39,26 @@ fn stream_capacity(width: u32, height: u32, bytes_per_rect: usize) -> usize {
     (width as usize).saturating_mul(height as usize).saturating_mul(bytes_per_rect).min(MAX_STREAM_PREALLOC)
 }
 
+fn normalized_component(value: f64) -> f64 {
+    if value.is_nan() || value < 0.0 {
+        0.0
+    } else if value > 1.0 {
+        1.0
+    } else {
+        value
+    }
+}
+
 /// A PDF color (`[R, G, B]`).
 ///
-/// Each value must be in the range of 0.0 to 1.0.
+/// Rendering clips components to `0.0..=1.0`, including infinities. NaN is
+/// rendered as `0.0`. Values already in range, including signed zero, are kept.
 #[derive(Copy, Clone, Default, PartialEq, PartialOrd)]
 pub struct Color(pub [f64; 3]);
 
 /// A PDF CMYK color (`[C, M, Y, K]`).
 ///
-/// Each value is expected to be in the range of 0.0 to 1.0. Values converted
-/// from the shared render color space are clamped there before rendering.
+/// Rendering uses the same component normalization as [`Color`].
 #[derive(Copy, Clone, Default, PartialEq, PartialOrd)]
 pub struct CmykColor(pub [f64; 4]);
 
@@ -152,6 +162,8 @@ impl RenderCanvas for Canvas {
     type Image = Vec<u8>;
 
     fn new(width: u32, height: u32, dark_pixel: Color, light_pixel: Color) -> Self {
+        let dark_pixel = Color(dark_pixel.0.map(normalized_component));
+        let light_pixel = Color(light_pixel.0.map(normalized_component));
         let mut stream = String::with_capacity(stream_capacity(width, height, 48));
         writeln!(stream, "{} {} {} rg 0 0 {width} {height} re f", light_pixel.0[0], light_pixel.0[1], light_pixel.0[2])
             .unwrap();
@@ -291,6 +303,8 @@ impl RenderCanvas for CmykCanvas {
     type Image = Vec<u8>;
 
     fn new(width: u32, height: u32, dark_pixel: CmykColor, light_pixel: CmykColor) -> Self {
+        let dark_pixel = CmykColor(dark_pixel.0.map(normalized_component));
+        let light_pixel = CmykColor(light_pixel.0.map(normalized_component));
         let mut stream = String::with_capacity(stream_capacity(width, height, 56));
         writeln!(
             stream,
@@ -515,5 +529,41 @@ mod tests {
     fn pdf_stream_preallocation_is_bounded() {
         assert_eq!(stream_capacity(u32::MAX, u32::MAX, 64), MAX_STREAM_PREALLOC);
         assert_eq!(stream_capacity(2, 3, 48), 288);
+    }
+
+    #[test]
+    fn pdf_normalization_keeps_valid_components_bit_for_bit() {
+        for value in [-0.0, 0.0, f64::from_bits(1), f64::MIN_POSITIVE, 0.2, 0.5, 1.0] {
+            assert_eq!(normalized_component(value).to_bits(), value.to_bits());
+        }
+    }
+
+    #[test]
+    fn pdf_rgb_nonfinite_and_out_of_range_components_become_valid_operands() {
+        let mut canvas =
+            Canvas::new(8, 12, Color([f64::NAN, f64::NEG_INFINITY, f64::INFINITY]), Color([1.5, -0.5, 0.25]));
+        canvas.draw_dark_rect(2, 3, 4, 5);
+        assert_eq!(content_stream(&canvas.into_image()), "1 0 0.25 rg 0 0 8 12 re f\n0 0 1 rg 2 4 4 5 re f\n");
+        let canvas = Canvas::new(1, 1, Color([0.0; 3]), Color([f64::NAN, f64::NEG_INFINITY, f64::INFINITY]));
+        assert_eq!(content_stream(&canvas.into_image()), "0 0 1 rg 0 0 1 1 re f\n");
+    }
+
+    #[test]
+    fn pdf_cmyk_nonfinite_and_out_of_range_components_become_valid_operands() {
+        let mut canvas = CmykCanvas::new(
+            8,
+            12,
+            CmykColor([f64::NAN, f64::NEG_INFINITY, f64::INFINITY, 2.0]),
+            CmykColor([f64::NAN, 1.5, -0.5, 0.5]),
+        );
+        canvas.draw_dark_rect(2, 3, 4, 5);
+        assert_eq!(content_stream(&canvas.into_image()), "0 1 0 0.5 k 0 0 8 12 re f\n0 0 1 1 k 2 4 4 5 re f\n");
+    }
+
+    #[test]
+    fn pdf_signed_zero_stays_in_background_and_foreground_operands() {
+        let mut canvas = Canvas::new(1, 1, Color([-0.0, 0.5, 1.0]), Color([1.0, -0.0, 0.5]));
+        canvas.draw_dark_pixel(0, 0);
+        assert_eq!(content_stream(&canvas.into_image()), "1 -0 0.5 rg 0 0 1 1 re f\n-0 0.5 1 rg 0 0 1 1 re f\n");
     }
 }

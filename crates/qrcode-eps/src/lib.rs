@@ -40,16 +40,26 @@ fn stream_capacity(width: u32, height: u32) -> usize {
     (width as usize).saturating_mul(height as usize).saturating_mul(20).min(MAX_STREAM_PREALLOC)
 }
 
+fn normalized_component(value: f64) -> f64 {
+    if value.is_nan() || value < 0.0 {
+        0.0
+    } else if value > 1.0 {
+        1.0
+    } else {
+        value
+    }
+}
+
 /// An EPS color (`[R, G, B]`).
 ///
-/// Each value must be in the range of 0.0 to 1.0.
+/// Rendering clips components to `0.0..=1.0`, including infinities. NaN is
+/// rendered as `0.0`. Values already in range, including signed zero, are kept.
 #[derive(Copy, Clone, Default, PartialEq, PartialOrd)]
 pub struct Color(pub [f64; 3]);
 
 /// An EPS CMYK color (`[C, M, Y, K]`).
 ///
-/// Each value is clamped into the range of 0.0 to 1.0 when constructed from the
-/// shared render color space.
+/// Rendering uses the same component normalization as [`Color`].
 #[derive(Copy, Clone, Default, PartialEq, PartialOrd)]
 pub struct CmykColor(pub [f64; 4]);
 
@@ -114,6 +124,8 @@ impl RenderCanvas for Canvas {
     type Image = String;
 
     fn new(width: u32, height: u32, dark_pixel: Color, light_pixel: Color) -> Self {
+        let dark_pixel = Color(dark_pixel.0.map(normalized_component));
+        let light_pixel = Color(light_pixel.0.map(normalized_component));
         let mut eps = format!(
             concat!(
                 "%!PS-Adobe-3.0 EPSF-3.0\n",
@@ -159,6 +171,8 @@ impl RenderCanvas for CmykCanvas {
     type Image = String;
 
     fn new(width: u32, height: u32, dark_pixel: CmykColor, light_pixel: CmykColor) -> Self {
+        let dark_pixel = CmykColor(dark_pixel.0.map(normalized_component));
+        let light_pixel = CmykColor(light_pixel.0.map(normalized_component));
         let mut eps = format!(
             concat!(
                 "%!PS-Adobe-3.0 EPSF-3.0\n",
@@ -203,7 +217,7 @@ impl RenderCanvas for CmykCanvas {
 
 #[cfg(test)]
 mod tests {
-    use super::{Canvas, CmykCanvas, CmykColor, Color, MAX_STREAM_PREALLOC, stream_capacity};
+    use super::{Canvas, CmykCanvas, CmykColor, Color, MAX_STREAM_PREALLOC, normalized_component, stream_capacity};
     use qrcode_render::{Canvas as RenderCanvas, Renderer, StyledPixel};
 
     #[test]
@@ -273,5 +287,46 @@ mod tests {
         assert_eq!(stream_capacity(10_000, 10_000), MAX_STREAM_PREALLOC);
         assert_eq!(stream_capacity(2, 3), 120);
         assert_eq!(stream_capacity(0, u32::MAX), 0);
+    }
+
+    #[test]
+    fn eps_normalization_keeps_valid_components_bit_for_bit() {
+        for value in [-0.0, 0.0, f64::from_bits(1), f64::MIN_POSITIVE, 0.2, 0.5, 1.0] {
+            assert_eq!(normalized_component(value).to_bits(), value.to_bits());
+        }
+    }
+
+    #[test]
+    fn eps_rgb_nonfinite_and_out_of_range_components_become_valid_operands() {
+        let mut canvas =
+            Canvas::new(8, 12, Color([f64::NAN, f64::NEG_INFINITY, f64::INFINITY]), Color([1.5, -0.5, 0.25]));
+        canvas.draw_dark_rect(2, 3, 4, 5);
+        let output = canvas.into_image();
+        assert!(output.contains("1 0 0.25 setrgbcolor\n0 0 8 12 rectfill"));
+        assert!(output.ends_with("0 0 1 setrgbcolor\n2 4 4 5 rectfill\n%%EOF"));
+        let canvas = Canvas::new(1, 1, Color([0.0; 3]), Color([f64::NAN, f64::NEG_INFINITY, f64::INFINITY]));
+        assert!(canvas.into_image().contains("0 0 1 setrgbcolor\n0 0 1 1 rectfill"));
+    }
+
+    #[test]
+    fn eps_cmyk_nonfinite_and_out_of_range_components_become_valid_operands() {
+        let mut canvas = CmykCanvas::new(
+            8,
+            12,
+            CmykColor([f64::NAN, f64::NEG_INFINITY, f64::INFINITY, 2.0]),
+            CmykColor([f64::NAN, 1.5, -0.5, 0.5]),
+        );
+        canvas.draw_dark_rect(2, 3, 4, 5);
+        let output = canvas.into_image();
+        assert!(output.contains("0 1 0 0.5 setcmykcolor\n0 0 8 12 rectfill"));
+        assert!(output.ends_with("0 0 1 1 setcmykcolor\n2 4 4 5 rectfill\n%%EOF"));
+    }
+
+    #[test]
+    fn eps_signed_zero_stays_in_background_and_foreground_operands() {
+        let canvas = Canvas::new(1, 1, Color([-0.0, 0.5, 1.0]), Color([1.0, -0.0, 0.5]));
+        let output = canvas.into_image();
+        assert!(output.contains("1 -0 0.5 setrgbcolor\n0 0 1 1 rectfill"));
+        assert!(output.ends_with("-0 0.5 1 setrgbcolor\n%%EOF"));
     }
 }
