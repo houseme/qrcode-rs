@@ -180,6 +180,9 @@
   changing encoded matrices.
 - Prefix accepted bare hexadecimal CLI colors with # for SVG and HTML output,
   preserving existing prefixed spelling, inversion and other render formats.
+- Serialize rgba_to_css and Srgba::to_css alpha as a normalized number from 0
+  to 1, restoring byte-alpha transparency while preserving RGB channels and
+  hexadecimal output.
 
 ### Added
 

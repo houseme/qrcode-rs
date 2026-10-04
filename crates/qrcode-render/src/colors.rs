@@ -149,14 +149,17 @@ pub fn rgb_to_css(r: u8, g: u8, b: u8) -> String {
 
 /// Converts RGBA bytes to a `rgba()` CSS function string.
 ///
+/// RGB channels remain integer bytes; alpha is normalized to `0..=1`.
+///
 /// # Example
 ///
 /// ```
 /// use qrcode_render::colors::rgba_to_css;
-/// assert_eq!(rgba_to_css(255, 0, 128, 128), "rgba(255,0,128,128)");
+/// assert_eq!(rgba_to_css(255, 0, 128, 128), "rgba(255,0,128,0.5019607843137255)");
 /// ```
 pub fn rgba_to_css(r: u8, g: u8, b: u8, a: u8) -> String {
-    format!("rgba({r},{g},{b},{a})")
+    let alpha = f64::from(a) / 255.0;
+    format!("rgba({r},{g},{b},{alpha})")
 }
 
 /// A unified sRGBA color type for use across all render backends.
@@ -171,7 +174,7 @@ pub fn rgba_to_css(r: u8, g: u8, b: u8, a: u8) -> String {
 ///
 /// let c = Srgba::from_hex("#ff0080").unwrap();
 /// assert_eq!(c.to_hex(), "#ff0080");
-/// assert_eq!(c.to_css(), "rgba(255,0,128,255)");
+/// assert_eq!(c.to_css(), "rgba(255,0,128,1)");
 /// let arr = c.to_array();
 /// assert!((arr[0] - 1.0).abs() < 0.001);
 /// ```
@@ -403,7 +406,7 @@ impl Srgba {
         if self.a == 255 { rgb_to_hex(self.r, self.g, self.b) } else { rgba_to_hex(self.r, self.g, self.b, self.a) }
     }
 
-    /// Converts to a CSS `rgba()` function string.
+    /// Converts to a CSS `rgba()` function string with alpha normalized to `0..=1`.
     pub fn to_css(self) -> String {
         rgba_to_css(self.r, self.g, self.b, self.a)
     }
@@ -581,7 +584,43 @@ mod tests {
 
     #[test]
     fn test_rgba_to_css() {
-        assert_eq!(rgba_to_css(255, 0, 128, 128), "rgba(255,0,128,128)");
+        assert_eq!(rgba_to_css(255, 0, 128, 0), "rgba(255,0,128,0)");
+        assert_eq!(rgba_to_css(255, 0, 128, 255), "rgba(255,0,128,1)");
+        assert_eq!(rgba_to_css(255, 0, 128, 128), "rgba(255,0,128,0.5019607843137255)");
+    }
+
+    #[test]
+    fn css_alpha_preserves_every_byte_value_and_rgb_channels() {
+        for alpha in 0..=u8::MAX {
+            for (r, g, b) in [(0, 0, 0), (255, 0, 128), (17, 128, 253)] {
+                let color = Srgba::new(r, g, b, alpha);
+                let css = rgba_to_css(r, g, b, alpha);
+                assert_eq!(color.to_css(), css);
+                let mut components = css.strip_prefix("rgba(").unwrap().strip_suffix(')').unwrap().split(',');
+                assert_eq!(components.next().unwrap().parse::<u8>().unwrap(), r);
+                assert_eq!(components.next().unwrap().parse::<u8>().unwrap(), g);
+                assert_eq!(components.next().unwrap().parse::<u8>().unwrap(), b);
+                let parsed_alpha = components.next().unwrap().parse::<f64>().unwrap();
+                assert!(components.next().is_none());
+                assert!((0.0..=1.0).contains(&parsed_alpha), "alpha {alpha}, CSS {css}");
+                // Check the CSS number against the original byte by reversing
+                // the scale, independently of the formatter's division.
+                let restored = parsed_alpha * 255.0;
+                assert!((restored - f64::from(alpha)).abs() <= f64::EPSILON * 255.0, "alpha {alpha}, CSS {css}");
+                assert_eq!((restored + 0.5) as u8, alpha);
+            }
+        }
+    }
+
+    #[test]
+    fn srgba_hex_preserves_alpha_bytes_and_opaque_short_form() {
+        for alpha in 0..=u8::MAX {
+            let color = Srgba::new(255, 0, 128, alpha);
+            let hex = color.to_hex();
+            assert_eq!(hex.len(), if alpha == 255 { 7 } else { 9 });
+            assert_eq!(hex_to_rgba(&hex), Some((255, 0, 128, alpha)));
+            assert_eq!(Srgba::from_hex(&hex), Some(color));
+        }
     }
 
     #[test]
@@ -611,7 +650,9 @@ mod tests {
 
     #[test]
     fn test_srgba_to_css() {
-        assert_eq!(Srgba::rgb(255, 0, 128).to_css(), "rgba(255,0,128,255)");
+        assert_eq!(Srgba::new(255, 0, 128, 0).to_css(), "rgba(255,0,128,0)");
+        assert_eq!(Srgba::rgb(255, 0, 128).to_css(), "rgba(255,0,128,1)");
+        assert_eq!(Srgba::new(255, 0, 128, 128).to_css(), "rgba(255,0,128,0.5019607843137255)");
     }
 
     #[test]
