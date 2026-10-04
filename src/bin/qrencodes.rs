@@ -169,6 +169,29 @@ fn main() -> ExitCode {
     }
 }
 
+#[derive(Debug)]
+struct FilePathError {
+    operation: &'static str,
+    path: PathBuf,
+    source: Box<dyn Error>,
+}
+
+impl fmt::Display for FilePathError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{} '{}': {}", self.operation, self.path.display(), self.source)
+    }
+}
+
+impl Error for FilePathError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(self.source.as_ref())
+    }
+}
+
+fn path_error(operation: &'static str, path: &Path, source: impl Into<Box<dyn Error>>) -> Box<dyn Error> {
+    Box::new(FilePathError { operation, path: path.to_owned(), source: source.into() })
+}
+
 fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
     if cli.batch.is_some() && cli.text.is_some() {
         return Err("--batch cannot be used together with TEXT".into());
@@ -293,7 +316,8 @@ fn render_batch_grid(cli: &Cli, quiet_zone: bool) -> Result<usize, Box<dyn Error
     }
     let count = entries.len();
     let bytes = encode_png_grid(BatchOutput::from_entries(entries), cli, quiet_zone)?;
-    atomic_output::write(Path::new(output), &bytes)?;
+    atomic_output::write(Path::new(output), &bytes)
+        .map_err(|error| path_error("write output file", Path::new(output), error))?;
     eprintln!("wrote {output}");
     Ok(count)
 }
@@ -357,7 +381,7 @@ fn render_batch_zip(cli: &Cli, quiet_zone: bool) -> Result<usize, Box<dyn Error>
     if written == 0 {
         return Err("no non-empty input records found".into());
     }
-    archive.finish()?;
+    archive.finish().map_err(|error| path_error("finish ZIP output", Path::new(output), error))?;
     eprintln!("wrote {output}");
     Ok(written)
 }
@@ -396,7 +420,8 @@ fn open_record_source(path: &Path) -> Result<Box<dyn BufRead>, Box<dyn Error>> {
         }
         return Ok(Box::new(BufReader::new(std::io::stdin())));
     }
-    Ok(Box::new(BufReader::new(File::open(path)?)))
+    let file = File::open(path).map_err(|error| path_error("open batch input", path, error))?;
+    Ok(Box::new(BufReader::new(file)))
 }
 
 fn read_inputs(cli: &Cli) -> Result<Vec<String>, Box<dyn Error>> {
@@ -422,7 +447,8 @@ fn for_each_batch_payload(
                 }
                 return for_each_json_payload(BufReader::new(stdin.lock()), &cli.batch_key, consume);
             }
-            return for_each_json_payload(BufReader::new(File::open(path)?), &cli.batch_key, consume);
+            let file = File::open(path).map_err(|error| path_error("open batch input", path, error))?;
+            return for_each_json_payload(BufReader::new(file), &cli.batch_key, consume);
         }
         let mut source = open_record_source(path)?;
         let mut count = 0;
@@ -715,8 +741,11 @@ fn parse_csv_record(record: &str) -> Result<Vec<String>, Box<dyn Error>> {
 }
 
 fn validate_image(path: &Path, expect: Option<&str>, print_payload: bool) -> Result<(), Box<dyn Error>> {
-    let image = qrcode_image::image::open(path)?.to_luma8();
-    let decoded = RqrrDecoder::new().decode(GrayPixels::from(&image))?;
+    let image =
+        qrcode_image::image::open(path).map_err(|error| path_error("read validation image", path, error))?.to_luma8();
+    let decoded = RqrrDecoder::new()
+        .decode(GrayPixels::from(&image))
+        .map_err(|error| path_error("decode validation image", path, error))?;
     if decoded.is_empty() {
         return Err("no QR codes found in image".into());
     }
@@ -906,15 +935,16 @@ fn write_output(cli: &Cli, bytes: &[u8], index: usize, batch: bool) -> Result<()
         let Some(dir) = cli.output.as_ref() else {
             return Err("batch mode requires --output <DIR>".into());
         };
-        std::fs::create_dir_all(dir)?;
+        std::fs::create_dir_all(dir).map_err(|error| path_error("create output directory", Path::new(dir), error))?;
         let path = Path::new(dir).join(batch_file_name(index, cli.format));
-        atomic_output::write(&path, bytes)?;
+        atomic_output::write(&path, bytes).map_err(|error| path_error("write output file", &path, error))?;
         eprintln!("wrote {}", path.display());
         return Ok(());
     }
     match &cli.output {
         Some(path) if path == "-" => write_stdout(|output| output.write_all(bytes))?,
-        Some(path) => atomic_output::write(Path::new(path), bytes)?,
+        Some(path) => atomic_output::write(Path::new(path), bytes)
+            .map_err(|error| path_error("write output file", Path::new(path), error))?,
         None => write_stdout(|output| output.write_all(bytes))?,
     }
     Ok(())
@@ -951,7 +981,8 @@ struct ZipEntry {
 
 impl ZipStoreWriter {
     fn create(path: &Path) -> Result<Self, Box<dyn Error>> {
-        Ok(Self { output: AtomicOutputFile::create(path)?, offset: 0, entries: Vec::new() })
+        let output = AtomicOutputFile::create(path).map_err(|error| path_error("create ZIP output", path, error))?;
+        Ok(Self { output, offset: 0, entries: Vec::new() })
     }
 
     fn write_file(&mut self, name: &str, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
@@ -1119,6 +1150,17 @@ mod tests {
             let error = stdout_write_result(Err(std::io::Error::from(kind))).unwrap_err();
             assert_eq!(error.downcast_ref::<std::io::Error>().unwrap().kind(), kind);
         }
+    }
+
+    #[test]
+    fn file_path_context_preserves_the_original_io_error_source() {
+        let error =
+            path_error("write output file", Path::new("out.svg"), std::io::Error::from(std::io::ErrorKind::BrokenPipe));
+        assert!(error.to_string().contains("write output file 'out.svg'"));
+        assert_eq!(
+            error.source().unwrap().downcast_ref::<std::io::Error>().unwrap().kind(),
+            std::io::ErrorKind::BrokenPipe
+        );
     }
 
     #[test]

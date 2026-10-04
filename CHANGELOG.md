@@ -208,6 +208,9 @@
   validation and regular-file errors.
 - Reject TEXT or --batch combined with validate before image I/O, retaining
   the existing TEXT/--batch conflict priority in both CLI entry points.
+- Include the affected path and operation in CLI file-open, image-read/decode,
+  atomic output and ZIP creation/finalization errors while preserving the
+  original error source.
 
 ### Added
 
