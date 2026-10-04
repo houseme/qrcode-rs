@@ -2,15 +2,21 @@
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-04
+
 ### Changed
+
+- Read release versions from the verified tag/workspace pair, require the
+  existing dependency-policy checks before publishing, and build signed
+  release assets only after the same commit has passed and published.
+- Verify the minimal dependency graph against workspace package identities
+  instead of searching for registry annotations absent from cargo tree.
 
 - Omit `rust-version` from the facade and split-crate manifests while continuing
   to check the locked workspace with Rust 1.88 in CI.
 - Reuse parsed segments during automatic encoding and skip dynamic-programming
   allocations for empty or single-segment payloads while preserving the
   optimal merge plan.
-- Traverse masks by contiguous rows and reuse two candidate canvases,
-  preserving mask order and equal-score selection.
 - Fill image rectangles through contiguous channel rows and update converted
   gradient images in place, removing per-pixel coordinate work and an extra
   RGBA image copy.

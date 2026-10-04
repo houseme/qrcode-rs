@@ -1,9 +1,11 @@
 name: Release supply chain
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -38,7 +40,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          version="${GITHUB_REF_NAME#v}"
+          version="${RELEASE_VERSION}"
           crates=(
             qrcode-core
             qrcode-render
@@ -74,6 +76,8 @@ jobs:
           for crate in "${crates[@]}"; do
             wait_for_crate "${crate}" "${version}"
           done
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
 
       - name: Package publishable crates
         shell: bash

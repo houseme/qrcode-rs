@@ -247,10 +247,20 @@ jobs:
           cargo fuzz run decode_sa_parse -- -runs=16 -seed=20260907 -timeout=5
         env:
           RUSTUP_TOOLCHAIN: nightly
+  release_dependency_policy:
+    name: Release dependency policy
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/security.yml
+    permissions:
+      contents: read
   publish_on_crates_io:
     name: Publish on crates.io
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags') # Only on tags
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.release_version.outputs.version }}
     needs:
       - msrv
       - check
@@ -261,11 +271,34 @@ jobs:
       - example_check
       - package_check
       - fuzz_smoke
+      - release_dependency_policy
     steps:
       - name: Checkout code
         uses: actions/checkout@v7.0.1
       - name: Install rust
         uses: dtolnay/rust-toolchain@stable
+      - name: Verify release tag and workspace version
+        id: release_version
+        shell: python
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          import json
+          import os
+          import subprocess
+
+          metadata = json.loads(subprocess.check_output([
+              "cargo", "metadata", "--locked", "--no-deps", "--format-version", "1",
+          ], text=True))
+          members = set(metadata["workspace_members"])
+          versions = {package["version"] for package in metadata["packages"] if package["id"] in members}
+          if len(versions) != 1:
+              raise SystemExit(f"workspace release versions disagree: {sorted(versions)}")
+          version = versions.pop()
+          if os.environ["RELEASE_TAG"] != f"v{version}":
+              raise SystemExit("release tag does not match the workspace version")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"version={version}\n")
       - name: Publish workspace crates
         run: |
           set -euo pipefail
@@ -296,7 +329,7 @@ jobs:
             fi
 
             for attempt in $(seq 1 "${PUBLISH_MAX_ATTEMPTS}"); do
-              if cargo publish --registry crates-io --package "${crate}" --allow-dirty 2>&1 | tee "${publish_log}"; then
+              if cargo publish --locked --registry crates-io --package "${crate}" 2>&1 | tee "${publish_log}"; then
                 break
               fi
 
@@ -325,7 +358,7 @@ jobs:
             fi
           }
 
-          version="2.1.1"
+          version="${RELEASE_VERSION}"
           publish_crate qrcode-core "${version}"
           publish_crate qrcode-render "${version}"
           publish_crate qrcode-image "${version}"
@@ -341,6 +374,18 @@ jobs:
           # crates.io name is not publishable by the current token.
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+          RELEASE_VERSION: ${{ steps.release_version.outputs.version }}
           PUBLISH_COOLDOWN_SECONDS: "300"
           PUBLISH_MAX_ATTEMPTS: "6"
           PUBLISH_RATE_LIMIT_SLEEP_SECONDS: "900"
+  release_assets:
+    name: Release assets
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: publish_on_crates_io
+    uses: ./.github/workflows/release-supply-chain.yml
+    with:
+      version: ${{ needs.publish_on_crates_io.outputs.version }}
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
