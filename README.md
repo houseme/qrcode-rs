@@ -313,7 +313,13 @@ qrencodes --batch ./payloads.json --batch-format json --batch-key payload -f svg
 qrencodes --batch ./payloads.txt --batch-pack zip -f svg -o payloads.zip
 qrencodes --batch ./payloads.txt --batch-pack grid --grid-columns 3 -f png -o payloads.png
 qrencodes validate out.png --expect "Hello"
+qrencodes validate out.png --print-payload
 ```
+
+`validate` decodes normal QR codes from an image and prints their payloads.
+The bundled decoder does not support Micro QR codes. Library callers can use
+`RqrrDecoder` with the `decode-rqrr` feature to recover the original payload
+bytes, including non-UTF-8 data; the CLI displays text lossily as UTF-8.
 
 Library callers can also render an encoded batch into stable, named in-memory
 outputs and decide how to package them:

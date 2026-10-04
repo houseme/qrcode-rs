@@ -25,12 +25,18 @@ qrencodes --batch ./payloads.jsonl --batch-format jsonl --batch-key payload -f s
 qrencodes --batch ./payloads.txt --batch-pack zip -f svg -o payloads.zip
 qrencodes --batch ./payloads.txt --batch-pack grid --grid-columns 3 -f png -o payloads.png
 qrencodes validate out.png --expect "Hello"
+qrencodes validate out.png --print-payload
 # Read newline-delimited payloads from stdin and write one file per payload.
 printf 'first\nsecond\n' | qrencodes --batch - -f svg -o ./out
 ```
 
-The `qrcode-rs` facade keeps its feature-gated `qrencodes` binary for
-backward compatibility and for crates.io installations.
+The standalone binary and the facade's feature-gated binary call the same
+implementation through the facade's `cli` feature. Both entry points retain
+the same arguments, output and exit codes.
+
+`validate` decodes normal QR codes and prints their payloads. The bundled
+decoder does not support Micro QR codes. The CLI displays payload bytes
+lossily as UTF-8; use the library's `RqrrDecoder` for the original bytes.
 
 Batch input ignores blank or whitespace-only payloads while preserving the exact
 contents of each non-empty payload. Use `--batch -` for a pipe. CSV input uses a 1-based

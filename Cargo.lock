@@ -1001,18 +1001,7 @@ dependencies = [
 name = "qrcode-cli"
 version = "2.1.1"
 dependencies = [
- "clap",
- "qrcode-eps",
- "qrcode-html",
- "qrcode-image",
- "qrcode-pdf",
- "qrcode-pic",
- "qrcode-render",
  "qrcode-rs",
- "qrcode-svg",
- "rayon",
- "serde",
- "serde_json",
 ]
 
 [[package]]

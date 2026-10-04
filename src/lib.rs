@@ -36,6 +36,12 @@
 
 extern crate alloc;
 
+#[cfg(feature = "cli")]
+mod cli;
+#[cfg(feature = "cli")]
+#[doc(hidden)]
+pub use cli::main as cli_main;
+
 #[cfg(feature = "std")]
 #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 pub mod batch;

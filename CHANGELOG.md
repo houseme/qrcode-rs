@@ -110,6 +110,10 @@
 - Run all-feature tests for every workspace member and check the facade
   separately with no default features, including serde/template-json and Rust
   1.88 compatibility, avoiding CLI feature unification in the no_std checks.
+- Share one feature-gated CLI and atomic-output implementation between the
+  facade and standalone binaries, removing duplicated source and dependency
+  declarations while preserving arguments, output, exit codes and
+  independently packaged entry points.
 
 ### Fixed
 

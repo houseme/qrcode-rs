@@ -217,7 +217,7 @@ mod tests {
             let result = std::process::Command::new(std::env::current_exe().unwrap())
                 .args([
                     "--exact",
-                    "atomic_output::tests::temporary_name_case_alias_is_not_published_before_finishing",
+                    "cli::atomic_output::tests::temporary_name_case_alias_is_not_published_before_finishing",
                     "--nocapture",
                     "--test-threads=1",
                 ])
