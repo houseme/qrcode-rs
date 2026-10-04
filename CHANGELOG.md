@@ -127,6 +127,9 @@
 - Bound encoded image reads, pixel and buffer sizes, aggregate decoded results
   and serialized output, and complete scan/assembly/format validation before
   stdout or atomic file publication.
+- Run the full QR scanner as an isolated split-crate feature and run real
+  Normal/Micro/Structured Append image fixtures without facade default
+  features.
 
 ### Fixed
 

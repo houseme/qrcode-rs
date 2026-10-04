@@ -120,6 +120,8 @@ jobs:
           cargo test -p qrcode-parse --no-default-features
           cargo test -p qrcode-decode --no-default-features
           cargo test -p qrcode-decode --features image,rqrr
+          cargo test -p qrcode-decode --features rxing --locked
+          cargo test --no-default-features --features decode-rxing --test scan_decode --locked
           cargo test -p qrcode-svg
           cargo test -p qrcode-eps
           cargo test -p qrcode-pic
