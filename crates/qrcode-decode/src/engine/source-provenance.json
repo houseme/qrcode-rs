@@ -1,0 +1,737 @@
+{
+  "upstream": {
+    "package": "rxing",
+    "version": "0.9.3",
+    "archive_sha256": "842b2a567172af73f7d18ee076f7bbb4ed8545c933b11f43868f0b1bba203157",
+    "license": "Apache-2.0",
+    "baseline_commit": "62b14bc"
+  },
+  "scope": "Private bounded Normal Model2/Micro raw QR scanner, not unrestricted rxing certification",
+  "files": [
+    {
+      "upstream_path": "src/exceptions.rs",
+      "upstream_sha256": "8eb55e83d00494f5456b7e709af6edeb5e39a456dc484972b7681be5f96204df",
+      "status": "retained_modified",
+      "derived_sha256": "6a5b0da8a9c1153343aa6da7e4768a44940f92d0f9befa474f90ae66f2719f47"
+    },
+    {
+      "upstream_path": "src/luma_luma_source.rs",
+      "upstream_sha256": "f23af46fa91cabf129bbec75a6e7d7403878c44c08141e66a154d44631643399",
+      "status": "retained_modified",
+      "derived_sha256": "5263623ee564966250014d5011958b19b2bedf1ff0c132a72eb4ac2364242b0b"
+    },
+    {
+      "upstream_path": "src/luminance_source.rs",
+      "upstream_sha256": "c7bff29ff7fc35baa8c0f0fb8de3b9b1951e6d4b7e1888e569bda93d6986241f",
+      "status": "retained_modified",
+      "derived_sha256": "02e7c00e74d676f89bd25737845fe4d3bc845535d8acac44951782b1e19f9481"
+    },
+    {
+      "upstream_path": "src/binarizer.rs",
+      "upstream_sha256": "6b6f9026b8a315dc5db1fa8ae79f47ac5a962bea8c184d0790fa9f03147fbb17",
+      "status": "retained_modified",
+      "derived_sha256": "17d9581ae0bd851d6cd83730619cf936d702612ef0be83823ebd6ca43dd1f1b5"
+    },
+    {
+      "upstream_path": "src/rxing_result_point.rs",
+      "upstream_sha256": "9e08562cbde49849b933772361a1ed1688f3ea7daa77deb6964612cb494ac31b",
+      "status": "retained_modified",
+      "derived_sha256": "3fd3ba5566f202ecfd926ab36e7086bae8a1961e61fbed8046728aa83bcaa59b"
+    },
+    {
+      "upstream_path": "src/result_point.rs",
+      "upstream_sha256": "ac79dc878a9a30f00730b155e9303adfc362dd9899733cb08851becd5b9fc69c",
+      "status": "retained_modified",
+      "derived_sha256": "47764cfdafd186b848d356e280292e5364fa2f2fc722da1eddb9b003217da5dd"
+    },
+    {
+      "upstream_path": "src/common/bit_array.rs",
+      "upstream_sha256": "09e2f349789476ad92b6154cbb2134f7e0590875d62fa6aa1867926e104aee95",
+      "status": "retained_modified",
+      "derived_sha256": "1b40854ae1fb71e66e2eab9b5e20d719432bcb258cc76acb17c8773cbf4d6142"
+    },
+    {
+      "upstream_path": "src/common/bit_matrix.rs",
+      "upstream_sha256": "3ca88db6f266b69aa73d185c4b06244bc0ecd5b6d0fedee38fe79fcef04f0c3c",
+      "status": "retained_modified",
+      "derived_sha256": "dbaf469dea94cae29eeb90fb2eb6a7b3203fb4f231a7c425408e070e7b4f6d8e"
+    },
+    {
+      "upstream_path": "src/common/bit_source.rs",
+      "upstream_sha256": "661e40ba62ee49413c1ce8dc1577090a9d76c0d6a686098d1207430f50a39e8c",
+      "status": "retained_modified",
+      "derived_sha256": "335b2ece837219d0de1beaa58a235837bac0dd65719e3b85a257a458a58b5498"
+    },
+    {
+      "upstream_path": "src/common/character_set.rs",
+      "upstream_sha256": "ba7c942f4fb4c20ef9a7e8cb3ad521940bfc4da696541acaaaa61e1bf8b8724f",
+      "status": "retained_modified",
+      "derived_sha256": "0dce9d86c193d82975c398cba8951ccc1de1311d8a27efcf58ea3e17baccc2c0"
+    },
+    {
+      "upstream_path": "src/common/eci.rs",
+      "upstream_sha256": "f0ae286adf9ddff4a1da20f799cdccfa5e701476aa3bad9d85a8f2276dd30eba",
+      "status": "retained_modified",
+      "derived_sha256": "d482e728c8f054a5fda9f7e1c1a7e4ea9b85cb87cfeb9f8c21e015c32c1c9540"
+    },
+    {
+      "upstream_path": "src/common/eci_string_builder.rs",
+      "upstream_sha256": "ed8d4d68691f89f7543a65a8ac8330a892c87864842b92a08be096616db85118",
+      "status": "retained_modified",
+      "derived_sha256": "6ff2ad774c9b7699d72669f3d679a79c6d05711426adc3b636d49daee8175c26"
+    },
+    {
+      "upstream_path": "src/common/global_histogram_binarizer.rs",
+      "upstream_sha256": "23be69b9aa1d392033e827926d79323d7738de2376a76bfb7309e36880507c8a",
+      "status": "retained_modified",
+      "derived_sha256": "f3fc2b4a784d27d1fb0f1953cecdd2318413f3cd25be111d01b192456e9725a7"
+    },
+    {
+      "upstream_path": "src/common/hybrid_binarizer.rs",
+      "upstream_sha256": "e34ce687c40159cffed0838ab581718f7cca1ba53a6fd06e76f9d1063da843e8",
+      "status": "retained_modified",
+      "derived_sha256": "5f071753648fdce94f2c1e654ee52a752b34ed226f6a0d2fbac9c219fbe791cc"
+    },
+    {
+      "upstream_path": "src/common/line_orientation.rs",
+      "upstream_sha256": "da230ae5bdf62484b42bf4b00e751f001121c8e7e129525021ca4818f0c423ea",
+      "status": "removed",
+      "derived_sha256": null
+    },
+    {
+      "upstream_path": "src/common/perspective_transform.rs",
+      "upstream_sha256": "d1786b554e45a659a088caa34eb9535753fb70b048f36b7955c22dbdac735531",
+      "status": "retained_modified",
+      "derived_sha256": "29914f7269e62498f2d1c0472247be22f49bc5309d970ce3b91523fbea576daa"
+    },
+    {
+      "upstream_path": "src/common/grid_sampler.rs",
+      "upstream_sha256": "f478ce74f5245c89faa147cf841e4e07d4ee4274d5cbac1bd65658edc4af423e",
+      "status": "retained_modified",
+      "derived_sha256": "f9170ac7182285542816d20c7851ca26e545337ca240dff68c2215a4599795b2"
+    },
+    {
+      "upstream_path": "src/common/default_grid_sampler.rs",
+      "upstream_sha256": "d2c43bea62b00cdafeaed1ab36e4a7f3e0c98a3d9d4e2f57e04f6d02ce31effc",
+      "status": "retained_modified",
+      "derived_sha256": "9fd29782a07bd9128dc06381f308c2efa7d7aa444d15de967a48563df58e2996"
+    },
+    {
+      "upstream_path": "src/common/quad.rs",
+      "upstream_sha256": "d3fc3a6c8d8dedc717d7fe497e9550cad6bedb0bbb03a3ee6337bed8a8ece591",
+      "status": "retained_modified",
+      "derived_sha256": "d6efe783078a4c8747cbdb9a4fa8d388fa69ec7578153d26188f2385389af941"
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/bitmatrix_cursor_trait.rs",
+      "upstream_sha256": "4e0ae5b1375c0ca090d65b1866d3e375d64826ca1868808f08300875af88e8ff",
+      "status": "retained_modified",
+      "derived_sha256": "3850c47f9f43c8ffcc3a68537d3b20bcffb208e47c7121d545ce7c823a4d7cdb"
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/concentric_finder.rs",
+      "upstream_sha256": "ad21dd27fc5b45a9f23149b9fbd86d865a1bb6ab46530547ecc7f2e747c313b2",
+      "status": "retained_modified",
+      "derived_sha256": "0b983e4a5bd435b0eb8a070f5db765cdcaa16f1294de7309d2db053c6e97c2e5"
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/decoder_result.rs",
+      "upstream_sha256": "2db4e1b9e894942ffa8048ac725ee05e217dad5b7256e282e691ae9182f5f092",
+      "status": "retained_modified",
+      "derived_sha256": "309c35b37ea701f241dc5706d2de214904eca753a76dc922e6942c0a97064914"
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/direction.rs",
+      "upstream_sha256": "317fb77a2900fc6339bca6e5f8b84865743fc262e300f681546e71d02aa2f1a5",
+      "status": "retained_modified",
+      "derived_sha256": "b92c607e4b64bba061b4e84cb62361b374edb84393c16d969b33bf9a44ddb478"
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/dm_regression_line.rs",
+      "upstream_sha256": "b02b969a3ce8a84fcf5713844ace5ac86cccf8269128e8d65457b545f2c0a24c",
+      "status": "retained_modified",
+      "derived_sha256": "535a821b8154925cd4aa438fd5697a83cd850c0e8e4c12164d3c58fd40913ff8"
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/edge_tracer.rs",
+      "upstream_sha256": "77dd92f43191f4afedf88a0bcaea3a83a5ddb5faebfb783378627d631ff69cf6",
+      "status": "retained_modified",
+      "derived_sha256": "f036b5bc7997651b94ecc5314d3c1c7662974277eb6a8bc9869763f74c0bff59"
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/fast_edge_to_edge_counter.rs",
+      "upstream_sha256": "bf4d0e3401c85eedbeea39c121d9cc6d74699abffa43221fde742aec08642398",
+      "status": "retained_modified",
+      "derived_sha256": "e311196f8edbe4170e35989e005fe9a8d2aaaef8e61f69168e4e23cf0ee26fe4"
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/matrix.rs",
+      "upstream_sha256": "61ebc801548e17aabf6feab6f761c7882ff70b4048ca0b0af286c90cef465728",
+      "status": "retained_modified",
+      "derived_sha256": "ae996de7ab2c208b995ecb1492ae9bb91ee1944e426636d73471c48e29314d20"
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/pattern.rs",
+      "upstream_sha256": "136f847ed4b0e03007e3c1fe528fbb42eda3a1964074981e4168c31cef1551fb",
+      "status": "retained_modified",
+      "derived_sha256": "00c902307c46f47242f18a183db2e5fd6a483d7d2eefbe416717186e3d66e052"
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/regression_line.rs",
+      "upstream_sha256": "c61fd1928c4c20d50717858edfb1810ea14bd1f1d20fb7002d3068283881175b",
+      "status": "retained_modified",
+      "derived_sha256": "abacdfbd505b176b2256fa8b7a46d2d71303b6016c097bb8b8cf092960559b09"
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/regression_line_trait.rs",
+      "upstream_sha256": "8f7bbe188a2515288f35cdb92562bcdb33d4c643279e9d33aa025dbd6eac56b8",
+      "status": "retained_modified",
+      "derived_sha256": "52d718b5c9297eca426e2a72a81f7a2193b1c578f6468d8cc4cf15c633ec8822"
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/step_result.rs",
+      "upstream_sha256": "83dcd97ef1a31cfd885fede80ca1467b40613d7f301d4750ffcc6ae95eedca26",
+      "status": "removed",
+      "derived_sha256": null
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/structured_append.rs",
+      "upstream_sha256": "5bacc196045a24c672296b148886d1b5114beac3d6dabec04b9b8d9fd5f10a58",
+      "status": "retained_modified",
+      "derived_sha256": "5b0be9cb3165ff72009d03c398c0f83958712f95e149c4fd4e7f31a0814bda2d"
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/util.rs",
+      "upstream_sha256": "f696f27b84a6ee95b340f7a4bfa71c097fdef70e21a91930bf1502b75dc46eb1",
+      "status": "retained_modified",
+      "derived_sha256": "23dac8dee2e81fa5a4a3295d03ba9027678d19a073345308444d10c897c3eb9e"
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/value.rs",
+      "upstream_sha256": "ddea8071902fab7a94d57d21d12f09a302018bbecff4b886a28b1ca901db5d3d",
+      "status": "retained_modified",
+      "derived_sha256": "061351d2407115bb12a0394d84f14a57cc847e31f44d32e945e1fbd55a4f5693"
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/byte_matrix.rs",
+      "upstream_sha256": "5ee2ea4ffade9750eb83ef5a10aa488b85df2c0e887c76dcae8846424ff4fad2",
+      "status": "removed",
+      "derived_sha256": null
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/base_extentions/bitmatrix.rs",
+      "upstream_sha256": "cca66965988ce29545932e9b4a88a7e11e5a5d763d083954331e2c8d8dec28f8",
+      "status": "retained_modified",
+      "derived_sha256": "8b2887f322888221609ac6044f03b80758144a669f275d953283e0913a0f0c1e"
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/base_extentions/qrcode_version.rs",
+      "upstream_sha256": "3031f240671e0bb55b076556b80b85bfa01e5415b6f5db18875b3400f1e1e9d7",
+      "status": "retained_modified",
+      "derived_sha256": "0e67932805378ca569b2a0dc5a4249bdc6772b8b44344fcb6f44fc1cd81af263"
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/base_extentions/mod.rs",
+      "upstream_sha256": "e9dfa76f8c4feb6eed32651f420581254831db7d9d2fb84f6d44c46f21d39441",
+      "status": "retained_modified",
+      "derived_sha256": "d88776574bfb7b23af0bd04f5fab4ad4c7afc999eaa8a1a9f2ed314313232b55"
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/base_extentions/qr_formatinformation.rs",
+      "upstream_sha256": "72df5cf9f005fde15c1360a85bb717e991971d0298f87b96dac5a04fd3cd83d3",
+      "status": "retained_modified",
+      "derived_sha256": "9805e45ab5f486f22b3ace7d1797a837dd5bf0ef148bdc40be3fc5278d8912bb"
+    },
+    {
+      "upstream_path": "src/common/cpp_essentials/base_extentions/qr_ec_level.rs",
+      "upstream_sha256": "ba0c50bfb9571b7462a64ee2e49816507dc7d6e40660c3b8bc32751e7fdf84e9",
+      "status": "retained_modified",
+      "derived_sha256": "5305147a9c2964353d1fcd952a1f14065da98a7d14506e10315a465d6ab9ec3d"
+    },
+    {
+      "upstream_path": "src/common/reedsolomon/generic_gf.rs",
+      "upstream_sha256": "9c4fd3c23472d8407191857414fa0ae86be53bfc4a8a6ecbd809dd8ef98db953",
+      "status": "retained_modified",
+      "derived_sha256": "ff1582451e76fc59b193e118a2997acb4df2b0ca4fffc5dc3a32396a1c66315a"
+    },
+    {
+      "upstream_path": "src/common/reedsolomon/generic_gf_poly.rs",
+      "upstream_sha256": "65882b6b51a77a66807c1dea12cc48ade4f9aad3773b67334dbe775b09403588",
+      "status": "retained_modified",
+      "derived_sha256": "1645dfc8dc30df653251fa39db8b31914be35b051b09929fc3b1b21627736d90"
+    },
+    {
+      "upstream_path": "src/common/reedsolomon/reedsolomon_decoder.rs",
+      "upstream_sha256": "81f4e373c3aed8319cca90e552b601ed3707fe1c35f013aa1ac621e6fa7f510d",
+      "status": "retained_modified",
+      "derived_sha256": "1fc77779e221b45eff6f53c7ef2b4b5d2191ce2e5d2ad52d2d68e04102cdbfa8"
+    },
+    {
+      "upstream_path": "src/qrcode/common/error_correction_level.rs",
+      "upstream_sha256": "c10ebf07fb255e5868cb0ce7bfa202168780a6ff859cd492a29ae7c1297ad88e",
+      "status": "retained_modified",
+      "derived_sha256": "2bcf2efcfc14cbbb9f2809e92e969a18a3a9df5fecededf95a8363afa4da049c"
+    },
+    {
+      "upstream_path": "src/qrcode/common/format_information.rs",
+      "upstream_sha256": "f94a73a656a4d25b53358d95efb5df42762009ddc1d6f69b3545b9a756572ebf",
+      "status": "retained_modified",
+      "derived_sha256": "b89ac08640bbdb7c114e4b05683e7c34b87adeb1beb138be682bd3ccc45c8d6b"
+    },
+    {
+      "upstream_path": "src/qrcode/common/mode.rs",
+      "upstream_sha256": "5e52f5b0e599d68ed92b02e5c4fd0e963c934203ca2526832e91df91062c3405",
+      "status": "retained_modified",
+      "derived_sha256": "1e4ca6afbef4b37f79fe813c0516d835a34548be4ff49b011d23b8e023966163"
+    },
+    {
+      "upstream_path": "src/qrcode/common/version.rs",
+      "upstream_sha256": "df971ebac297ca3a36527fc6ad244ae71be998c927518b6542dad80fa4f80777",
+      "status": "retained_modified",
+      "derived_sha256": "33aa211f4b0f535c60aa06ed066f172d417c200349f00797c19991361ea60785"
+    },
+    {
+      "upstream_path": "src/qrcode/common/version_build_versions_arrays.rs",
+      "upstream_sha256": "438e352ef4c5261fcead447ddf958d3fe6a5801cfad8fe609298157e615f1bdf",
+      "status": "retained_modified",
+      "derived_sha256": "cfe06f5e82b967f67d309f7f1cdf8c2533428204ccfca0f86c188623338b7931"
+    },
+    {
+      "upstream_path": "src/qrcode/cpp_port/decoder.rs",
+      "upstream_sha256": "db852b6509f903f2f81a7d74fbeb656efa7cdf65bcdc51c0c743b035772c0c69",
+      "status": "retained_modified",
+      "derived_sha256": "df6dca4581ddfa45ad6969af01cce4241b414e2f01a7c43f04de4e339870a9ee"
+    },
+    {
+      "upstream_path": "src/qrcode/cpp_port/detector.rs",
+      "upstream_sha256": "e1d5e7c494d5c0996bff88f7c49b7f7fa3d5073035ddf258f945eec7d7d8a16b",
+      "status": "retained_modified",
+      "derived_sha256": "ae9a6af8d5e980da0a19d1fb79803334542317ebf45f632260d603bc763de214"
+    },
+    {
+      "upstream_path": "src/qrcode/cpp_port/data_mask.rs",
+      "upstream_sha256": "2fac0a2d8fc2a962e9e826fbf1ff15df2575055c2f851366559be064037d21db",
+      "status": "retained_modified",
+      "derived_sha256": "793d47b15f042748f0baac7094ec4f4451939cde192c0aed74dec03a36c13db0"
+    },
+    {
+      "upstream_path": "src/qrcode/cpp_port/bitmatrix_parser.rs",
+      "upstream_sha256": "22c0520876d959971a12577bdb0d809d223e09c221458e800d3f9f0e03a62610",
+      "status": "retained_modified",
+      "derived_sha256": "2b96be65713b3dd499ee553d9b57f4e829784a7a2c116b14d5df8903194e4fed"
+    },
+    {
+      "upstream_path": "src/qrcode/cpp_port/qr_type.rs",
+      "upstream_sha256": "1468fe7aa58f989d34bf5e87a1dbbc26bb9c4fa2fccdd47e321f9aa8f34739e9",
+      "status": "retained_modified",
+      "derived_sha256": "72944af574136ee7bd3cadbb4f3b785c114fcddc6925bb38f6cdeb4d7fd1f044"
+    },
+    {
+      "upstream_path": "src/qrcode/decoder/data_block.rs",
+      "upstream_sha256": "d35d7c7509826a3531165dcfd869f304eb7d6ce2ab7c5ad80fd13b3dffc9083c",
+      "status": "retained_modified",
+      "derived_sha256": "68e5a6aa549578049432399130d530ef286593f7f4b114eadccaa3e8fbbadbac"
+    },
+    {
+      "upstream_path": "src/qrcode/detector/qrcode_detector_result.rs",
+      "upstream_sha256": "fadf00a48afda1ff1aaf6805b1922c388b8c568bdf2930a9d8fafec3def83501",
+      "status": "retained_modified",
+      "derived_sha256": "f4615786566b95b5e5b2276bace3917d490cc697ff586b5ef8d6b75eae944c94"
+    }
+  ],
+  "generated_files": [
+    {
+      "path": "mod.rs",
+      "sha256": "91116aa8edcd3351eb9995c0a6bcbc9e8f7b94d76c90f18412031205a7e9cf13",
+      "status": "project_glue"
+    },
+    {
+      "path": "qrcode/mod.rs",
+      "sha256": "006929e543023a876ae4c58b0f034ed80eff8a16ee996de8b8770f5a9abe9eef",
+      "status": "project_glue"
+    },
+    {
+      "path": "qrcode/cpp_port/mod.rs",
+      "sha256": "fef6f4dfa02ed6ef6c9e699e81b2073082b23b78ab918cd633c6796d5496ec9c",
+      "status": "project_glue"
+    },
+    {
+      "path": "qrcode/decoder/mod.rs",
+      "sha256": "52fbf1147e04f26cf8d87023c3a3d4036f21e259e62ed3f166df0e48a283fbfc",
+      "status": "project_glue"
+    },
+    {
+      "path": "qrcode/common/mod.rs",
+      "sha256": "8f4b5bfeac0576955186fdd26f4e728d766240d52b3ab51933cb734d4cb58220",
+      "status": "project_glue"
+    },
+    {
+      "path": "qrcode/detector/mod.rs",
+      "sha256": "b035451d8f1dc9ccaef6f13f708fc19464bd0127fa2d65a02af73189b9444597",
+      "status": "project_glue"
+    },
+    {
+      "path": "common/mod.rs",
+      "sha256": "a278202196dbf0eb812684d3cff02a56126b4571eb2b76aa0a9a4dc56eb1f89b",
+      "status": "project_glue"
+    },
+    {
+      "path": "common/cpp_essentials/mod.rs",
+      "sha256": "9a2345a6507751bae0db1f00d8e2c1e40aef8b737223b540b789245181443411",
+      "status": "project_glue"
+    },
+    {
+      "path": "common/reedsolomon/mod.rs",
+      "sha256": "6502f2018e9195fe0ce2859d451a6ed477ea46ac34676f3f4378105ede6512e1",
+      "status": "project_glue"
+    }
+  ],
+  "recorded_pruning": [
+    {
+      "file": "common/eci.rs",
+      "removed_or_gated": [
+        "ECI_8/16/24",
+        "can_encode/get_bitwidth/get_qreci_encode_bits"
+      ]
+    },
+    {
+      "file": "common/eci.rs",
+      "removed_or_gated": [
+        "ISO646_Inv (From(170)->ASCII retained)"
+      ]
+    },
+    {
+      "file": "common/eci_string_builder.rs",
+      "removed_or_gated": [
+        "bytes gated to tests"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/decoder_result.rs",
+      "removed_or_gated": [
+        "content gated to tests"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/decoder_result.rs",
+      "removed_or_gated": [
+        "new",
+        "lineCount",
+        "setLineCount",
+        "withLineCount",
+        "isMirrored",
+        "readerInit",
+        "setReaderInit",
+        "withReaderInit",
+        "extra",
+        "setExtra",
+        "withExtra",
+        "symbologyIdentifier"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/decoder_result.rs",
+      "removed_or_gated": [
+        "unused lineCount/readerInit/extra fields (Arc allocation removed)"
+      ]
+    },
+    {
+      "file": "common/mod.rs",
+      "removed_or_gated": [
+        "DetectorRXingResult.getPoints"
+      ]
+    },
+    {
+      "file": "qrcode/detector/qrcode_detector_result.rs",
+      "removed_or_gated": [
+        "result_points storage/getPoints/constructor argument"
+      ]
+    },
+    {
+      "file": "qrcode/cpp_port/detector.rs",
+      "removed_or_gated": [
+        "three result-point Vec allocations; PatternType test-only import"
+      ]
+    },
+    {
+      "file": "common/bit_source.rs",
+      "removed_or_gated": [
+        "getBitOffset",
+        "getByteOffset"
+      ]
+    },
+    {
+      "file": "common/perspective_transform.rs",
+      "removed_or_gated": [
+        "transform_points_single",
+        "transform_points_double"
+      ]
+    },
+    {
+      "file": "common/quad.rs",
+      "removed_or_gated": [
+        "with_points",
+        "points"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/base_extentions/qr_formatinformation.rs",
+      "removed_or_gated": [
+        "cpp_eq"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/concentric_finder.rs",
+      "removed_or_gated": [
+        "CenterFromEnd"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/edge_tracer.rs",
+      "removed_or_gated": [
+        "traceStep",
+        "updateDirectionFromOrigin",
+        "traceLine",
+        "traceGaps",
+        "traceCorner"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/edge_tracer.rs",
+      "removed_or_gated": [
+        "history/state fields and lock dependencies"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/bitmatrix_cursor_trait.rs",
+      "removed_or_gated": [
+        "whiteAt",
+        "isWhite",
+        "movedBy",
+        "countEdges",
+        "readPattern",
+        "readPatternFromBlack"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/edge_tracer.rs",
+      "removed_or_gated": [
+        "isWhite",
+        "movedBy"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/dm_regression_line.rs",
+      "removed_or_gated": [
+        "average",
+        "reverse",
+        "modules"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/regression_line_trait.rs",
+      "removed_or_gated": [
+        "points",
+        "length",
+        "reset",
+        "pop_back",
+        "project"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/regression_line.rs",
+      "removed_or_gated": [
+        "points",
+        "length",
+        "reset",
+        "pop_back"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/dm_regression_line.rs",
+      "removed_or_gated": [
+        "points",
+        "length",
+        "reset",
+        "pop_back"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/matrix.rs",
+      "removed_or_gated": [
+        "with_data",
+        "height",
+        "width",
+        "size",
+        "get_point",
+        "set_point",
+        "data",
+        "clear_with",
+        "clear"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/matrix.rs",
+      "removed_or_gated": [
+        "unused Point import"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/util.rs",
+      "removed_or_gated": [
+        "intersect",
+        "ToInt",
+        "ToIntPos"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/util.rs",
+      "removed_or_gated": [
+        "unused imports/allow"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/pattern.rs",
+      "removed_or_gated": [
+        "IsRightGuard",
+        "FindLeftGuard",
+        "NormalizedE2EPattern",
+        "NormalizedPattern"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/pattern.rs",
+      "removed_or_gated": [
+        "BarAndSpace new/isValid"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/pattern.rs",
+      "removed_or_gated": [
+        "FixedSparcePattern; GetPatternRow test-only; borrowed view name"
+      ]
+    },
+    {
+      "file": "qrcode/common/format_information.rs",
+      "removed_or_gated": [
+        "new",
+        "decodeFormatInformation",
+        "doDecodeFormatInformation",
+        "getErrorCorrectionLevel",
+        "getDataMask"
+      ]
+    },
+    {
+      "file": "qrcode/common/format_information.rs",
+      "removed_or_gated": [
+        "unused Java format lookup table"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/mod.rs",
+      "removed_or_gated": [
+        "StepResult/ByteMatrix module exports"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/step_result.rs",
+      "removed_or_gated": [
+        "removed module file; original source tracked by copy records"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/byte_matrix.rs",
+      "removed_or_gated": [
+        "removed module file; original source tracked by copy records"
+      ]
+    },
+    {
+      "file": "mod.rs",
+      "removed_or_gated": [
+        "three explicit Clippy port exceptions"
+      ]
+    },
+    {
+      "file": "qrcode/cpp_port/data_mask.rs",
+      "removed_or_gated": [
+        "GetMaskedBit"
+      ]
+    },
+    {
+      "file": "qrcode/cpp_port/data_mask.rs",
+      "removed_or_gated": [
+        "unused BitMatrix import"
+      ]
+    },
+    {
+      "file": "common/reedsolomon/reedsolomon_decoder.rs",
+      "removed_or_gated": [
+        "bound locations cleanup"
+      ]
+    },
+    {
+      "file": "common/bit_array.rs",
+      "removed_or_gated": [
+        "outer attr/doc whitespace cleanup"
+      ]
+    },
+    {
+      "file": "common/bit_matrix.rs",
+      "removed_or_gated": [
+        "outer attr/doc whitespace cleanup"
+      ]
+    },
+    {
+      "file": "result_point.rs + rxing_result_point.rs + mod.rs",
+      "removed_or_gated": [
+        "ResultPoint trait/module/impl gated to tests; original inline trait tests retained"
+      ]
+    },
+    {
+      "file": "common/quad.rs",
+      "removed_or_gated": [
+        "unused allowed helpers removed; rectangle/is_convex/rotated_corners production usage preserved"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/pattern.rs",
+      "removed_or_gated": [
+        "unused borrowed view convenience method removed (no callers)"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/value.rs",
+      "removed_or_gated": [
+        "unused Value.isWhite after history tracing pruning"
+      ]
+    },
+    {
+      "file": "common/cpp_essentials/edge_tracer.rs",
+      "removed_or_gated": [
+        "obsolete history/Clone comments removed"
+      ]
+    },
+    {
+      "file": "qrcode/cpp_port/detector.rs",
+      "removed_or_gated": [
+        "collapsible_if short-circuit equivalent let chains"
+      ]
+    },
+    {
+      "file": "common/reedsolomon/generic_gf_poly.rs",
+      "removed_or_gated": [
+        "collapsible_if formatter short-circuit equivalent"
+      ]
+    }
+  ],
+  "additional_changes": [
+    "monotone run-prefix offsets in bounded finder discovery",
+    "decoded raw-buffer ownership transfer after metadata checks",
+    "FNC1 in-place linear percent unescaping",
+    "checked sampling coordinates and finite geometry",
+    "spatial bins bound spiral traversal",
+    "Model2 format/dimension entry validation",
+    "removal of non-QR capabilities, native time graph, text conversion and unused interfaces"
+  ],
+  "validation": "source/entry-contract review plus focused tests, all-workspace checks and finite fuzz; no formal or independent human certification"
+}

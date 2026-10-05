@@ -1,7 +1,7 @@
 [package]
 name = "qrcode-decode"
 description = "QR code decoding traits, grayscale views, Structured Append parsing, and optional rqrr adapter for qrcode-rs."
-license = "MIT OR Apache-2.0"
+license = "(MIT OR Apache-2.0) AND Apache-2.0"
 version.workspace = true
 edition = "2024"
 authors = ["houseme <housemecn@gmail.com>"]
@@ -14,7 +14,9 @@ readme = "README.md"
 image = { workspace = true, optional = true }
 qrcode-core = { workspace = true }
 rqrr = { workspace = true, optional = true }
-rxing = { workspace = true, optional = true }
+num = { workspace = true, optional = true }
+once_cell = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
 
 [features]
 default = []
@@ -25,4 +27,4 @@ image = ["dep:image"]
 # Enables the `rqrr`-backed decoder adapter.
 rqrr = ["dep:rqrr"]
 # Enables the full pure-Rust Normal/Micro and Structured Append scanner.
-rxing = ["std", "dep:rxing"]
+rxing = ["std", "dep:num", "dep:once_cell", "dep:thiserror"]

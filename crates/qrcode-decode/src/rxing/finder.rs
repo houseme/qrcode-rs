@@ -12,18 +12,18 @@
 
 use alloc::vec::Vec;
 
-use ::rxing::common::BitMatrix;
-use ::rxing::common::cpp_essentials::{
+use crate::engine::common::BitMatrix;
+use crate::engine::common::cpp_essentials::{
     ConcentricPattern, FindLeftGuardBy, FixedPattern, GetPatternRowTP, IsPattern, LocateConcentricPattern, PatternRow,
     PatternType, PatternView,
 };
-use ::rxing::{Point, point};
+use crate::engine::{Point, point};
 
 use super::DecodeError;
 
 const PATTERN: FixedPattern<5, 7, false> = FixedPattern::new([1, 1, 3, 1, 1]);
 
-fn find_pattern(view: PatternView<'_>) -> ::rxing::common::Result<PatternView<'_>> {
+fn find_pattern(view: PatternView<'_>) -> crate::engine::common::Result<PatternView<'_>> {
     FindLeftGuardBy::<5, _>(view, 5, |view: &PatternView<'_>, space_in_pixel: Option<f32>| {
         if i32::from(view[2]) < 3
             || view[2] < 2 as PatternType * core::cmp::max(view[0], view[4])
@@ -49,13 +49,24 @@ pub(super) fn find_bounded(
     while y < height {
         GetPatternRowTP(image, y, &mut row, false);
         let mut next = PatternView::new(&row);
+        let mut summed_runs = 0;
+        let mut pixels_in_front = 0_u32;
         while let Ok(found) = find_pattern(next) {
             next = found;
             if !next.isValid() {
                 break;
             }
+            let end = next.run_offset().ok_or(DecodeError::InvalidMetadata("finder row offset overflow"))?;
+            let runs = next
+                .data()
+                .get(summed_runs..end)
+                .ok_or(DecodeError::InvalidMetadata("finder row traversal is not monotone"))?;
+            // Each run contributes once per row, including ratio matches that
+            // later fail concentric validation and never consume finder slots.
+            pixels_in_front += runs.iter().copied().map(u32::from).sum::<u32>();
+            summed_runs = end;
             let center = point(
-                next.pixelsInFront() as f32 + f32::from(next[0]) + f32::from(next[1]) + f32::from(next[2]) / 2.0,
+                pixels_in_front as f32 + f32::from(next[0]) + f32::from(next[1]) + f32::from(next[2]) / 2.0,
                 y as f32 + 0.5,
             );
             if !patterns.iter().any(|old| Point::distance(center, old.p) < old.size as f32 / 2.0)
@@ -83,10 +94,30 @@ pub(super) fn find_bounded(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ::rxing::qrcode::cpp_port::detector::FindFinderPatterns;
+    use crate::engine::qrcode::cpp_port::detector::FindFinderPatterns;
     use qrcode_core::bits::Bits;
     use qrcode_core::canvas::Canvas;
     use qrcode_core::{Color, EcLevel, Version};
+
+    fn stripe_raster(width: u32, height: u32) -> BitMatrix {
+        let mut image = BitMatrix::new(width, height).unwrap();
+        for x in (0..width).step_by(8) {
+            image.setRegion(x, 0, 1, height).unwrap();
+            image.setRegion(x + 2, 0, 3, height).unwrap();
+            image.setRegion(x + 6, 0, 1, height).unwrap();
+        }
+        image
+    }
+
+    #[test]
+    fn rejected_ratio_matches_do_not_rescan_each_row_prefix() {
+        let small = stripe_raster(512, 6);
+        assert_eq!(find_bounded(&small, true, 1).unwrap(), FindFinderPatterns(&small, true, 0));
+        // Maximum side length with many valid horizontal ratios but no
+        // concentric finder. The accepted-finder budget cannot stop this case.
+        let wide = stripe_raster(32_768, 6);
+        assert!(find_bounded(&wide, true, 1).unwrap().is_empty());
+    }
 
     fn finder_raster(columns: u32, rows: u32) -> BitMatrix {
         let module = 4;

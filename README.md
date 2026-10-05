@@ -300,6 +300,12 @@ checked luma buffer and returns one `Result` per sampled candidate, retaining
 independent failures alongside successful symbols. Payload bytes are not
 transcoded; interpret UTF-8 explicitly when text is required.
 
+The historical feature name selects a maintained private QR engine derived
+from rxing 0.9.3. The new 2.2 scanner uses the project-owned
+`qrcode_decode::rxing::BackendError` identity. Source provenance and bundled
+Apache licensing are documented in the
+[decoder dependency review](docs/qrcode-decode-dependency-onboarding.md).
+
 ```rust
 use qrcode_rs::decode::GrayPixels;
 use qrcode_rs::decode::rxing::RxingDecoder;
@@ -466,6 +472,10 @@ Licensed under either of:
 - MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
 
 at your option.
+
+The derived QR engine in `crates/qrcode-decode/src/engine` is Apache-2.0 only;
+its copyright notices, license and NOTICE remain bundled. Project-owned
+source outside that directory retains the dual-license terms above.
 
 ## Contributing
 

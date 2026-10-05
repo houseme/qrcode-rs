@@ -1,18 +1,25 @@
 //! Image decoding for normal and Micro QR symbols with the optional pure Rust
-//! rxing backend. Structured Append headers are retained with their payloads.
+//! QR engine derived from rxing 0.9.3. Structured Append headers are retained
+//! with their payloads.
 
 use alloc::vec::Vec;
 use core::fmt;
 
-use ::rxing::common::cpp_essentials::{ConcentricPattern, DecoderResult, StructuredAppendInfo};
-use ::rxing::common::{BitMatrix, DetectorRXingResult, HybridBinarizer};
-use ::rxing::qrcode::common::{ErrorCorrectionLevel, FormatInformation, Version as BackendVersion};
-use ::rxing::qrcode::cpp_port::decoder::{CorrectErrors, Decode, DecodeBitStream};
-use ::rxing::qrcode::cpp_port::detector::{GenerateFinderPatternSets, SampleMQR, SampleQR};
-use ::rxing::{Binarizer, Exceptions, Luma8Source};
+use crate::engine::common::cpp_essentials::{ConcentricPattern, DecoderResult, StructuredAppendInfo};
+use crate::engine::common::{BitMatrix, DetectorRXingResult, HybridBinarizer};
+use crate::engine::qrcode::common::{ErrorCorrectionLevel, FormatInformation, Version as BackendVersion};
+use crate::engine::qrcode::cpp_port::decoder::{CorrectErrors, Decode, DecodeBitStream};
+use crate::engine::qrcode::cpp_port::detector::{GenerateFinderPatternSets, SampleMQR, SampleQR};
+use crate::engine::{Binarizer, Exceptions, Luma8Source};
 use qrcode_core::{EcLevel, Version};
 
 use crate::{DecodedQrCode, GrayPixels, GrayPixelsError, QrDecoder};
+
+/// Error returned by the private QR engine.
+///
+/// This type is owned by `qrcode-decode`. It has a distinct Rust type identity
+/// from the external crate's `rxing::Exceptions`.
+pub use crate::engine::Exceptions as BackendError;
 
 mod finder;
 
@@ -146,7 +153,7 @@ pub enum DecodeError {
     /// Sampled geometry or decoded metadata is inconsistent.
     InvalidMetadata(&'static str),
     /// Detection, error correction, or payload decoding failed in the backend.
-    Backend(Exceptions),
+    Backend(BackendError),
 }
 
 impl fmt::Display for DecodeError {
@@ -372,10 +379,9 @@ fn scan_symbol(decoded: DecoderResult<bool>, bits: &BitMatrix) -> Result<ScanSym
     qrcode_core::bits::data_capacity_bits(version, ec_level)
         .map_err(|_| DecodeError::InvalidMetadata("unsupported version and error-correction level"))?;
     let structured_append = checked_append_header(decoded.structuredAppend())?;
-    // Read raw content directly. Text conversion is deliberately disabled in
-    // the optional backend, and its high-level result loses SA/version metadata.
+    // Move raw content only after every payload and metadata check succeeded.
     Ok(ScanSymbol {
-        decoded: DecodedQrCode::new(decoded.content().bytes().to_vec(), version, ec_level),
+        decoded: DecodedQrCode::new(decoded.into_content().into_bytes(), version, ec_level),
         structured_append,
     })
 }
@@ -495,8 +501,61 @@ fn micro_mask(mask: u8, x: u32, y: u32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ::rxing::LuminanceSource;
+    use crate::engine::LuminanceSource;
     use std::borrow::Cow;
+
+    #[test]
+    fn scan_symbol_transfers_payload_allocation_after_metadata_validation() {
+        use crate::engine::common::ECIStringBuilder;
+        let bits = BitMatrix::new(21, 21).unwrap();
+        for payload in [b"".as_slice(), b"\0\xffA\x1d".as_slice()] {
+            for append in
+                [StructuredAppendInfo::default(), StructuredAppendInfo { index: 1, count: 2, id: "231".into() }]
+            {
+                let mut content = ECIStringBuilder::default();
+                content.symbology.code = b'Q';
+                content.reserve(128);
+                for byte in payload {
+                    content.append_byte(*byte);
+                }
+                let pointer = content.bytes().as_ptr();
+                let decoded = DecoderResult::<bool>::with_eci_string_builder(content)
+                    .withVersionNumber(1)
+                    .withEcLevel("L".into())
+                    .withStructuredAppend(append.clone());
+                let symbol = scan_symbol(decoded, &bits).unwrap();
+                assert_eq!(symbol.decoded().data(), payload);
+                assert_eq!(symbol.structured_append(), checked_append_header(&append).unwrap());
+                let bytes = symbol.into_decoded().into_data();
+                assert_eq!(bytes.as_ptr(), pointer);
+                assert!(bytes.capacity() >= 128);
+            }
+        }
+    }
+
+    #[test]
+    fn scan_symbol_rejects_partial_payloads_and_invalid_metadata() {
+        use crate::engine::common::ECIStringBuilder;
+        let bits = BitMatrix::new(21, 21).unwrap();
+        let mut content = ECIStringBuilder::default();
+        content.symbology.code = b'Q';
+        content.append_string("partial");
+        let valid =
+            DecoderResult::<bool>::with_eci_string_builder(content).withVersionNumber(1).withEcLevel("L".into());
+        assert!(matches!(
+            scan_symbol(valid.clone().withError(Some(Exceptions::FORMAT)), &bits),
+            Err(DecodeError::Backend(_))
+        ));
+        assert!(matches!(scan_symbol(valid.clone().withVersionNumber(2), &bits), Err(DecodeError::InvalidMetadata(_))));
+        assert!(matches!(
+            scan_symbol(valid.clone().withEcLevel("?".into()), &bits),
+            Err(DecodeError::InvalidMetadata(_))
+        ));
+        assert!(matches!(
+            scan_symbol(valid.withStructuredAppend(StructuredAppendInfo { index: 0, count: 1, id: "0".into() }), &bits),
+            Err(DecodeError::InvalidMetadata(_))
+        ));
+    }
 
     #[test]
     fn append_metadata_keeps_real_parity_count_and_one_based_position() {
@@ -540,14 +599,13 @@ mod tests {
     }
 
     #[test]
-    fn luminance_borrows_the_input_and_inversion_does_not_mutate_it() {
+    fn luminance_borrows_the_input_without_modifying_it() {
         let bytes = [1, 2, 3, 4];
-        let mut source = Luma8Source::new_with_slice(&bytes, 2, 2).unwrap();
+        let source = Luma8Source::new_with_slice(&bytes, 2, 2).unwrap();
         assert!(matches!(source.get_matrix(), Cow::Borrowed(_)));
         assert_eq!(source.get_matrix().as_ptr(), bytes.as_ptr());
         assert_eq!(source.get_row(1).unwrap().as_ref(), &[3, 4]);
-        source.invert();
-        assert_eq!(source.get_row(0).unwrap().as_ref(), &[254, 253]);
+        assert_eq!(source.get_row(0).unwrap().as_ref(), &[1, 2]);
         assert_eq!(bytes, [1, 2, 3, 4]);
     }
 

@@ -1,0 +1,16 @@
+QR-only engine derived from rxing 0.9.3 (Apache License 2.0), a Rust port of ZXing.
+Original copyright notices in each retained source file remain authoritative.
+The published upstream archive contains no NOTICE file.
+
+This derived implementation is maintained as a private component of qrcode-decode.
+It narrows the entrypoints to bounded Normal (Model 2), Micro and raw Structured
+Append decoding, removes unrelated formats, client/text conversion, time and
+platform capabilities, and adapts namespace/module wiring. Local source changes
+include early finder and spatial-bin limits, checked geometry, FNC1 compaction,
+raw payload ownership transfer and removal of unused public/general interfaces.
+See ORIGIN.md and source-provenance.json for exact source identity and changes.
+
+Project-owned source outside this directory retains its MIT OR Apache-2.0 terms.
+Source in this directory and modifications to it are distributed under Apache-2.0.
+The crate-level SPDX expression records both component obligations; it does not
+relicense the upstream port as MIT or certify the original rxing archive.

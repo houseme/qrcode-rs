@@ -6,6 +6,15 @@
 
 ### Changed
 
+- Maintain a private QR-only engine derived from rxing 0.9.3, with reviewed
+  source provenance and bundled Apache licensing. Preserve the historical
+  scanner feature names while using a project-owned `BackendError` for the
+  new 2.2 API; existing rqrr APIs remain unchanged.
+- Remove the scanner's unused clock, platform-binding and text-processing
+  dependency closure. Keep deployment policy unchanged; regex-automata is
+  again development-only under its existing baseline criterion.
+- Move decoded payload storage after all metadata checks, and remove unused
+  luma mutations, row/column caches and result-point allocations.
 - Record published-source `safe-to-deploy` audits for 14 decoder dependency
   versions and remove four superseded development exemptions. Keep the ten
   remaining deployment-audit obligations as release blockers without adding
@@ -143,6 +152,11 @@
 
 ### Fixed
 
+- Decode FNC1 percent escapes with linear in-place compaction for both header
+  positions, retaining raw ECI, binary and Structured Append payloads.
+- Advance finder pixel prefixes monotonically for rejected ratio matches,
+  bound grouping rings to existing bins, and check sampling coordinates and
+  finite geometry before offset arithmetic or pixel reads.
 - Enforce the finder-pattern budget during discovery and stop at the first
   excess accepted pattern, preserving the existing scan and sampling behavior.
   Limit errors report the observed count as a lower bound instead of implying

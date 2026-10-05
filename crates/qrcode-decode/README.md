@@ -40,11 +40,16 @@ retained candidate failure returns an error. `ScanOptions` controls input,
 finder/candidate limits and explicit inverted polarity; no result is silently
 truncated. Normal and Micro QR share one binarization and finder search.
 
-The backend enables only QR decoding and raw-byte handling. It does not enable
-rxing's image, writers, client parsers, or character-set conversion features.
-Do not call high-level rxing text conversion with this feature profile. Use
-`core::str::from_utf8` on decoded bytes when appropriate, or transfer the
-buffer without copying through `DecodedQrCode::into_data`.
+The `rxing` feature uses a private QR engine derived from rxing 0.9.3. It retains
+raw-byte handling and ECI metadata without text conversion. The external rxing
+crate is not a dependency. Use `core::str::from_utf8` on decoded bytes when
+appropriate, or transfer the buffer without copying through
+`DecodedQrCode::into_data`.
+
+The 2.2 scanner API exposes `rxing::BackendError` for engine failures. This type
+belongs to `qrcode-decode` and has a different Rust type identity from the
+external crate's `rxing::Exceptions`. Callers matching the experimental scanner
+error variant must use `qrcode_decode::rxing::BackendError`.
 
 The facade's `structured_append::reassemble_decoded` accepts borrowed selected
 fragments and validates complete positions, matching headers and payload XOR.

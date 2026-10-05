@@ -22,6 +22,8 @@ use alloc::vec::Vec;
 use core::fmt;
 use qrcode_core::{EcLevel, Version};
 
+#[cfg(feature = "rxing")]
+mod engine;
 #[cfg(feature = "rqrr")]
 pub mod rqrr;
 #[cfg(feature = "rxing")]

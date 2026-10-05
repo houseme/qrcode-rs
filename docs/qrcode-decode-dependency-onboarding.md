@@ -1,74 +1,71 @@
 # Decoder dependency review for 2.2.0
 
-The optional `decode-rxing` feature and CLI select `rxing = 0.9.3` with
-`qrcode`, `decoders`, and `no_character_set_support`. Default features,
-client result parsers, image helpers, encoders and other barcode formats are
-disabled. Feature selection is distinct from a whole-crate deployment audit.
+## Runtime boundary
 
-## Source identity and criteria
+The historical `decode-rxing` / `rxing` feature names now select a maintained
+private QR engine derived from the checksum-verified `rxing 0.9.3` source.
+It supports bounded Normal Model 2/Micro scanning and raw Structured Append
+recovery. This is an explicit source and dependency-graph change, not a
+certificate for the unrestricted original package.
 
-All 24 locked versions were extracted from published crate archives whose
-SHA-256 checksums match `Cargo.lock`. Source identity is separate from security
-evidence. Review traced unsafe implementations, safe entry contracts, native
-and compiler capabilities, parser resource controls and platform boundaries.
+The scanner continues to expose raw bytes and independent candidate outcomes.
+It performs one binarization/discovery/sampling pipeline, with explicit
+inversion and no backend retry chain. The new 2.2 backend error type is
+`qrcode_decode::rxing::BackendError`; it has project-owned Rust identity.
+Existing published rqrr APIs, no_std default behavior and text/JSON/raw output
+contracts remain separate and unchanged.
 
-The records use Cargo-vet's built-in `safe-to-deploy` criterion: reason about
-unsafe code and powerful imports under reasonable deployment usage. They are
-AI-assisted source reviews, not independent human certification, exhaustive
-logic proofs, fuzz campaigns or platform runtime tests. Transitive dependencies
-continue to require their own policy evidence.
+## Source review and provenance
 
-## Recorded source audits
+The upstream archive checksum and each retained original/derived source hash
+are recorded in `crates/qrcode-decode/src/engine/source-provenance.json`.
+Original copyright notices, a modified-file notice, the Apache license,
+NOTICE and ORIGIN documentation are bundled in the actual crate archive.
+Project-owned source outside that directory keeps its dual-license terms;
+the SPDX package expression explicitly includes the Apache port obligation.
 
-| Package | Version | Main reviewed boundary |
-| --- | --- | --- |
-| aho-corasick | 1.1.5 | SIMD dispatch, pointer spans, buckets and state IDs |
-| android_system_properties | 0.1.6 | Native callback, property buffer and libc handle ownership |
-| chrono | 0.4.45 | Unsafe date representations, timezone configuration and native clocks |
-| futures-core | 0.3.34 | Atomic waker ownership and pinned stream projection |
-| futures-task | 0.3.34 | Arc wakers, erased future lifetimes, pin and Send contracts |
-| futures-util | 0.3.34 | Task queues, polling, locks, pinning, IO initialization and panic cleanup |
-| iana-time-zone-haiku | 0.1.2 | Bounded native copy, exception boundary and compiler inputs |
-| num | 0.4.3 | No-std re-export facade and package capabilities |
-| num-iter | 0.1.46 | Safe iterator arithmetic and caller termination obligations |
-| regex | 1.13.1 | Own-crate unsafe Searcher, UTF-8 endpoints and builder limits |
-| regex-syntax | 0.8.11 | Iterative parsers/visitors/destructors, limits and safe table consumers |
-| slab | 0.4.12 | Disjoint keys, storage bounds, initialization, cleanup and unchecked contracts |
-| windows-link | 0.2.1 | Explicit target-specific native declaration macros |
-| windows-result | 0.4.1 | Native error, COM/string ownership and initialized outputs |
+Every retained source file and selected entry/helper was reviewed, including
+version/EC tables, RS bounds, floating-point geometry, byte/ECI handling,
+cache ownership and the public input/error/publication boundaries. Unused
+native clocks/platform bindings, other barcode formats, client parsers,
+text converters and general unsafe-contract adapters are excluded.
+This finite AI-assisted review and the focused checks are not a formal proof
+or an independent human security certification.
 
-Detailed evidence and assumptions are in `supply-chain/audits.toml`. Clock
-providers and timezone configuration are trusted host inputs; sparse Slab
-keys and numeric iterator termination need caller bounds; regex limits are
-not whole-request memory limits. Arbitrary system files, native providers
-and caller-defined unsafe implementations are outside those assumptions.
+## Changes at the checked boundary
 
-Four superseded development exemptions (aho-corasick, regex, regex-syntax,
-windows-link) were removed. Existing cc/Tokio delta audits and the libc pin
-remain intact. No new exemption, publisher trust, peer import or weaker
-criterion was added.
+- Accepted finder count is checked during discovery. Rejected horizontal
+  ratio matches advance a monotone pixel prefix instead of rescanning each
+  preceding run. Finder grouping visits only bins actually in its grid.
+- Coordinates are checked before offset arithmetic/pixel access. Sampling
+  rejects nonfinite transforms, degenerate geometry and invalid ROI controls.
+  QR estimates retain legitimate BCH correction while actual sampling stays
+  within supported version dimensions.
+- FNC1 percent escaping uses linear in-place compaction. Raw payload ownership
+  transfers only after status, geometry, version, EC and SA validation.
+- Unused row/column caches, luma mutations, text conversion, legacy adapters
+  and result-point allocations are removed. Private visibility alone was
+  never used as an audit substitute.
 
-## Remaining release gate
+`max_results` bounds retained sampled-candidate outcomes; it does not promise
+that all rejected geometric proposals consume that counter. Grouping/sampling
+work is separately finite under pixel/finder limits and capped neighborhoods.
+These settings are not a process-RSS limit or wall-clock deadline.
 
-| Package | Version | Required follow-up |
-| --- | --- | --- |
-| core-foundation-sys | 0.8.7 | Broader native ABI and callback contract reconciliation |
-| iana-time-zone | 0.1.65 | Emscripten result storage and concurrency contract |
-| js-sys | 0.3.106 | Generic representation, shared-buffer copying and generated bindings |
-| regex-automata | 0.4.18 | Thread identifier exhaustion and pool ownership invariant |
-| rxing | 0.9.3 | Discovery bounds and remaining public/optional parser contracts |
-| unicode-segmentation | 1.13.3 | Sentence/reverse iterator contracts beyond selected use |
-| windows-core | 0.62.2 | Broad public interface ownership and lifetime contracts |
-| windows-implement | 0.60.2 | Generated owned interface lifetime contracts |
-| windows-interface | 0.59.3 | Scoped versus owned generated interface contracts |
-| windows-strings | 0.5.1 | Allocation/representation bounds on all supported targets |
+## Cargo-vet policy
 
-These versions have no new deployment audit or exemption. Investigating a
-contract, passing integration tests or excluding one feature cannot justify
-an unrestricted certificate for the original published version. Candidate
-security details are retained privately for validation and coordination.
+The 14 previously recorded published-source audits remain historical evidence
+for their exact versions. Their archive identity was checked against baseline
+commit `62b14bc` before this graph reduction. No audit is fabricated for the
+ten unresolved original deployment contracts.
 
-The proposed 24-exemption draft was not adopted. After the 14 source audits,
-`cargo vet --locked` still fails for the ten entries above. Publication remains
-blocked until adequate evidence or a reviewed dependency-graph change closes
-those obligations. This document does not claim 2.2.0 publication.
+Nine original gap packages leave the graph with the unused runtime closure.
+`regex-automata` remains through the development-only criterion dependency;
+its original safe-to-run baseline applies again without a new exemption or
+weaker rule. Existing criteria, imports, trust, exceptions and cc/Tokio records
+remain unchanged. A passing locked check therefore means the reviewed graph
+satisfies that original policy, not that every dependency has a full audit.
+
+Publication requires successful final source review, focused/workspace checks,
+finite scanner fuzzing, actual package reconstruction and exact-commit CI.
+Neither this document nor a prepared changelog claims publication.
