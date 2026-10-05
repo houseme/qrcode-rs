@@ -24,6 +24,7 @@ jobs:
           - parse_payloads
           - structured_append
           - decode_sa_parse
+          - scan_image
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/cache@v6.1.0

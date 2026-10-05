@@ -9,7 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-qrcode-rs = { path = "..", default-features = false, features = ["std", "svg"] }
+qrcode-rs = { path = "..", default-features = false, features = ["std", "svg", "decode-rxing"] }
 qrcode-image = { path = "../crates/qrcode-image", features = ["image"] }
 
 [workspace]
@@ -59,6 +59,13 @@ bench = false
 [[bin]]
 name = "decode_sa_parse"
 path = "fuzz_targets/decode_sa_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "scan_image"
+path = "fuzz_targets/scan_image.rs"
 test = false
 doc = false
 bench = false

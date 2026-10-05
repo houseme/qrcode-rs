@@ -32,7 +32,9 @@ impl Drop for TestDirectory {
 }
 
 fn binary() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_qrencodes"))
+    // Exercise the same contracts against a rebuilt published-package binary.
+    let path = std::env::var_os("QRCODE_TEST_CLI_BIN").unwrap_or_else(|| env!("CARGO_BIN_EXE_qrencodes").into());
+    Command::new(path)
 }
 
 fn save_codes(path: &Path, codes: Vec<QrCode>) {

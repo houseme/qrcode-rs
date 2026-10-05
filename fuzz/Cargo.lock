@@ -174,6 +174,69 @@ dependencies = [
 ]
 
 [[package]]
+name = "num"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "35bd024e8b2ff75562e5f34e7f4905839deb4b22955ef5e73d2fea1b9813cb23"
+dependencies = [
+ "num-bigint",
+ "num-complex",
+ "num-integer",
+ "num-iter",
+ "num-rational",
+ "num-traits",
+]
+
+[[package]]
+name = "num-bigint"
+version = "0.4.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c89e69e7e0f03bea5ef08013795c25018e101932225a656383bd384495ecc367"
+dependencies = [
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
+name = "num-complex"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73f88a1307638156682bada9d7604135552957b7818057dcef22705b4d509495"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "num-integer"
+version = "0.1.47"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ce2d95d4b3734dc35aa2f45e1aa22cd416814592a4f9d9205e11affd5b8e10b"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "num-iter"
+version = "0.1.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c92800bd69a1eac91786bcfe9da64a897eb72911b8dc3095decbd07429e8048b"
+dependencies = [
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
+name = "num-rational"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f83d14da390562dca69fc84082e73e548e1ad308d24accdedd2720017cb37824"
+dependencies = [
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
 name = "num-traits"
 version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -181,6 +244,12 @@ checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
 ]
+
+[[package]]
+name = "once_cell"
+version = "1.21.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "png"
@@ -196,6 +265,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "proc-macro2"
+version = "1.0.107"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
+dependencies = [
+ "unicode-ident",
+]
+
+[[package]]
 name = "pxfm"
 version = "0.1.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -203,18 +281,22 @@ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
 name = "qrcode-core"
-version = "2.1.0"
+version = "2.2.0"
 
 [[package]]
 name = "qrcode-decode"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
+ "image",
+ "num",
+ "once_cell",
  "qrcode-core",
+ "thiserror",
 ]
 
 [[package]]
 name = "qrcode-eps"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "qrcode-core",
  "qrcode-render",
@@ -222,7 +304,7 @@ dependencies = [
 
 [[package]]
 name = "qrcode-html"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "qrcode-core",
  "qrcode-render",
@@ -230,7 +312,7 @@ dependencies = [
 
 [[package]]
 name = "qrcode-image"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "image",
  "qrcode-core",
@@ -239,11 +321,11 @@ dependencies = [
 
 [[package]]
 name = "qrcode-parse"
-version = "2.1.0"
+version = "2.2.0"
 
 [[package]]
 name = "qrcode-pdf"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "qrcode-core",
  "qrcode-render",
@@ -251,7 +333,7 @@ dependencies = [
 
 [[package]]
 name = "qrcode-pic"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "qrcode-core",
  "qrcode-render",
@@ -259,7 +341,7 @@ dependencies = [
 
 [[package]]
 name = "qrcode-render"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "image",
  "qrcode-core",
@@ -267,8 +349,9 @@ dependencies = [
 
 [[package]]
 name = "qrcode-rs"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
+ "image",
  "qrcode-core",
  "qrcode-decode",
  "qrcode-eps",
@@ -292,10 +375,19 @@ dependencies = [
 
 [[package]]
 name = "qrcode-svg"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "qrcode-core",
  "qrcode-render",
+]
+
+[[package]]
+name = "quote"
+version = "1.0.47"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001"
+dependencies = [
+ "proc-macro2",
 ]
 
 [[package]]
@@ -315,6 +407,43 @@ name = "simd-adler32"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a219298ac11a56ea9a6d2120044824d6f01aeb034955e7af7bc16858527deea"
+
+[[package]]
+name = "syn"
+version = "3.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8593e8e72159ed2257d083c7a454a85cbf854f37a0966d8d483aff8c8a3ebcee"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
+name = "thiserror"
+version = "2.0.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
+dependencies = [
+ "thiserror-impl",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "unicode-ident"
+version = "1.0.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
 
 [[package]]
 name = "zlib-rs"

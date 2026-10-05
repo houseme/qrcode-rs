@@ -245,6 +245,7 @@ jobs:
           cargo fuzz run parse_payloads -- -runs=16 -seed=20260907 -timeout=5
           cargo fuzz run structured_append -- -runs=16 -seed=20260907 -timeout=5
           cargo fuzz run decode_sa_parse -- -runs=16 -seed=20260907 -timeout=5
+          cargo fuzz run scan_image -- -runs=16 -seed=20261005 -timeout=5
         env:
           RUSTUP_TOOLCHAIN: nightly
   release_dependency_policy:

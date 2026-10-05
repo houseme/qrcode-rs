@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [2.2.0] - 2026-10-04
+## [2.2.0] - 2026-10-05
 
 ### Changed
 
@@ -16,9 +16,10 @@
 - Move decoded payload storage after all metadata checks, and remove unused
   luma mutations, row/column caches and result-point allocations.
 - Record published-source `safe-to-deploy` audits for 14 decoder dependency
-  versions and remove four superseded development exemptions. Keep the ten
-  remaining deployment-audit obligations as release blockers without adding
-  temporary exemptions or weakening existing criteria.
+  versions and remove four superseded development exemptions. Resolve the
+  remaining deployment gaps through the reviewed runtime graph reduction,
+  without certifying unresolved upstream APIs, adding temporary exemptions
+  or weakening existing criteria.
 - Read release versions from the verified tag/workspace pair, require the
   existing dependency-policy checks before publishing, and build signed
   release assets only after the same commit has passed and published.
@@ -271,6 +272,8 @@
 
 ### Added
 
+- Add a bounded grayscale scanner fuzz target to smoke and scheduled checks,
+  and reuse CLI image contracts against independently rebuilt crate binaries.
 - Add focused benchmarks for automatic Micro QR encoding across numeric,
   alphanumeric, byte, Kanji, and mixed payloads.
 - Add single-segment and alternating-mode segmentation and automatic-encoding
