@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Maintenance
+
+- Refresh compatible dependency requirements and the lockfile, including
+  `proptest` 1.12, `serde_json` 1.0.154, and `tokio` 1.53.3. Run the locked
+  workspace compatibility checks on stable Rust instead of pinning CI to 1.88.
+
 ## [2.2.0] - 2026-10-05
 
 ### Changed
