@@ -64,6 +64,7 @@ pub use qrcode_parse as parse;
 pub use crate::types::{Color, EcLevel, Mode, QrError, QrResult, Version};
 pub use qrcode_core::QrCodeRef;
 use qrcode_core::cast;
+
 pub use qrcode_core::traits::{
     Builder, Encoder, ModuleSource, ModuleStorage, ModuleView, QrSymbol, Renderer as CoreRenderer,
 };
@@ -475,7 +476,7 @@ impl QrCode {
     ///
     /// This keeps existing encoded symbols reusable when callers need multiple
     /// render styles or want to decide packaging separately with the
-    /// [`batch`](crate::batch) module.
+    /// [`batch`](batch) module.
     ///
     /// ```
     /// use qrcode_rs::{EcLevel, QrCode};
@@ -1034,8 +1035,8 @@ impl QrCode {
     /// Structured Append header.
     ///
     /// This is a thin convenience over
-    /// [`crate::structured_append::StructuredAppend`]; see that type for the
-    /// split and parity details, and [`crate::structured_append::reassemble`]
+    /// [`structured_append::StructuredAppend`]; see that type for the
+    /// split and parity details, and [`structured_append::reassemble`]
     /// for recombining decoded symbols.
     ///
     /// # Errors
@@ -2180,7 +2181,7 @@ impl<'a> BatchRender<'a> {
     ///
     /// # Errors
     ///
-    /// Returns the first [`RenderError`](crate::render::RenderError) in code
+    /// Returns the first [`RenderError`](render::RenderError) in code
     /// order when a symbol has an invalid module grid, its configured geometry
     /// overflows, or the pixel backend rejects its output budget. Geometry and
     /// backend limits are checked before constructing that symbol's canvas.
@@ -2195,7 +2196,7 @@ impl<'a> BatchRender<'a> {
     /// assert_eq!(rendered[0].name(), "qr-0001.txt");
     /// # Ok::<(), qrcode_rs::render::RenderError>(())
     /// ```
-    pub fn try_build<P: Pixel>(&self) -> Result<Vec<BatchRendered<P::Image>>, crate::render::RenderError> {
+    pub fn try_build<P: Pixel>(&self) -> Result<Vec<BatchRendered<P::Image>>, render::RenderError> {
         self.codes
             .iter()
             .enumerate()
@@ -2273,7 +2274,7 @@ mod batch_render_fallible_tests {
         let batch = BatchRender::new(&codes).extension("txt").start_index(usize::MAX);
         let actual = batch.try_build::<char>().unwrap();
         assert_eq!(actual, batch.build::<char>());
-        assert_eq!(actual[1].name(), alloc::format!("qr-{}.txt", usize::MAX as u128 + 1));
+        assert_eq!(actual[1].name(), format!("qr-{}.txt", usize::MAX as u128 + 1));
     }
 
     #[test]
@@ -2304,6 +2305,10 @@ mod batch_render_fallible_tests {
         type Pixel = GuardPixel;
         type Image = (u32, u32);
 
+        fn new(width: u32, height: u32, _dark: GuardPixel, _light: GuardPixel) -> Self {
+            Self(width, height)
+        }
+
         fn validate_dimensions(
             width: u32,
             _height: u32,
@@ -2312,10 +2317,6 @@ mod batch_render_fallible_tests {
         ) -> Result<(), RenderError> {
             assert!(width <= 21, "later symbols must not be processed after the first error");
             Ok(())
-        }
-
-        fn new(width: u32, height: u32, _dark: GuardPixel, _light: GuardPixel) -> Self {
-            Self(width, height)
         }
 
         fn draw_dark_pixel(&mut self, _x: u32, _y: u32) {}
@@ -2762,7 +2763,7 @@ impl Analysis {
 
 /// A reusable render-time style: dark/light hex colors, module size, and quiet
 /// zone. Apply to a [`Renderer`] with [`Renderer::template`] when the pixel type
-/// is a [`StyledPixel`](crate::render::StyledPixel).
+/// is a [`StyledPixel`](render::StyledPixel).
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct QrTemplate {
@@ -3608,7 +3609,7 @@ mod api_tests {
         assert!(code.width() > 0);
         // GS1 uses FNC1 first position; smallest fitting version, medium EC.
         assert!(!code.version().is_micro());
-        assert_eq!(code.error_correction_level(), crate::EcLevel::M);
+        assert_eq!(code.error_correction_level(), EcLevel::M);
     }
 
     #[test]
@@ -3622,20 +3623,20 @@ mod api_tests {
     fn structured_append_rejects_invalid_symbol_count() {
         assert_eq!(
             QrCode::structured_append(b"x", 1, EcLevel::M).err(),
-            Some(crate::QrError::InvalidStructuredAppend { value: 1 })
+            Some(QrError::InvalidStructuredAppend { value: 1 })
         );
         assert_eq!(
             QrCode::structured_append(b"x", 17, EcLevel::M).err(),
-            Some(crate::QrError::InvalidStructuredAppend { value: 17 })
+            Some(QrError::InvalidStructuredAppend { value: 17 })
         );
     }
 
     #[test]
     fn info_reports_metadata() {
-        let code = QrCode::with_version(b"01234567", Version::Normal(1), crate::EcLevel::M).unwrap();
+        let code = QrCode::with_version(b"01234567", Version::Normal(1), EcLevel::M).unwrap();
         let info = code.info();
         assert_eq!(info.version(), Version::Normal(1));
-        assert_eq!(info.ec_level(), crate::EcLevel::M);
+        assert_eq!(info.ec_level(), EcLevel::M);
         assert_eq!(info.width(), code.width());
         assert_eq!(info.module_count(), code.width() * code.width());
         assert!(info.data_capacity_bytes() > 0);
@@ -3646,7 +3647,7 @@ mod api_tests {
         assert_eq!(info.remaining_capacity(), Some(87));
         assert_eq!(info.remaining_capacity_bits(), Some(87));
         // higher EC level => fewer data bytes for the same version
-        let code_h = QrCode::with_version(b"01234567", Version::Normal(1), crate::EcLevel::H).unwrap();
+        let code_h = QrCode::with_version(b"01234567", Version::Normal(1), EcLevel::H).unwrap();
         assert!(info.data_capacity_bytes() > code_h.info().data_capacity_bytes());
     }
 
@@ -3826,17 +3827,17 @@ mod api_tests {
 
     #[test]
     fn batch_encodes_many_and_short_circuits() {
-        let codes = QrCode::batch(vec![b"hi"; 1000], crate::EcLevel::M).unwrap();
+        let codes = QrCode::batch(vec![b"hi"; 1000], EcLevel::M).unwrap();
         assert_eq!(codes.len(), 1000);
         // short-circuit: a 5000-byte input cannot fit even v40-L.
         let huge: Vec<u8> = (0..5000).map(|i| (i % 256) as u8).collect();
         let mixed: Vec<&[u8]> = vec![&b"ok"[..], &huge[..], &b"also ok"[..]];
-        assert!(QrCode::batch(mixed, crate::EcLevel::L).is_err());
+        assert!(QrCode::batch(mixed, EcLevel::L).is_err());
     }
 
     #[test]
     fn batch_render_builds_stably_named_outputs() {
-        let codes = QrCode::batch(["alpha", "beta"], crate::EcLevel::M).unwrap();
+        let codes = QrCode::batch(["alpha", "beta"], EcLevel::M).unwrap();
         let rendered = QrCode::batch_render(&codes)
             .prefix("ticket-")
             .extension(".txt")
@@ -3852,7 +3853,7 @@ mod api_tests {
 
     #[test]
     fn batch_render_can_omit_extension_and_apply_dimensions() {
-        let codes = QrCode::batch(["alpha"], crate::EcLevel::M).unwrap();
+        let codes = QrCode::batch(["alpha"], EcLevel::M).unwrap();
         let rendered =
             QrCode::batch_render(&codes).extension("").index_width(0).module_dimensions(1, 1).build::<char>();
 
@@ -3863,7 +3864,7 @@ mod api_tests {
 
     #[test]
     fn batch_render_indices_continue_past_usize_max_without_duplicates() {
-        let codes = QrCode::batch(["alpha", "beta", "gamma"], crate::EcLevel::M).unwrap();
+        let codes = QrCode::batch(["alpha", "beta", "gamma"], EcLevel::M).unwrap();
         let rendered = QrCode::batch_render(&codes).start_index(usize::MAX).extension("txt").build::<char>();
         for (offset, entry) in rendered.iter().enumerate() {
             let index = usize::MAX as u128 + offset as u128;
@@ -3875,8 +3876,8 @@ mod api_tests {
     #[test]
     fn par_batch_preserves_order_and_matches_batch() {
         let inputs = vec!["alpha", "beta", "gamma", "delta"];
-        let sequential = QrCode::batch(inputs.clone(), crate::EcLevel::Q).unwrap();
-        let parallel = QrCode::par_batch(inputs, crate::EcLevel::Q).unwrap();
+        let sequential = QrCode::batch(inputs.clone(), EcLevel::Q).unwrap();
+        let parallel = QrCode::par_batch(inputs, EcLevel::Q).unwrap();
 
         assert_eq!(parallel.iter().map(colors).collect::<Vec<_>>(), sequential.iter().map(colors).collect::<Vec<_>>());
     }
@@ -3888,11 +3889,11 @@ mod api_tests {
         let too_large_for_any_qr = vec![b'y'; qrcode_core::DEFAULT_MAX_DATA_LENGTH + 1];
         let inputs: Vec<&[u8]> = vec![b"ok", &too_large_for_v1, &too_large_for_any_qr];
 
-        let sequential = match QrCode::batch(inputs.clone(), crate::EcLevel::H) {
+        let sequential = match QrCode::batch(inputs.clone(), EcLevel::H) {
             Ok(_) => panic!("sequential batch should reject the oversized input"),
             Err(error) => error,
         };
-        let parallel = match QrCode::par_batch(inputs, crate::EcLevel::H) {
+        let parallel = match QrCode::par_batch(inputs, EcLevel::H) {
             Ok(_) => panic!("parallel batch should reject the oversized input"),
             Err(error) => error,
         };
@@ -4020,7 +4021,7 @@ mod api_tests {
 
     #[test]
     fn analyze_reports_diagnostics() {
-        let code = QrCode::with_version(b"01234567", Version::Normal(1), crate::EcLevel::M).unwrap();
+        let code = QrCode::with_version(b"01234567", Version::Normal(1), EcLevel::M).unwrap();
         let a = code.analyze();
         let total = code.width() * code.width();
         assert!(a.functional_modules() > 0, "should have functional modules");
@@ -4033,13 +4034,13 @@ mod api_tests {
 
     #[test]
     fn analyze_matches_functional_scan_for_every_version() {
-        for version in (1..=40).map(crate::Version::Normal).chain((1..=4).map(crate::Version::Micro)) {
-            let code = QrCode::with_version(b"1", version, crate::EcLevel::L).unwrap();
+        for version in (1..=40).map(Version::Normal).chain((1..=4).map(Version::Micro)) {
+            let code = QrCode::with_version(b"1", version, EcLevel::L).unwrap();
             let width = code.width();
             let total = width * width;
             let functional =
                 (0..width).map(|y| (0..width).filter(|&x| code.is_functional(x, y)).count()).sum::<usize>();
-            let dark = code.colors().iter().filter(|&&color| color == crate::Color::Dark).count();
+            let dark = code.colors().iter().filter(|&&color| color == Color::Dark).count();
             let analysis = code.analyze();
 
             assert_eq!(analysis.functional_modules(), functional, "{version:?}");
@@ -4050,13 +4051,12 @@ mod api_tests {
 
     #[test]
     fn analyze_includes_reserved_version_information_in_functional_modules() {
-        for version in [crate::Version::Normal(7), crate::Version::Normal(40)] {
+        for version in [Version::Normal(7), Version::Normal(40)] {
             let mut bits = crate::bits::Bits::new(version);
             bits.push_numeric_data(b"1").unwrap();
-            bits.push_terminator(crate::EcLevel::L).unwrap();
-            let (data, correction) =
-                crate::ec::construct_codewords(&bits.into_bytes(), version, crate::EcLevel::L).unwrap();
-            let code = QrCode::with_version(b"1", version, crate::EcLevel::L).unwrap();
+            bits.push_terminator(EcLevel::L).unwrap();
+            let (data, correction) = crate::ec::construct_codewords(&bits.into_bytes(), version, EcLevel::L).unwrap();
+            let code = QrCode::with_version(b"1", version, EcLevel::L).unwrap();
             let analysis = code.analyze();
             let codeword_bits = (data.len() + correction.len()) * 8;
             assert_eq!(analysis.data_modules(), codeword_bits);
@@ -4071,7 +4071,7 @@ mod api_tests {
     fn analyze_keeps_the_existing_scan_for_noncanonical_trusted_geometry() {
         let code = QrCode::from_serializable(crate::QrCodeData {
             version: crate::Version::Normal(3),
-            ec_level: crate::EcLevel::L,
+            ec_level: EcLevel::L,
             width: 2,
             content: vec![crate::Color::Light; 4],
         });
@@ -4092,7 +4092,7 @@ mod api_tests {
         assert_eq!(colors(&auto), colors(&forced_num));
         // Odd-length Kanji input surfaces InvalidCharacter via the length check.
         let err = QrCode::builder(b"\x93").force_mode(Mode::Kanji).build();
-        assert!(matches!(err, Err(crate::QrError::InvalidCharacter { .. })));
+        assert!(matches!(err, Err(QrError::InvalidCharacter { .. })));
     }
 }
 

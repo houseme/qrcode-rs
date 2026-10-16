@@ -1,6 +1,6 @@
 //! Library-level helpers for batch rendering and packaging.
 //!
-//! The core encoder APIs expose [`QrCode::batch`](crate::QrCode::batch) and
+//! The core encoder APIs expose [`QrCode::batch`](QrCode::batch) and
 //! streaming iterators. This module adds a small builder for callers that also
 //! want stable file names, in-memory ZIP packaging, or PNG contact sheets
 //! without going through the CLI.
@@ -370,7 +370,7 @@ impl BatchOutput<Vec<u8>> {
 }
 
 #[cfg(feature = "image")]
-impl BatchOutput<crate::render::image::RgbaImage> {
+impl BatchOutput<image::RgbaImage> {
     /// Encodes rendered RGBA images into a single PNG contact sheet.
     ///
     /// # Errors
@@ -620,7 +620,7 @@ pub enum BatchPackError {
     GridTooLarge,
     /// PNG encoding failed.
     #[cfg(feature = "image")]
-    Image(crate::render::image::image::ImageError),
+    Image(image::ImageError),
     /// Compression or output writing failed while building a ZIP archive.
     Io(std::io::Error),
 }
@@ -663,8 +663,8 @@ impl From<std::io::Error> for BatchPackError {
 }
 
 #[cfg(feature = "image")]
-impl From<crate::render::image::image::ImageError> for BatchPackError {
-    fn from(error: crate::render::image::image::ImageError) -> Self {
+impl From<image::ImageError> for BatchPackError {
+    fn from(error: image::ImageError) -> Self {
         Self::Image(error)
     }
 }
@@ -881,7 +881,7 @@ pub fn zip_crc32(bytes: &[u8]) -> u32 {
 
 #[cfg(feature = "image")]
 fn encode_png_grid<'a>(
-    images: impl IntoIterator<Item = &'a crate::render::image::RgbaImage>,
+    images: impl IntoIterator<Item = &'a image::RgbaImage>,
     options: BatchGridOptions,
 ) -> Result<Vec<u8>, BatchPackError> {
     use crate::render::image::{DynamicImage, ImageFormat, Rgba, encode_to_format};
@@ -900,7 +900,7 @@ fn encode_png_grid<'a>(
 
     for (index, &image) in images.iter().enumerate() {
         let (left, top) = geometry.offset(index, image.width(), image.height());
-        crate::render::image::image::imageops::replace(&mut sheet, image, i64::from(left), i64::from(top));
+        image::imageops::replace(&mut sheet, image, i64::from(left), i64::from(top));
     }
 
     encode_to_format(&DynamicImage::ImageRgba8(sheet), ImageFormat::Png).map_err(Into::into)
@@ -933,8 +933,8 @@ struct QrGridStyle {
     module_width: u32,
     module_height: u32,
     quiet_zone: bool,
-    dark: crate::render::image::Rgba<u8>,
-    light: crate::render::image::Rgba<u8>,
+    dark: image::Rgba<u8>,
+    light: image::Rgba<u8>,
 }
 
 #[cfg(feature = "image")]
@@ -991,12 +991,11 @@ impl GridGeometry {
 }
 
 #[cfg(feature = "image")]
-fn allocate_grid(geometry: &GridGeometry) -> Result<crate::render::image::RgbaImage, BatchPackError> {
+fn allocate_grid(geometry: &GridGeometry) -> Result<image::RgbaImage, BatchPackError> {
     let mut pixels = Vec::new();
     pixels.try_reserve_exact(geometry.buffer_len).map_err(|_| BatchPackError::GridTooLarge)?;
     pixels.resize(geometry.buffer_len, 0);
-    crate::render::image::RgbaImage::from_raw(geometry.width, geometry.height, pixels)
-        .ok_or(BatchPackError::GridTooLarge)
+    image::RgbaImage::from_raw(geometry.width, geometry.height, pixels).ok_or(BatchPackError::GridTooLarge)
 }
 
 #[cfg(feature = "image")]
@@ -1488,7 +1487,7 @@ mod tests {
                         .to_rgba8();
                     let old = image::load_from_memory(&old_tile_grid(&codes, options, &template)).unwrap().to_rgba8();
                     assert_eq!(direct.dimensions(), old.dimensions(), "{template:?}, {options:?}");
-                    assert!(direct.as_raw() == old.as_raw(), "pixel mismatch for {template:?}, {options:?}");
+                    assert_eq!(direct.as_raw(), old.as_raw(), "pixel mismatch for {template:?}, {options:?}");
                 }
             }
         }
@@ -1504,7 +1503,7 @@ mod tests {
         let direct = image::load_from_memory(&codes.to_png_grid(options).unwrap()).unwrap().to_rgba8();
         let old =
             image::load_from_memory(&old_tile_grid(&codes, options, &crate::QrTemplate::minimal())).unwrap().to_rgba8();
-        assert!(direct.as_raw() == old.as_raw());
+        assert_eq!(direct.as_raw(), old.as_raw());
         assert_eq!(direct.dimensions(), old.dimensions());
     }
 

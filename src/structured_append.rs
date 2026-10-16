@@ -125,7 +125,7 @@ impl<'a> StructuredAppend<'a> {
 /// Append header, picking the smallest version that fits the chunk plus the
 /// 20-bit header overhead.
 ///
-/// Mirrors [`bits::encode_auto`](crate::bits::encode_auto)'s tier-based search:
+/// Mirrors [`bits::encode_auto`](bits::encode_auto)'s tier-based search:
 /// the segment split is constant within a character-count tier (the per-segment
 /// length is tier-invariant), so we optimize once per tier (V9 / V26 / V40) and
 /// let [`bits::find_min_version`] pick the smallest fitting version. This runs
@@ -201,7 +201,7 @@ impl Display for SaError {
     }
 }
 
-impl ::core::error::Error for SaError {}
+impl core::error::Error for SaError {}
 
 /// One decoded Structured Append symbol's metadata, ready for [`reassemble`].
 ///

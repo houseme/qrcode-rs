@@ -572,22 +572,22 @@ mod tests {
         fn dimensions(&self) -> (u32, u32) {
             (self.width, self.height)
         }
-        fn color_type(&self) -> qrcode_image::image::ColorType {
-            qrcode_image::image::ColorType::L8
+        fn color_type(&self) -> image::ColorType {
+            image::ColorType::L8
         }
         fn total_bytes(&self) -> u64 {
             self.bytes
         }
-        fn set_limits(&mut self, limits: Limits) -> qrcode_image::image::ImageResult<()> {
-            self.limit.set(limits.max_alloc);
-            Ok(())
-        }
-        fn read_image(self, buffer: &mut [u8]) -> qrcode_image::image::ImageResult<()> {
+        fn read_image(self, buffer: &mut [u8]) -> image::ImageResult<()> {
             assert!(!self.panic_on_read, "invalid budgets must not reach full decoding");
             buffer.fill(42);
             Ok(())
         }
-        fn read_image_boxed(self: Box<Self>, buffer: &mut [u8]) -> qrcode_image::image::ImageResult<()> {
+        fn set_limits(&mut self, limits: Limits) -> image::ImageResult<()> {
+            self.limit.set(limits.max_alloc);
+            Ok(())
+        }
+        fn read_image_boxed(self: Box<Self>, buffer: &mut [u8]) -> image::ImageResult<()> {
             (*self).read_image(buffer)
         }
     }

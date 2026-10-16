@@ -678,6 +678,16 @@ impl<'de, F: FnMut(String) -> Result<(), Box<dyn Error>>> serde::de::Visitor<'de
         formatter.write_str("a JSON array of strings or objects, or a single string or object")
     }
 
+    fn visit_str<E: serde::de::Error>(mut self, value: &str) -> Result<Self::Value, E> {
+        self.emit(serde_json::Value::String(value.to_owned()))?;
+        Ok(self.count)
+    }
+
+    fn visit_string<E: serde::de::Error>(mut self, value: String) -> Result<Self::Value, E> {
+        self.emit(serde_json::Value::String(value))?;
+        Ok(self.count)
+    }
+
     fn visit_seq<A: serde::de::SeqAccess<'de>>(mut self, mut sequence: A) -> Result<Self::Value, A::Error> {
         while let Some(value) = sequence.next_element::<serde_json::Value>()? {
             self.emit(value)?;
@@ -688,16 +698,6 @@ impl<'de, F: FnMut(String) -> Result<(), Box<dyn Error>>> serde::de::Visitor<'de
     fn visit_map<A: serde::de::MapAccess<'de>>(mut self, map: A) -> Result<Self::Value, A::Error> {
         let value = serde_json::Value::deserialize(serde::de::value::MapAccessDeserializer::new(map))?;
         self.emit(value)?;
-        Ok(self.count)
-    }
-
-    fn visit_str<E: serde::de::Error>(mut self, value: &str) -> Result<Self::Value, E> {
-        self.emit(serde_json::Value::String(value.to_owned()))?;
-        Ok(self.count)
-    }
-
-    fn visit_string<E: serde::de::Error>(mut self, value: String) -> Result<Self::Value, E> {
-        self.emit(serde_json::Value::String(value))?;
         Ok(self.count)
     }
 }
@@ -1515,7 +1515,7 @@ mod tests {
         cli.grid_columns = 2;
 
         assert_eq!(render_batch(&cli, true).unwrap(), 3);
-        let image = qrcode_image::image::open(&output).unwrap();
+        let image = image::open(&output).unwrap();
         assert!(image.width() > image.height() / 2);
         assert_eq!((image.width() / 2) * 2, image.width());
 
