@@ -2228,6 +2228,7 @@ impl<'a> BatchRender<'a> {
 mod batch_render_fallible_tests {
     use super::{BatchRender, Color, EcLevel, QrCode, Version};
     use crate::render::{Canvas, Pixel, RenderError};
+    use alloc::format;
     use qrcode_core::QrSymbol;
 
     #[test]

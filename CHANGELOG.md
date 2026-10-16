@@ -9,6 +9,7 @@
   workspace compatibility checks on stable Rust instead of pinning CI to 1.88.
 - Add versioned source audits for the refreshed dependency graph without
   introducing cargo-vet exemptions; `cargo vet` passes on the updated lockfile.
+- Keep the facade's batch-render test compiling with `--no-default-features`.
 
 ## [2.2.0] - 2026-10-05
 
