@@ -7,6 +7,8 @@
 - Refresh compatible dependency requirements and the lockfile, including
   `proptest` 1.12, `serde_json` 1.0.154, and `tokio` 1.53.3. Run the locked
   workspace compatibility checks on stable Rust instead of pinning CI to 1.88.
+- Add versioned source audits for the refreshed dependency graph without
+  introducing cargo-vet exemptions; `cargo vet` passes on the updated lockfile.
 
 ## [2.2.0] - 2026-10-05
 
