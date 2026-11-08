@@ -88,6 +88,14 @@ notes = """
 Reviewed the published delta after the already-recorded 1.5.1 -> 1.6.0 audit and verified the 1.8.0 archive checksum. Reviewed Unix jobserver-fd cloning, FIFO opening, single-outstanding-token accounting, reactor registrations and child/stderr readiness handling; descriptors are borrowed from the Cargo-configured jobserver, cloned before retention, and registrations are dropped with pending commands. Compiler execution remains an explicit build-time capability selected by Cargo environment; arguments are passed without a shell. The change also stops forwarding rustc PGO flags to unrelated C/LLVM toolchains and makes several panic paths return errors. No new dependency was added. Upstream OS/compiler matrix tests were not run locally.
 """
 
+[[audits.cc]]
+who = "GLM (AI-assisted published-source delta review)"
+criteria = "safe-to-deploy"
+delta = "1.8.0 -> 1.11.1"
+notes = """
+Compared the published source delta, which spans upstream releases 1.9.0 through 1.11.1, and verified the 1.11.1 archive checksum against Cargo.lock. Reviewed the changed compiler-command construction (flags stay separate argv entries; the new -Tp<path>, -fsanitize=address, -march=x86-64, debug-prefix-map and CodeView flags are literal or caller-supplied values), the new libtool and relative-path lib.exe archiver invocations, and the new unsafe OS plumbing for process-exit and jobserver polling (kqueue and pidfd on unix with a CLOEXEC notification pipe, OpenSemaphoreA with SYNCHRONIZE-only access, WaitForMultipleObjects on Windows), which adds no network capability and keeps spawning on std::process::Command. Cargo variables are now read from an immutable env snapshot, RUSTC_WRAPPER forwarding is narrowed to a fixed wrapper allowlist, and the new compile-commands feature is an off-by-default logging addition; the only dependency change is the separately audited find-msvc-tools 0.1.15 bump. Published-source delta review; upstream test suites were not run locally and the Windows/MSVC paths were reviewed by reading rather than execution.
+"""
+
 [[audits.cfg_aliases]]
 who = "OpenAI Codex (AI-assisted published-source review)"
 criteria = "safe-to-run"
@@ -128,6 +136,14 @@ notes = """
 Verified the archive checksum and reviewed the x86 CPUID/XGETBV guards and AArch64 HWCAP/sysctl boundaries. SIMD backends receive feature tokens before unsafe entry; CPUID register and OS-state checks gate vector widths. Apple sysctl calls use fixed NUL-terminated feature names and fixed u32 outputs; unsupported names/provider errors can panic, and no Apple runtime test was performed. The qrcode workspace reaches this package only through proptest's ChaCha test RNG; the chacha20 call sites query x86 SIMD features, not the Apple DIT/SHA3 names. No build script or network/process capability.
 """
 
+[[audits.crc32fast]]
+who = "GLM (AI-assisted published-source delta review)"
+criteria = "safe-to-deploy"
+delta = "1.5.2 -> 1.5.4"
+notes = """
+Compared the published source delta spanning releases 1.5.3 and 1.5.4 and verified the archive checksum against Cargo.lock. The release is chiefly an internal refactor (CRC state moved into a plain u32 with stateless SIMD backends, a new public total_len accessor, and slicing-by-8/4 short-input paths) that adds #![deny(unsafe_code)] with the allow scoped to the two SIMD modules. Reviewed the changed unsafe regions: vector-load helpers now bounds-check before each raw load instead of relying on elided debug asserts, the sub-16-byte tail is assembled from bounds-checked overlapping byte loads rather than a stack buffer, and the aarch64 kernel uses bounds-checked word loads plus compile-time shift tables. Runtime dependencies are unchanged (cfg-if only); dev-dependency and CI/trusted-publishing changes do not affect consumers, and the build script is untouched. Published-source delta review; upstream test suites were not run locally and no SIMD-target hardware validation was performed.
+"""
+
 [[audits.either]]
 who = "OpenAI Codex (AI-assisted published-source delta review)"
 criteria = "safe-to-deploy"
@@ -142,6 +158,22 @@ criteria = "safe-to-run"
 version = "1.0.3"
 notes = """
 Verified the archive checksum and reviewed the one-trait implementation. Equivalent delegates comparison to the type's safe Eq/PartialEq contract and contains no unsafe code, build script, FFI, filesystem/network/process access, or dependencies. Hash-map collision behavior is owned by its caller/hash implementation. No package-specific tests were run.
+"""
+
+[[audits.find-msvc-tools]]
+who = "GLM (AI-assisted published-source delta review)"
+criteria = "safe-to-deploy"
+delta = "0.1.14 -> 0.1.15"
+notes = """
+Compared the published source delta and verified the 0.1.15 archive checksum against Cargo.lock. The only change is a regeneration of the generated Win32 bindings: new extern "system" declarations for kernel32's OpenSemaphoreA and WaitForMultipleObjects plus five wait/semaphore constants, re-exported for cc-rs's jobserver polling, alongside the version bump. No logic, dependency, build-script, filesystem, network or process-spawn capability was added; the declarations are only callable through unsafe at cc's reviewed call sites. Published-source delta review of a small generated-binding crate; not exercised on a Windows host and not an exhaustive semantic audit.
+"""
+
+[[audits.flate2]]
+who = "GLM (AI-assisted published-source delta review)"
+criteria = "safe-to-deploy"
+delta = "1.1.10 -> 1.1.11"
+notes = """
+Compared the published source delta and verified the archive checksum against Cargo.lock. The rework is safe Rust throughout: flate2 gained no new unsafe blocks (the unsafe-site count is identical in both versions); the only new unsafe is a test-only from_raw_parts bounded by the reported total_out, and the native zlib-rs uninit overrides delegate MaybeUninit handling to zlib-rs, which is an optional dependency not enabled in this workspace. Reviewed the rewritten buffered-writer drain (index-based and bounds-checked, with a retry-loop guard and a new truncated-stream UnexpectedEof on decoder finish), the gzip header/error-progress fix in gz/bufread, and the reset changes, including the miniz_oxide FullReset dictionary clearing that prevents cross-stream window-content reuse; the C backend now asserts inflateReset2 success and preserves construction-time window bits. The only manifest-level dependency change is the optional zlib-rs 0.6.0 -> 0.6.7 requirement, outside the feature set this workspace enables; no build script or new capability. Published-source delta review; upstream test suites were not run locally and the zlib-rs 0.6.7 sources were not separately audited.
 """
 
 [[audits.futures-core]]
@@ -190,6 +222,22 @@ criteria = "safe-to-deploy"
 delta = "0.2.189 -> 0.2.190"
 notes = """
 Compared the published source and release-note delta and verified the archive checksum. Reviewed the new libc_unstable_time64 cfg selection and target-gated ABI declaration changes; the project does not set this cfg or call libc APIs directly, and the dependency is transitive through host/target support crates. The package exposes raw platform bindings, so correctness still depends on the selected target ABI and upstream provider contracts. No cross-target compilation or runtime matrix was available; this review is not independent ABI certification.
+"""
+
+[[audits.libc]]
+who = "GLM (AI-assisted published-source delta review)"
+criteria = "safe-to-deploy"
+delta = "0.2.190 -> 0.2.191"
+notes = """
+Compared the published source delta and verified the archive checksum against Cargo.lock. Reviewed the build.rs change, which only emits three new Emscripten version-gated cfg names behind the existing allowlist validation, and the rest of the delta, which consists of plain constants, struct declarations, and extern "C" declarations with no executable logic. The FreeBSD aarch64 gpregs/fpregs and AIX statvfs f_fsid edits are ABI layout corrections, Android prop_info becomes an opaque extern type, and the Apple mach declarations are un-gated to other Apple targets with unchanged bodies. No new dependencies, build-script capability, or filesystem/network/process capability beyond the existing binding declarations. Published-source delta review; the upstream cross-platform test matrix was not run locally and this is not independent ABI certification.
+"""
+
+[[audits.log]]
+who = "GLM (AI-assisted published-source delta review)"
+criteria = "safe-to-deploy"
+delta = "0.4.34 -> 0.4.35"
+notes = """
+Compared the published source delta and verified the archive checksum against Cargo.lock. The release contains no runtime source changes: the sole edit to src/lib.rs removes the html_root_url doc attribute, and the rest of the delta is CI/CD rework (pinned action SHAs, rustup-based toolchain setup, split MSRV jobs, and a minimal-permission trusted-publishing workflow) plus changelog and README metadata. No dependency, build-script, unsafe, or capability change; the upstream changelog itself declares the release a CI/CD process verification. Published-source delta review; the unchanged library was not re-tested locally.
 """
 
 [[audits.num]]
@@ -264,6 +312,14 @@ notes = """
 The reviewed published crate archive matches the locked Cargo checksum. Reviewed unsafe/capability inventory and parser/translator/visitor/destructor boundaries. The crate forbids unsafe code. Default AST nesting limit is 250; parsing, heap visitors and recursive-structure destruction are iterative; literal class/repetition/length/count limits bound materialization. Reviewed safe Unicode table consumers and bounds-checked lookups. Generated Unicode literals were treated as typed data, not independently verified against the entire Unicode specification. Callers must bound pattern byte length because nesting is checked after parsing. No build script or own filesystem/network/process/environment capability. Optional external arbitrary implementation retains its own policy obligations. Source-only review.
 """
 
+[[audits.rustix]]
+who = "GLM (AI-assisted published-source delta review)"
+criteria = "safe-to-run"
+delta = "1.1.5 -> 1.1.6"
+notes = """
+Compared the published source delta and verified the archive checksum against Cargo.lock. Reviewed the new pub(crate) Padding wrapper over MaybeUninit used for otherwise-unread padding fields with no repr(C) layout change, the ancillary SCM_RIGHTS hardening that clamps cmsg_len to the remaining control-buffer space and rounds payloads to whole file-descriptor sizes, and the xattr rework that stops treating a zero-length buffer as a size query so assume_init can no longer exceed the provided buffer. Also reviewed the 32-bit x86/arm/sparc switch to the *32 syscall variants, the corrected inotify bitflag values, and the documented Apple fallocate behavior change; dependency deltas are minimum bumps of existing dependencies with no new dependencies, build script, or capability change. The unsafe changes are defensive hardening that shrinks previously-unsound windows; rustix is reached only through the dev-only tempfile path in this workspace. Published-source delta review; upstream test suites were not run locally and this is not an exhaustive semantic audit of unchanged code.
+"""
+
 [[audits.serde_json]]
 who = "OpenAI Codex (AI-assisted published-source delta review)"
 criteria = "safe-to-deploy"
@@ -286,6 +342,14 @@ criteria = "safe-to-deploy"
 delta = "1.16.2 -> 1.16.3"
 notes = """
 Compared the published source delta and verified the archive checksum. The implementation change makes try_grow(new_cap < len) a no-op instead of asserting, before the existing inline/spilled realloc paths; no pointer or length invariant is weakened. Directly compiled and ran the dependency-free upstream unit suite: 63 passed. No build script, FFI, filesystem/network/process capability, or new dependencies.
+"""
+
+[[audits.smallvec]]
+who = "GLM (AI-assisted published-source delta review)"
+criteria = "safe-to-deploy"
+delta = "1.16.3 -> 1.16.5"
+notes = """
+Compared the published source delta and verified the archive checksum against Cargo.lock. The delta is cosmetic throughout: manifest metadata formatting, a README reflow, and comment re-wrapping in src/lib.rs, with no functional change to the inline/heap layout code, alignment, initialization, drop, or #[may_dangle] logic, and no dependency, build-script, or filesystem/network/process changes. The intermediate 1.16.4 release's changes are contained in this delta. No unsafe code path is introduced or modified. Published-source delta review only; the upstream unit suite was not rerun locally.
 """
 
 [[audits.syn]]
@@ -316,6 +380,14 @@ notes = """
 Compared the published source delta after the existing 1.53.1 -> 1.53.2 audit and verified the archive checksum. Reviewed the release's wake/drop-outside-lock fixes and semaphore waiter accounting, plus AsyncFd's new unsafe registration contract (the owned fd must stay open and identify the same description) and error return that retains the original object. Reviewed io_uring's Submitted/NotPushed/Pushed split: after a possible kernel submission, the operation slot and buffer stay alive until cancellation/completion rather than being returned early; EINTR retries and pending submissions are drained. qrcode enables Tokio rt only and uses spawn_blocking; it does not enable Tokio IO, net, or sync features. Workspace async tests passed, but upstream OS-specific Tokio tests were not run across platforms; no claim of exhaustive scheduler correctness.
 """
 
+[[audits.tokio]]
+who = "GLM (AI-assisted published-source delta review)"
+criteria = "safe-to-deploy"
+delta = "1.53.3 -> 1.54.1"
+notes = """
+Compared the published source delta (spanning releases 1.54.0 and 1.54.1, with about 60% of the diff being new or updated tests) and verified the archive checksum against Cargo.lock. MSRV rises to 1.85; no production dependency versions changed and the crate has no build script. Reviewed the changed unsafe: the new runtime/jspi.rs Emscripten promise/timer FFI and the scheduler-guard pointer handling are cfg-gated to single-threaded wasm32-unknown-emscripten builds; the Windows named-pipe client now owns its CreateFileW handle via OwnedHandle, fixing a leak; the io driver's token dispatch became a named unsafe fn with a documented liveness invariant plus new loom tests; the inject queue's unsafe contract was narrowed and an existing unsafe fn became safe. Checked the new fs timestamp APIs mirroring std, the cooperative copy/retry semantics changes, net readiness and peer-credential fixes, the opt-in unstable sharded spawn_blocking queue (safe Rust with one new opt-in environment variable), semaphore permit widening with checked math, and the timer-wheel and overflow fixes. qrcode-rs enables only Tokio's rt feature. No new network, process, or signal capability and no suspicious code. Published-source delta review; upstream test suites were not run locally and the concurrency changes were reviewed by inspection rather than exhaustive model checking.
+"""
+
 [[audits.toml_datetime]]
 who = "OpenAI Codex (AI-assisted published-source review)"
 criteria = "safe-to-run"
@@ -324,12 +396,28 @@ notes = """
 Verified the archive checksum and reviewed the datetime value representation and parsing/serde boundaries. The crate stores validated date/time fields and contains no unsafe runtime code, build script, FFI, or ambient filesystem/network/process operation. It is used by proc-macro-crate's Cargo.toml parser; accepted manifest size is caller-controlled. No package-specific tests were run.
 """
 
+[[audits.toml_datetime]]
+who = "GLM (AI-assisted published-source delta review)"
+criteria = "safe-to-run"
+delta = "1.1.2+spec-1.1.0 -> 1.1.3+spec-1.1.0"
+notes = """
+Compared the published source delta and verified the archive checksum against Cargo.lock. The only change is a serde MapAccess::size_hint implementation returning 0 or 1 to match the Datetime map shape; this is a preallocation hint with no parsing, slicing, or unsafe implications. Manifests carry only the version bump; no dependency, feature, or build-script changes. Published-source delta review; upstream test suites were not run locally and this is not an exhaustive semantic audit.
+"""
+
 [[audits.toml_edit]]
 who = "OpenAI Codex (AI-assisted published-source review)"
 criteria = "safe-to-run"
 version = "0.25.17+spec-1.1.0"
 notes = """
 Verified the archive checksum and reviewed the source-owned TOML document model and parse/edit/serialize interfaces. The crate operates on caller-provided text and has no filesystem/network/process operation or build script; proc-macro-crate separately chooses and reads Cargo manifests. IndexMap, toml_datetime, toml_parser, and winnow retain separate records. Large manifest input can cause proportional allocation and is trusted build metadata in this integration. No upstream suite was run.
+"""
+
+[[audits.toml_edit]]
+who = "GLM (AI-assisted published-source delta review)"
+criteria = "safe-to-run"
+delta = "0.25.17+spec-1.1.0 -> 0.25.19+spec-1.1.0"
+notes = """
+Compared the published source delta spanning releases 0.25.18 and 0.25.19 and verified the archive checksum against Cargo.lock. Changes are confined to serde integration: exact SeqAccess/MapAccess size_hint implementations, a serializer refactor that adds serialize_entry overrides and replaces an unwrap with a panic-guarded key-state access reachable only on a serde contract violation, and rendering to_string through a preallocated String writer. No unsafe code, parser, slicing, or offset logic changed; no build script. Manifest bumps serde_spanned and toml_datetime to 1.1.3 and the optional toml_writer to 1.2.0, which is not enabled in this workspace and was not separately reviewed. Published-source delta review; upstream test suites were not run locally and this is not an exhaustive semantic audit.
 """
 
 [[audits.toml_parser]]
@@ -346,6 +434,38 @@ criteria = "safe-to-deploy"
 delta = "1.0.26 -> 1.0.27"
 notes = """
 Compared the published source delta and verified the archive checksum. Reviewed the new disjoint LEAF_START/LEAF_CONTINUE bases and power-of-two chunk offsets used by the two unchecked lookup paths. An isolated exhaustive run called both predicates for every valid Unicode scalar value without an invalid index/trap; this checks bounds behavior, not correctness against an independent Unicode database. The crate is no_std and has no build script, FFI, filesystem/network/process capability.
+"""
+
+[[audits.wasm-bindgen]]
+who = "GLM (AI-assisted published-source delta review)"
+criteria = "safe-to-deploy"
+delta = "0.2.129 -> 0.2.130"
+notes = """
+Compared the published source delta and verified the archive checksum against Cargo.lock. Reviewed the new Nullable type and its MaybeAbi/sentinel ABI plumbing, the encoded-sequence WasmSlice machinery (repr(C) cells with compile-time size/align asserts; the JS-owned buffer is freed and partially converted elements dropped on error), the convert-all-then-release-before-throw rework of the closure invoke shims, the lifetime-faithful ErasableGeneric fix that stops ScopedClosure upcasts laundering borrows, the new unsafe Rc-based exported-object helpers in __rt, the externref fixed-slot range extension, and the once_cell removal. No build script and no filesystem/network/process/environment capability; every foreign import is one of the crate's own __wbindgen_* JS intrinsics. These crates enter the graph only for wasm targets via rav1e/v_frame, not the native build. Published-source delta review; the upstream wasm test suites were not run locally and this is not an exhaustive semantic audit of every conversion impl.
+"""
+
+[[audits.wasm-bindgen-macro]]
+who = "GLM (AI-assisted published-source delta review)"
+criteria = "safe-to-deploy"
+delta = "0.2.129 -> 0.2.130"
+notes = """
+Compared the published source delta and verified the archive checksum against Cargo.lock. It touches only the manifest files: version bumps, the =0.2.130 pin on wasm-bindgen-macro-support, and a new wasm_bindgen_unstable_try_trait check-cfg declaration. The proc-macro source itself is unchanged, so all behavior resides in macro-support and shared, which were reviewed separately. No dependencies were added or removed and there are no capability or unsafe changes. Metadata-only delta review; no local macro-expansion tests were run.
+"""
+
+[[audits.wasm-bindgen-macro-support]]
+who = "GLM (AI-assisted published-source delta review)"
+criteria = "safe-to-deploy"
+delta = "0.2.129 -> 0.2.130"
+notes = """
+Compared the published source delta and verified the archive checksum against Cargo.lock. Reviewed the parser, codegen, encode, generics and hash changes generating the 0.2.130 ABI: the slice/vec sequence-mode attributes replacing slice_to_array, shim-name hashing extended with inline_js snippets and call style to prevent binding collisions, fallible argument conversion with reverse-order release before any throw, promise rejection rather than throwing for async exports, the f64 numeric-enum ABI that stops JS ToInt32 coercion accepting non-integer values as valid discriminants, module-path-qualified descriptor symbols, and staticize_owned_lifetimes matching the ErasableGeneric lifetime-soundness change. Verified the emitted custom-section and encoded-cell layouts by reading the generator; no dependency changes, no new unsafe in the proc-macro itself, and its filesystem reads (package.json, module files) are pre-existing and unchanged. The generated unsafe is the same transmute/intrinsic marshalling as before, now routed through the __rt helpers reviewed in the wasm-bindgen entry. Published-source delta review; the generated code was not compiled or executed against the upstream trybuild suite and this is not an exhaustive semantic audit.
+"""
+
+[[audits.wasm-bindgen-shared]]
+who = "GLM (AI-assisted published-source delta review)"
+criteria = "safe-to-deploy"
+delta = "0.2.129 -> 0.2.130"
+notes = """
+Compared the published source delta and verified the archive checksum against Cargo.lock. Reviewed the SCHEMA_VERSION bump to 0.2.130 (which forces the macro and wasm-bindgen-cli to match in lockstep), the approved schema-file hash bump, the new module_path schema field, the module_mangled_symbol and const-FNV-1a module_path_hash helpers, and the SEQ_MODE/NULLABLE descriptor tags with their mode constants. All new code is safe, dependency-free Rust with no added capabilities. Published-source delta review of shared schema definitions only; the schema's interaction with the CLI side was not exercised locally.
 """
 
 [[audits.windows-link]]
@@ -370,6 +490,14 @@ criteria = "safe-to-run"
 version = "1.0.4"
 notes = """
 Verified the archive checksum and reviewed stream next_slice/peek_slice unchecked contracts and the byte/string adapters used by TOML parsing. Safe entrypoints check offsets and token boundaries before reaching unchecked slicing; UTF-8 streams retain character-boundary requirements, while byte streams use byte offsets. The crate has no build script or own filesystem/network/process/FFI capability. Parsing and error storage scale with caller input, which is trusted Cargo manifest data in this workspace. Not an exhaustive parser-semantic or fuzz audit; upstream tests were not run.
+"""
+
+[[audits.winnow]]
+who = "GLM (AI-assisted published-source delta review)"
+criteria = "safe-to-run"
+delta = "1.0.4 -> 1.0.5"
+notes = """
+Compared the published source delta and verified the archive checksum against Cargo.lock. The stated changes are dominated by clippy use_self and literal-suffix cleanups plus ABNF documentation; the only functional change is a new HexUint for usize trait implementation enabling hex_uint for usize, with the nibble bound derived from the type size. No unsafe code, slicing, offset, or bounds logic was modified, and manifests add only lint configuration and packaging-path anchoring with no dependency changes. Published-source delta review; upstream test suites were not run locally and the type-identical Self rewrites were confirmed by inspection rather than compilation.
 """
 
 [[audits.zerocopy]]
