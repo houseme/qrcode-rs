@@ -52,7 +52,7 @@ qrcode-render = { path = "crates/qrcode-render", version = "2.2.0", default-feat
 qrcode-svg = { path = "crates/qrcode-svg", version = "2.2.0", default-features = false }
 clap = { version = "4.6.7", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
 criterion = { version = "0.8.2", default-features = false }
-flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
+flate2 = { version = "1.1.11", default-features = false, features = ["rust_backend"] }
 image = { version = "0.25.10", default-features = false }
 log = { version = "0.4", default-features = false }
 proptest = "1.12.0"
