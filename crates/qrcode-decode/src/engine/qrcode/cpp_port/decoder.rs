@@ -1,8 +1,8 @@
 // Modified derivative of rxing 0.9.3; see engine/ORIGIN.md and source-provenance.json.
 /*
-* Copyright 2016 Nu-book Inc.
-* Copyright 2016 ZXing authors
-*/
+ * Copyright 2016 Nu-book Inc.
+ * Copyright 2016 ZXing authors
+ */
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::engine::Exceptions;
@@ -16,13 +16,13 @@ use crate::engine::qrcode::cpp_port::bitmatrix_parser::{ReadCodewords, ReadForma
 use crate::engine::qrcode::decoder::DataBlock;
 
 /**
-* <p>Given data and error-correction codewords received, possibly corrupted by errors, attempts to
-* correct the errors in-place using Reed-Solomon error correction.</p>
-*
-* @param codewordBytes data and error correction codewords
-* @param numDataCodewords number of codewords that are data bytes
-* @return false if error correction fails
-*/
+ * <p>Given data and error-correction codewords received, possibly corrupted by errors, attempts to
+ * correct the errors in-place using Reed-Solomon error correction.</p>
+ *
+ * @param codewordBytes data and error correction codewords
+ * @param numDataCodewords number of codewords that are data bytes
+ * @return false if error correction fails
+ */
 pub fn CorrectErrors(codewordBytes: &mut [u8], numDataCodewords: u32) -> Result<bool> {
     let numECCodewords = ((codewordBytes.len() as u32) - numDataCodewords) as i32;
     let rs = ReedSolomonDecoder::new(PredefinedGenericGF::QrCodeField256.into());
@@ -33,8 +33,8 @@ pub fn CorrectErrors(codewordBytes: &mut [u8], numDataCodewords: u32) -> Result<
 }
 
 /**
-* See specification GBT 18284-2000
-*/
+ * See specification GBT 18284-2000
+ */
 pub fn DecodeHanziSegment(bits: &mut BitSource, count: u32, result: &mut ECIStringBuilder) -> Result<()> {
     let mut count = count;
 
@@ -220,11 +220,11 @@ pub fn IsEndOfStream(bits: &mut BitSource, version: &Version) -> Result<bool> {
 }
 
 /**
-* <p>QR Codes can encode text as bits in one of several modes, and can use multiple modes
-* in one QR Code. This method decodes the bits back into text.</p>
-*
-* <p>See ISO 18004:2006, 6.4.3 - 6.4.7</p>
-*/
+ * <p>QR Codes can encode text as bits in one of several modes, and can use multiple modes
+ * in one QR Code. This method decodes the bits back into text.</p>
+ *
+ * <p>See ISO 18004:2006, 6.4.3 - 6.4.7</p>
+ */
 // ZXING_EXPORT_TEST_ONLY
 pub fn DecodeBitStream(bytes: &[u8], version: &Version, ecLevel: ErrorCorrectionLevel) -> Result<DecoderResult<bool>> {
     let mut bits = BitSource::new(bytes);

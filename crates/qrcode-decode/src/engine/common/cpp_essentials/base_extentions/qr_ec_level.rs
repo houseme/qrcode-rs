@@ -1,8 +1,8 @@
 // Modified derivative of rxing 0.9.3; see engine/ORIGIN.md and source-provenance.json.
 /*
-* Copyright 2016 Nu-book Inc.
-* Copyright 2016 ZXing authors
-*/
+ * Copyright 2016 Nu-book Inc.
+ * Copyright 2016 ZXing authors
+ */
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::engine::qrcode::common::ErrorCorrectionLevel;

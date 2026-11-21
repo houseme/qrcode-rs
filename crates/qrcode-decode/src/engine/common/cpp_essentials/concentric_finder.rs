@@ -1,7 +1,7 @@
 // Modified derivative of rxing 0.9.3; see engine/ORIGIN.md and source-provenance.json.
 /*
-* Copyright 2020 Axel Waggershauser
-*/
+ * Copyright 2020 Axel Waggershauser
+ */
 // SPDX-License-Identifier: Apache-2.0
 use crate::engine::{
     Point,

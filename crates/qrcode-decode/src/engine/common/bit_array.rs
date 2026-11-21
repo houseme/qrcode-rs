@@ -200,7 +200,7 @@ impl BitArray {
         end -= 1; // will be easier to treat this as the last actually set bit -- inclusive
         let firstInt = start / BASE_BITS;
         let lastInt = end / BASE_BITS;
-        for i in firstInt..=lastInt {
+        for (i, cell) in self.bits.iter().enumerate().take(lastInt + 1).skip(firstInt) {
             //for (int i = firstInt; i <= lastInt; i++) {
             let firstBit = if i > firstInt { 0 } else { start & SHIFT_BITS };
             let lastBit = if i < lastInt { SHIFT_BITS } else { end & SHIFT_BITS };
@@ -208,9 +208,9 @@ impl BitArray {
             let (mask, _): (BaseType, _) = (2 << lastBit).overflowing_sub(&(1 << firstBit));
             // let mask: u128 = (2 << lastBit) - (1 << firstBit);
 
-            // Return false if we're looking for 1s and the masked bits[i] isn't all 1s (that is,
+            // Return false if we're looking for 1s and the masked cell isn't all 1s (that is,
             // equals the mask, or we're looking for 0s and the masked portion is not all 0s
-            if (self.bits[i] & mask as BaseType) != (if value { mask as BaseType } else { 0 }) {
+            if (*cell & mask as BaseType) != (if value { mask as BaseType } else { 0 }) {
                 return Ok(false);
             }
         }
